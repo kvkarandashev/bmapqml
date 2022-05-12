@@ -1,5 +1,5 @@
 # Miscellaneous functions and classes used for testing convenience.
-import random, glob
+import random, glob, datetime
 
 def_float_format='{:.8E}'
 
@@ -42,4 +42,5 @@ def dirs_xyz_list(QM9_dir):
     output.sort()
     return output
 
-
+def timestamp(title):
+    print(title, datetime.datetime.now())
