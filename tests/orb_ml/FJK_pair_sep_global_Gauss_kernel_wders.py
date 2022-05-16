@@ -3,7 +3,7 @@ from molopt.orb_ml import OML_Slater_pair_list_from_xyzs
 from molopt.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel, oml_ensemble_avs_stddevs
 from molopt.orb_ml.representations import OML_rep_params
 import numpy as np
-import random, sys, datetime
+import random, sys
 
 seed=1
 num_test_mols_1=50

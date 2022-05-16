@@ -73,7 +73,7 @@ def ang_mom_descr(ovlp_mat, coeffs, angular_momenta, atom_ao_range, max_ang_mom,
 #   Parameters defining how orbitals are represented.
 
 class OML_rep_params:
-    def __init__(self, orb_atom_rho_comp=None, max_angular_momentum=3,
+    def __init__(self, orb_atom_rho_comp=0.95, max_angular_momentum=3,
                     propagator_coup_mat=False, num_prop_times=1, prop_delta_t=1.0,
                     atom_sorted_pseudo_orbs=False,
                     ofd_coup_mats=False, orb_en_adj=False, ofd_extra_inversions=True):
