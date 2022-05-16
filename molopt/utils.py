@@ -95,3 +95,16 @@ def write2file(string, file_name):
 class OptionUnavailableError(Exception):
     pass
 
+
+def merged_representation_array(total_compound_array):
+    return [np.array([total_compound_array[comp_id].representation for comp_id in range(*index_tuple)])]
+
+def where2slice(indices_to_ignore):
+    return np.where(np.logical_not(indices_to_ignore))[0]
+
+
+def nullify_ignored(arr, indices_to_ignore):
+    if indices_to_ignore is not None:
+        for row_id, cur_ignore_indices in enumerate(indices_to_ignore):
+            arr[row_id][where2slice(np.logical_not(cur_ignore_indices))]=0.0
+
