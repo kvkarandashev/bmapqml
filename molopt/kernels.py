@@ -71,7 +71,7 @@ def sym_kernel_matrix_noders(A, dist_func, dist_params):
             output_kernel[j, i]=output_kernel[i, j]
     return output_kernel
 
-#@njit(fastmath=True, parallel=True)
+@njit(fastmath=True, parallel=True)
 def sym_kernel_matrix_wders(A, dist_func, dist_params):
     output_kernel=np.zeros((A.shape[0], A.shape[0], 2))
     for i in prange(A.shape[0]):

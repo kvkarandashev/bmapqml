@@ -48,7 +48,7 @@ reduced_hyperparam_func=Ang_mom_classified_rhf(use_Gauss=True, rep_params=oml_re
 
 optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(training_kernel_input, training_quants, max_stagnating_iterations=8, num_kfolds=128,
                                     reduced_hyperparam_func=reduced_hyperparam_func, randomized_iterator_kwargs={"default_step_magnitude" : 0.25},
-                                    init_red_param_guess=np.ones((reduced_hyperparam_func.num_reduced_params,)), sym_kernel_func=gauss_sep_orb_sym_kernel_conv)
+                                    init_red_param_guess=np.zeros((reduced_hyperparam_func.num_reduced_params,)), sym_kernel_func=gauss_sep_orb_sym_kernel_conv)
 
 
 sigmas=optimized_hyperparams["sigmas"]
