@@ -7,6 +7,8 @@ then
     tar -xf ../test_data/qm7.tar.gz
 fi
 
+python ../../clear_cache.py
+
 # Which tests to write.
 
 #used_tests=(pair_Gauss_oxidation_molpro FJK_pair_sep_ibo_kernel_spin_change_UHF FJK_sep_Gauss_kernel_wders\

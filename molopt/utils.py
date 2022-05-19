@@ -40,8 +40,14 @@ def loadpkl(filename):
     input_file.close()
     return obj
     
+def mktmp(directory=False):
+    extra_args=()
+    if directory:
+        extra_args=("-d", *extra_args)
+    return subprocess.check_output(["mktemp", *extra_args, "-p", "."], text=True).rstrip("\n")
+
 def mktmpdir():
-    return subprocess.check_output(["mktemp", "-d", "-p", "."], text=True).rstrip("\n")
+    return mktmp(True)
    
 def mkdir(dir_name):
     subprocess.run(["mkdir", "-p", dir_name])
@@ -107,4 +113,15 @@ def nullify_ignored(arr, indices_to_ignore):
     if indices_to_ignore is not None:
         for row_id, cur_ignore_indices in enumerate(indices_to_ignore):
             arr[row_id][where2slice(np.logical_not(cur_ignore_indices))]=0.0
+
+#   A dumb way to run commands without regards for spaces inside them when subprocess.run offers no viable workarounds..
+def execute_string(string):
+    script_name=mktmp()
+    subprocess.run(["chmod", "+x", script_name])
+    script_output=open(script_name, 'w')
+    script_output.write("#!/bin/bash\n"+string)
+    script_output.close()
+    subprocess.run(["chmod", "+x", script_name])
+    subprocess.run(["./"+script_name])
+    rmdir(script_name)
 

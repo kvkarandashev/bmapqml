@@ -1,9 +1,12 @@
 from molopt.test_utils import dirs_xyz_list, logfile, timestamp
 from molopt.orb_ml import OML_Slater_pair_list_from_xyzs
-from molopt.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel, oml_ensemble_avs_stddevs
+from molopt.orb_ml.kernels import oml_ensemble_avs_stddevs
 from molopt.orb_ml.representations import OML_rep_params
 import numpy as np
 import random, sys
+
+# Toggle to use Fortran or Numba implementation.
+use_Fortran=True
 
 seed=1
 num_test_mols_1=50
@@ -45,6 +48,11 @@ logfile.write(tested_xyzs_1)
 
 logfile.write("xyz list 2")
 logfile.write(tested_xyzs_2)
+
+if use_Fortran:
+    from molopt.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+else:
+    from molopt.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
 
 logfile.write("kernel_11")
 timestamp("Symmetrical kernel calculation.")
