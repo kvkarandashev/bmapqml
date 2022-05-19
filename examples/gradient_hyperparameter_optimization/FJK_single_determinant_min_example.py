@@ -4,12 +4,13 @@
 
 from molopt.test_utils import dirs_xyz_list
 from molopt.linear_algebra import scipy_cho_solve 
-from molopt.dataset_processing.qm7b_t_format_specs import Quantity
+from molopt.dataset_processing.qm7b_t_format_specs import Quantity, au_to_kcalmol_mult
 import os, random
 import numpy as np
 from molopt.orb_ml import OML_compound_list_from_xyzs
 from molopt.orb_ml.representations import OML_rep_params
-from molopt.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel, GMO_sep_orb_kern_input, gauss_sep_orb_sym_kernel_conv
+from molopt.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+from molopt.orb_ml.kernels import oml_ensemble_avs_stddevs
 from molopt.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
 from molopt.orb_ml.hyperparameter_optimization import Ang_mom_classified_rhf
 from molopt.utils import dump2pkl
@@ -37,18 +38,19 @@ oml_representation_parameters=OML_rep_params(orb_atom_rho_comp=0.95, max_angular
 def get_quants_comps(xyz_list, quantity, oml_representation_parameters):
     comps=OML_compound_list_from_xyzs(xyz_list, calc_type="HF", basis=basis)
     comps.generate_orb_reps(oml_representation_parameters)
-    quant_vals=np.array([quantity.extract_xyz(xyz_file)-comp.e_tot for xyz_file, comp in zip(xyz_list, comps)])
-    kernel_input=GMO_sep_orb_kern_input(comps)
-    return kernel_input, comps, quant_vals
+    quant_vals=np.array([quantity.extract_xyz(xyz_file)-comp.e_tot*au_to_kcalmol_mult for xyz_file, comp in zip(xyz_list, comps)])
+    return comps, quant_vals
 
 quant=Quantity(quant_name)
-training_kernel_input, training_comps, training_quants=get_quants_comps(xyz_list[:train_num], quant, oml_representation_parameters)
+training_comps, training_quants=get_quants_comps(xyz_list[:train_num], quant, oml_representation_parameters)
 
-reduced_hyperparam_func=Ang_mom_classified_rhf(use_Gauss=True, rep_params=oml_representation_parameters)
+rep_avs, rep_stddevs=oml_ensemble_avs_stddevs(training_comps)
 
-optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(training_kernel_input, training_quants, max_stagnating_iterations=8, num_kfolds=128,
+reduced_hyperparam_func=Ang_mom_classified_rhf(use_Gauss=True, rep_params=oml_representation_parameters, stddevs=rep_stddevs)
+
+optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(training_comps, training_quants, max_stagnating_iterations=8, num_kfolds=128,
                                     reduced_hyperparam_func=reduced_hyperparam_func, randomized_iterator_kwargs={"default_step_magnitude" : 0.25},
-                                    init_red_param_guess=np.zeros((reduced_hyperparam_func.num_reduced_params,)), sym_kernel_func=gauss_sep_orb_sym_kernel_conv)
+                                    init_red_param_guess=np.zeros((reduced_hyperparam_func.num_reduced_params,)), sym_kernel_func=gauss_sep_orb_sym_kernel)
 
 
 sigmas=optimized_hyperparams["sigmas"]
@@ -62,7 +64,7 @@ K_train[np.diag_indices_from(K_train)]+=lambda_val
 alphas=scipy_cho_solve(K_train, training_quants)
 del(K_train)
 
-check_kernel_input, check_comps, check_quants=get_quants_comps(xyz_list[-check_num:], quant, oml_representation_parameters)
+check_comps, check_quants=get_quants_comps(xyz_list[-check_num:], quant, oml_representation_parameters)
 K_check=gauss_sep_orb_kernel(check_comps, training_comps, sigmas)
 predicted_quants=np.dot(K_check, alphas)
 MAE=np.mean(np.abs(predicted_quants-check_quants))
