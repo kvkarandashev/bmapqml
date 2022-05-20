@@ -26,7 +26,7 @@ from .utils import mktmpdir, rmdir
 
 num_procs_name="MOLOPT_NUM_PROCS"
 
-def oml_num_procs(num_procs=None):
+def default_num_procs(num_procs=None):
     if num_procs is None:
         try:
             return int(os.environ[num_procs_name])
@@ -43,7 +43,7 @@ do
 	eval "export $var='''+str(num_threads)+'''"
 done
 
-export '''+num_procs_name+"="+str(oml_num_procs(num_procs))+'''
+export '''+num_procs_name+"="+str(default_num_procs(num_procs))+'''
 
 pyscript='''+tmpdir+'''/tmppyscript.py
 
@@ -90,4 +90,4 @@ def embarassingly_parallel(func, array, other_args, disable_openmp=True, num_thr
         return embarassingly_parallel_openmp_enabled(func, array, other_args, num_procs=num_procs)
     
 def embarassingly_parallel_openmp_enabled(func, array, args, num_procs=None):
-    return Parallel(n_jobs=oml_num_procs(num_procs), backend="multiprocessing")(delayed(func)(el, *args) for el in array)
+    return Parallel(n_jobs=default_num_procs(num_procs), backend="multiprocessing")(delayed(func)(el, *args) for el in array)

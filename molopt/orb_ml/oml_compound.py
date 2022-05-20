@@ -30,7 +30,7 @@ from .representations import generate_orb_rep_array, gen_propagator_based_coup_m
                             weighted_array, reconstr_mats,\
                             gen_atom_sorted_pseudo_orbs, gen_odf_based_coup_mats,\
                             generate_atom_ao_ranges, generate_ao_arr
-from ..utils import dump2pkl, loadpkl, OptionUnavailableError, read_xyz
+from ..utils import dump2pkl, loadpkl, OptionUnavailableError, read_xyz_file
 
 mf_creator={"HF" : scf.RHF, "UHF" : scf.UHF, "KS" : dft.RKS, "UKS" : dft.UKS}
 
@@ -88,7 +88,7 @@ class OML_compound:
         self.nuclear_charges=None
         self.atomtypes=None
         if xyz is not None:
-            self.atomtypes, self.nuclear_charges, self.coordinates=read_xyz(xyz)
+            self.nuclear_charges, self.atomtypes, self.coordinates, self.add_attr_dict=read_xyz_file(xyz)
         if coordinates is not None:
             self.coordinates=coordinates
         if nuclear_charges is not None:

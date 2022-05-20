@@ -56,6 +56,13 @@ def rmdir(dirname):
     subprocess.run(["rm", "-Rf", dirname])
 
 #   XYZ processing.
+def check_byte(byte_or_str):
+    if isinstance(byte_or_str, str):
+        return byte_or_str
+    else:
+        return byte_or_str.decode('utf-8')
+
+
 def write_compound_to_xyz_file(compound, xyz_file_name):
     write_xyz_file(compound.coordinates, compound.atomtypes, xyz_file_name)
 
@@ -66,32 +73,37 @@ def write_xyz_file(coordinates, elements, xyz_file_name):
         xyz_file.write(element+" "+' '.join([str(atom_coord) for atom_coord in atom_coords])+'\n')
     xyz_file.close()
 
-def read_xyz(xyz_obj):
-    if hasattr(xyz_obj, 'readlines'):
-        return read_xyz_input(xyz_obj)
-    else:
-        return read_xyz_file(xyz_obj)
+def read_xyz_file(xyz_input, additional_attributes=["charge"]):
+    atomic_symbols = []
+    add_attr_dict={}
+    for add_attr in additional_attributes:
+        add_attr_dict={add_attr : None, **add_attr_dict}
 
-def read_xyz_file(xyz_file_name):
-    xyz_input=open(xyz_file_name, "r")
-    output=read_xyz_input(xyz_input)
-    xyz_input.close()
-    return output
+    try:
+        lines=[check_byte(l) for l in xyz_input.readlines()]
+    except AttributeError:
+        with open(xyz_input, "r") as input_file:
+            lines=input_file.readlines()
+    num_atoms=int(lines[0])
+    xyz_coordinates=np.zeros((num_atoms, 3))
+    nuclear_charges=np.zeros((num_atoms,), dtype=int)
 
-def read_xyz_input(xyz_input):
-    xyz_lines=xyz_input.readlines()
-    natoms=int(xyz_lines[0])
-    coordinates=np.zeros((natoms, 3))
-    nuclear_charges=np.zeros((natoms, ), dtype=int)
-    atomtypes=[]
-    for atom_id, line in enumerate(xyz_lines[2:natoms+2]):
-        spl_line=line.split()
-        atomtype=canonical_atomtype(spl_line[0])
-        atomtypes.append(atomtype)
-        nuclear_charges[atom_id]=NUCLEAR_CHARGE[atomtype]
-        for coord_id, coord in enumerate(spl_line[1:4]):
-            coordinates[atom_id, coord_id]=float(coord)
-    return atomtypes, nuclear_charges, coordinates
+    lsplit=lines[1].split()
+    for l in lsplit:
+        for add_attr in additional_attributes:
+            add_attr_eq=add_attr+"="
+            if add_attr_eq == l[:len(add_attr_eq)]:
+                add_attr_dict[add_attr]=int(l.split("=")[1])
+
+    for atom_id, atom_line in enumerate(lines[2:]):
+        lsplit=atom_line.split()
+        atomic_symbol = lsplit[0]
+        atomic_symbols.append(atomic_symbol)
+        nuclear_charges[atom_id]=NUCLEAR_CHARGE[canonical_atomtype(atomic_symbol)]
+        for i in range(3):
+            xyz_coordinates[atom_id, i]=float(lsplit[i+1])
+
+    return nuclear_charges, atomic_symbols, xyz_coordinates, add_attr_dict
 
 def write2file(string, file_name):
     file_output=open(file_name, 'w')
