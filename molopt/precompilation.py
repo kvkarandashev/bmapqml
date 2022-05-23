@@ -144,7 +144,7 @@ def module_source_dirs(module_path, file_in_module_root_dir):
 
 def add_f2py_args(library_dependencies):
     add_flags_list=["-m64", "-march=native", "-fPIC",
-                    "-Wno-maybe-uninitialized", "-Wno-unused-function", "-Wno-cpp"]
+                    "-Wno-maybe-uninitialized", "-Wno-unused-function", "-Wno-cpp", "-Wunused-dummy-argument"]
     if ((debug_mode_envvar in os.environ) and (os.environ[debug_mode_envvar] == "1")):
         # Run the code in debug mode.
         add_flags_list+=["-g", "-fcheck=all", "-Wall"]
@@ -173,7 +173,6 @@ def precompiled(*module_paths, extensions=["f90", "f"], parent_module_name="molo
             cur_source_id=0
             compiled_sources[cur_source_id].find_source_in_dirs(searched_dirs, extensions)
             while cur_source_id != len(compiled_sources):
-                print(compiled_sources, cur_source_id)
                 cur_source=compiled_sources[cur_source_id]
                 if cur_source in compiled_sources[:cur_source_id]:
                     duplicated_source_id=compiled_sources[:cur_source_id].index(cur_source)

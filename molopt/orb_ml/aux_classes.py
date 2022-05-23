@@ -1,3 +1,30 @@
+# MIT License
+#
+# Copyright (c) 2021-2022 Konstantin Karandashev
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from pyscf.gto import Mole
+import copy
+
+negligible_coord_diff=1.e-8
+
 # Everything related to convenient handling of ab initio data.
 
 # Internal format for processing AOs.
@@ -44,4 +71,34 @@ class Pseudo_MF:
         self.mo_occ=mo_occ
         self.mo_energy=mo_energy
 
-
+# Designed to mimic pySCF's Mole object when used in Pipek-Mezey localization.
+class Pseudo_Mole:
+    def __init__(self, atomtypes, coordinates, ovlp_mat, aos, atom_ao_ranges):
+        self.atom=[[atomtype, atomcoords] for atomtype, atomcoords in zip(atomtypes, coordinates)]
+        self.ovlp_mat=ovlp_mat
+        self._bas=aos
+        self.stdout="PseudoStdout"
+        self.atom_ao_ranges=atom_ao_ranges
+        self.verbose=False
+        self.natm=len(self.atom)
+    def offset_nr_by_atom(self):
+        return [(0, 0, r1, r2) for (r1, r2) in self.atom_ao_ranges]
+    def intor_symmetric(self, keyword):
+        if keyword != "int1e_ovlp":
+            raise Exception("Unimplemented option for Pseudo_Mole class.")
+        return self.ovlp_mat
+    def intor_cross(self, keyword, mol1, mol2):
+        if len(mol1.atom) != len(mol2.atom):
+            raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
+        for a1, a2 in zip(mol1.atom, mol2.atom):
+            if a1[0] != a2[0]:
+                raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
+            if np.sum(np.abs(a1[1]-a2[1])) > negligible_coord_diff:
+                raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
+        return self.ovlp_mat
+    def has_ecp(self):
+        return False
+    def copy(self):
+        return copy.deepcopy(self)
+    def build(self, *args, basis=None):
+        pass

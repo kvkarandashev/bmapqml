@@ -45,7 +45,7 @@ neglect_orb_occ=0.1
 #   TO-DO rename to "available_orbital_types" now that Boys is also used?
 available_orb_types=["standard", "HOMO_removed", "LUMO_added", "first_excitation"]
 
-available_localization_procedures=["Boys", "IBO"]
+available_localization_procedures=["Boys", "IBO", "Pipek-Mezey"]
 
 available_software=["pySCF", "molpro", "xTB"]
 
@@ -263,11 +263,16 @@ class OML_compound:
                 if self.localization_procedure not in available_localization_procedures:
                     raise OptionUnavailableError
                 if self.localization_procedure == "IBO":
-                    orb_mat.append(lo.ibo.ibo(pyscf_mol, occ_orb_arr, **self.pyscf_calc_params.orb_kwargs))
-                if self.localization_procedure == "Boys":
-                    Boys_obj=lo.boys.Boys(pyscf_mol, mo_coeff=occ_orb_arr) # TO-DO: self.pyscf_calc_params.orb_kwargs?
-                    Boys_obj.kernel()
-                    orb_mat.append(Boys_obj.mo_coeff)
+                    new_orb_mat=lo.ibo.ibo(pyscf_mol, occ_orb_arr, **self.pyscf_calc_params.orb_kwargs)
+                else:
+                    if self.localization_procedure == "Boys":
+                        loc_obj=lo.boys.Boys(pyscf_mol, mo_coeff=occ_orb_arr) # TO-DO: self.pyscf_calc_params.orb_kwargs?
+                    else: # Pipek-Mezey
+                        loc_obj=lo.pipek.PipekMezey(pyscf_mol, occ_orb_arr)
+                        loc_obj.pop_method="Mulliken"
+                    loc_obj.kernel()
+                    new_orb_mat=loc_obj.mo_coeff
+                orb_mat.append(new_orb_mat)
         return orb_mat
 
     def create_mats_savefile(self):
