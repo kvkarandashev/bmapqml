@@ -170,17 +170,6 @@ class TrajectoryPoint:
     def __repr__(self):
         return str(self)
 
-# Rules for accepting trial steps.
-def Metropolis_acceptance(delta_pot):
-    if delta_pot<=0.0:
-        return True
-    else:
-        return (random.random() < np.exp(-delta_pot))
-
-def greedy_acceptance(delta_pot):
-    return (delta_pot<=0.0)
-
-acceptance_rules={"Metropolis_acceptance" : Metropolis_acceptance, "greedy_acceptance" : greedy_acceptance}
 
 def tidy_forbidden_bonds(forbidden_bonds):
     if forbidden_bonds is None:
@@ -214,7 +203,7 @@ def conv_func_mol_egc(inp, forward=True, mol_format=None):
 
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
-    def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, acceptance_rule="Metropolis_acceptance", restart_trajectory=None,
+    def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, restart_trajectory=None,
                     conserve_stochiometry=False, bound_enforcing_coeff=1.0, keep_histogram=False, beta=None, min_function=None, additional_data_function=None, num_replicas=None):
         self.num_replicas=num_replicas
         if isinstance(beta, list):
@@ -240,7 +229,6 @@ class RandomWalk:
         self.bias_coeff=bias_coeff
         self.randomized_change_params=randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
-        self.acceptance_rule=acceptance_rules[acceptance_rule]
         self.keep_histogram=keep_histogram
         if self.keep_histogram:
             self.update_histogram()
@@ -272,22 +260,45 @@ class RandomWalk:
         self.used_randomized_change_params=copy.deepcopy(self.randomized_change_params)
 
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
-        prev_tps=[self.cur_tps[replica_id] for replica_id in replica_ids]
-        delta_pot=prob_balance
-        for new_tp, prev_tp in zip(new_tps, prev_tps):
-            if self.min_function is not None:
-                prob_balance+=self.beta[replica_id]*(new_tp.calc_min_function(self.min_function)-change_tp.calc_min_function(self.min_function))
-            if self.bias_coeff is not None:
-                delta_pot+=self.biasing_potential(new_tp)-self.biasing_potential(prev_tp)
-            if self.bound_enforcing_coeff is not None:
-                delta_pot+=self.bound_enforcing_pot(new_tp)-self.bound_enforcing_pot(prev_tp)
-
-        accepted=self.acceptance_rule(delta_pot)
+        accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
 
         if accepted:
             for new_tp_id, replica_id in enumerate(replica_ids):
                 self.cur_tps[replica_id]=new_tps[new_tp_id]
         return accepted
+
+    def virtual_beta_present(self, beta_ids):
+        return any([self.virtual_beta_id(beta_id) for beta_id in beta_ids])
+
+    def virtual_beta_id(self, beta_id):
+        return (self.betas[beta_id] is None)
+
+    def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
+        delta_pot=prob_balance
+
+        prev_tps=[self.cur_tps[replica_id] for replica_id in replica_ids]
+
+        if self.min_function is not None:
+            if self.virtual_beta_present(replica_ids):
+                delta_pot=.0
+                for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
+                    if self.virtual_beta_id(beta_id):
+                        delta_pot+=self.min_function(new_tp)-self.min_function(prev_tp)
+                return (delta_pot<.0)
+            else:
+                for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
+                    delta_pot+=self.betas[replica_id]*(self.min_function(new_tp)-self.min_function(prev_tps))
+
+        for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
+            if self.bias_coeff is not None:
+                delta_pot+=self.biasing_potential(new_tp)-self.biasing_potential(prev_tp)
+            if self.bound_enforcing_coeff is not None:
+                delta_pot+=self.bound_enforcing_pot(new_tp)-self.bound_enforcing_pot(prev_tp)
+
+        if delta_pot<.0:
+            return True
+        else:
+            return (random.random()<np.exp(-delta_pot))
 
     def MC_step(self, show_acceptance=False, change_histogram=True, replica_id=0):
         changed_tp=self.cur_tps[replica_id]
