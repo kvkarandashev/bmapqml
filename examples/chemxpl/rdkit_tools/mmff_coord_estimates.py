@@ -1,6 +1,6 @@
 from molopt.chemxpl.valence_treatment import ChemGraph
 from molopt.chemxpl.ext_graph_compound import ExtGraphCompound
-from molopt.chemxpl.utility import egc_with_coords, write_egc2xyz
+from molopt.chemxpl.utils import egc_with_coords, write_egc2xyz
 
 nuclear_charges1=[6, 7, 6]
 bond_orders1={(0, 1) : 1, (1, 2) : 1}

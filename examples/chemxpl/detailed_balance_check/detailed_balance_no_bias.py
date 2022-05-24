@@ -3,6 +3,7 @@ from molopt.chemxpl.random_walk import RandomWalk
 import random
 from molopt.chemxpl import ExtGraphCompound
 from copy import deepcopy
+import math
 
 random.seed(1)
 
@@ -13,7 +14,7 @@ forbidden_bonds=[(15, 15)]
 num_MC_steps=100000
 
 bias_coeff=None
-bound_enforcing_coeff=1.0
+bound_enforcing_coeff=math.log(2.)
 
 randomized_change_params={"max_fragment_num" : 1, "nhatoms_range" : [1, 3], "final_nhatoms_range" : [2, 3],
                         "possible_elements" : possible_elements, "bond_order_changes" : [-1, 1],
@@ -34,7 +35,7 @@ histogram_labels=[]
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params, conserve_stochiometry=conserve_stochiometry, bound_enforcing_coeff=bound_enforcing_coeff)
 for MC_step in range(num_MC_steps):
     # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
-    cur_egc=rw.change_molecule(cur_egc, randomized_change_params=randomized_change_params, skip_unaccepted=False)
+    cur_egc=rw.change_molecule(cur_egc, randomized_change_params=randomized_change_params)
     if cur_egc not in histogram_labels:
         histogram_labels.append(deepcopy(cur_egc))
         histogram.append(0)

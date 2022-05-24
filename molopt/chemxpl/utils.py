@@ -3,6 +3,7 @@ from rdkit.Chem import AllChem
 from joblib import Parallel, delayed
 from rdkit.Chem.rdmolops import GetAdjacencyMatrix
 from rdkit.Chem.rdmolfiles import MolToSmiles
+from g2s.constants import periodic_table
 
 try:
     from xyz2mol import AC2BO, xyz2AC, BO2mol, chiral_stereo_check, AC2mol, int_atom, str_atom

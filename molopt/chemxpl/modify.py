@@ -175,7 +175,7 @@ def add_fragment(egc, fragment, connecting_positions):
 
 # Procedures for genetic algorithms.
 
-def randomized_split_chemgraph(cg, num_fragmentations=1, fragment_ratio_range=None, fragment_size_range=None):
+def randomized_split_chemgraph(cg, num_fragmentations=1, fragment_ratio_range=[.0, .5], fragment_size_range=None):
     if fragment_ratio_range is None:
         # We go by fragment size range.
         fragment_size=random.randrange(fragment_size_range[0], fragment_size_range[1]+1)
@@ -217,7 +217,7 @@ def random_fragment_pair_combination(frag1, frag2, forbidden_bonds=None):
         final_output_mol=random.choice(possible_output_mols)
         return final_output_mol, len(possible_output_mols)
 
-def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=None, cross_coupling_fragment_size_range=None, forbidden_bonds=None, **dummy_kwargs):
+def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, .5], cross_coupling_fragment_size_range=None, forbidden_bonds=None, **dummy_kwargs):
     tot_choice_prob_ratio=1.0
     fragment_pairs=[]
     frag_seed_atoms=[]
