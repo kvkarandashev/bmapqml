@@ -1,11 +1,11 @@
 # An example of using stochatic gradient descent to optimize sigma value for Coulomb Matrix with Gaussian kernel.
 
-from molopt.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
-from molopt.kernels import gaussian_sym_kernel_matrix, gaussian_kernel_matrix
-from molopt.dataset_processing.qm9_format_specs import Quantity
-from molopt.test_utils import dirs_xyz_list
-from molopt.orb_ml import OML_compound
-from molopt.linear_algebra import scipy_cho_solve
+from bmapqml.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
+from bmapqml.kernels import gaussian_sym_kernel_matrix, gaussian_kernel_matrix
+from bmapqml.dataset_processing.qm9_format_specs import Quantity
+from bmapqml.test_utils import dirs_xyz_list
+from bmapqml.orb_ml import OML_compound
+from bmapqml.linear_algebra import scipy_cho_solve
 from qml.representations import generate_coulomb_matrix
 import os, random
 import numpy as np

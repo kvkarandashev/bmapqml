@@ -95,7 +95,7 @@ def read_xyz_file(xyz_input, additional_attributes=["charge"]):
             if add_attr_eq == l[:len(add_attr_eq)]:
                 add_attr_dict[add_attr]=int(l.split("=")[1])
 
-    for atom_id, atom_line in enumerate(lines[2:]):
+    for atom_id, atom_line in enumerate(lines[2:num_atoms+2]):
         lsplit=atom_line.split()
         atomic_symbol = lsplit[0]
         atomic_symbols.append(atomic_symbol)

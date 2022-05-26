@@ -2,18 +2,18 @@
 # Note that it requireds presence of QM7bT directory, that can be created with
 # procedures from qm7b_t_format_specs.
 
-from molopt.test_utils import dirs_xyz_list
-from molopt.linear_algebra import scipy_cho_solve 
-from molopt.dataset_processing.qm7b_t_format_specs import Quantity, au_to_kcalmol_mult
+from bmapqml.test_utils import dirs_xyz_list
+from bmapqml.linear_algebra import scipy_cho_solve 
+from bmapqml.dataset_processing.qm7b_t_format_specs import Quantity
+from bmapqml.data import conversion_coefficient
 import os, random
 import numpy as np
-from molopt.orb_ml import OML_compound_list_from_xyzs
-from molopt.orb_ml.representations import OML_rep_params
-from molopt.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
-from molopt.orb_ml.kernels import oml_ensemble_avs_stddevs
-from molopt.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
-from molopt.orb_ml.hyperparameter_optimization import Ang_mom_classified_rhf
-from molopt.utils import dump2pkl
+from bmapqml.orb_ml import OML_compound_list_from_xyzs
+from bmapqml.orb_ml.representations import OML_rep_params
+from bmapqml.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+from bmapqml.orb_ml.kernels import oml_ensemble_avs_stddevs
+from bmapqml.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
+from bmapqml.orb_ml.hyperparameter_optimization import Ang_mom_classified_rhf
 
 quant_name='MP2/cc-pVTZ'
 seed=1
@@ -31,14 +31,14 @@ xyz_list=dirs_xyz_list(QM7bT_dir)
 random.seed(seed)
 random.shuffle(xyz_list)
 
-os.environ["MOLOPT_NUM_PROCS"]=os.environ["OMP_NUM_THREADS"] # OML_NUM_PROCS says how many processes to use during joblib-parallelized parts; by default most of the latter disable OpenMP parallelization.
+os.environ["BMAPQML_NUM_PROCS"]=os.environ["OMP_NUM_THREADS"] # OML_NUM_PROCS says how many processes to use during joblib-parallelized parts; by default most of the latter disable OpenMP parallelization.
 
 oml_representation_parameters=OML_rep_params(orb_atom_rho_comp=0.95, max_angular_momentum=max_angular_momentum)
 
 def get_quants_comps(xyz_list, quantity, oml_representation_parameters):
     comps=OML_compound_list_from_xyzs(xyz_list, calc_type="HF", basis=basis)
     comps.generate_orb_reps(oml_representation_parameters)
-    quant_vals=np.array([quantity.extract_xyz(xyz_file)-comp.e_tot*au_to_kcalmol_mult for xyz_file, comp in zip(xyz_list, comps)])
+    quant_vals=np.array([quantity.extract_xyz(xyz_file)-comp.e_tot*conversion_coefficient["au_kcal"] for xyz_file, comp in zip(xyz_list, comps)])
     return comps, quant_vals
 
 quant=Quantity(quant_name)

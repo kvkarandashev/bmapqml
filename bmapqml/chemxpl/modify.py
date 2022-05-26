@@ -174,17 +174,28 @@ def add_fragment(egc, fragment, connecting_positions):
 
 
 # Procedures for genetic algorithms.
-
-def randomized_split_chemgraph(cg, num_fragmentations=1, fragment_ratio_range=[.0, .5], fragment_size_range=None):
+def possible_fragment_sizes(cg, fragment_ratio_range=[.0, .5], fragment_size_range=None):
     if fragment_ratio_range is None:
-        # We go by fragment size range.
-        fragment_size=random.randrange(fragment_size_range[0], fragment_size_range[1]+1)
+        bounds=copy.deepcopy(fragment_size_range)
     else:
-        fragment_size=int(random.uniform(*fragment_ratio_range)*cg.nhatoms())+1
-    if fragment_size >= cg.nhatoms():
-        fragment_size=cg.nhatoms()-1
+        bounds=[int(r*cg.nhatoms()) for r in fragment_ratio_range ]
+    if bounds[1] >=cg.nhatoms():
+        bounds[1]=cg.nhatoms-1
+    for j in range(2):
+        if bounds[j] == 0:
+            bounds[j]=1
+    return range(bounds[0], bounds[1]+1)
+
+def randomized_split_chemgraph(cg, **frag_size_kwargs):
+    pfsizes=possible_fragment_sizes(cg, **frag_size_kwargs)
+    fragment_size=random.choice(pfsizes)
+
     membership_vector=np.zeros(cg.nhatoms(), dtype=int)
-    start_id=random.randrange(cg.nhatoms())
+
+    origin_choices=cg.unrepeated_atom_list()
+
+    start_id=random.choice(origin_choices)
+
     prev_to_add=[start_id]
     remaining_atoms=fragment_size
     frag_id=1
@@ -205,40 +216,34 @@ def randomized_split_chemgraph(cg, num_fragmentations=1, fragment_ratio_range=[.
         prev_to_add=new_to_add
     # Break the molecule down into the fragments.
     frags=split_chemgraph_no_dissociation_check(cg, membership_vector)
-    choice_prob=float(cg.atom_multiplicity(start_id))/cg.nhatoms()
-    frag_seed_atom=np.where(np.where(membership_vector==frag_id)[0]==start_id)[0][0]
-    return frags, choice_prob, frag_seed_atom
-
-def random_fragment_pair_combination(frag1, frag2, forbidden_bonds=None):
-    possible_output_mols=frag2.all_connections_with_frag(frag1, forbidden_bonds=forbidden_bonds)
-    if len(possible_output_mols)==0:
-        return None, None
-    else:
-        final_output_mol=random.choice(possible_output_mols)
-        return final_output_mol, len(possible_output_mols)
+    return frags, len(origin_choices)*len(pfsizes)
 
 def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, .5], cross_coupling_fragment_size_range=None, forbidden_bonds=None, **dummy_kwargs):
     tot_choice_prob_ratio=1.0
     fragment_pairs=[]
-    frag_seed_atoms=[]
     for cg in cg_pair:
-        fragment_pair, choice_prob, frag_seed_atom=randomized_split_chemgraph(cg, fragment_ratio_range=cross_coupling_fragment_ratio_range, fragment_size_range=cross_coupling_fragment_size_range)
-        tot_choice_prob_ratio*=choice_prob*len(fragment_pair[0].all_connections_with_frag(fragment_pair[1], forbidden_bonds=forbidden_bonds))
+        fragment_pair, num_choices=randomized_split_chemgraph(cg, fragment_ratio_range=cross_coupling_fragment_ratio_range, fragment_size_range=cross_coupling_fragment_size_range)
+        tot_choice_prob_ratio*=num_choices
         fragment_pairs.append(fragment_pair)
-        frag_seed_atoms.append(frag_seed_atom)
     if fragment_pairs[0][0].bo_list() != fragment_pairs[1][0].bo_list():
         return None, None
-    new_frag_pairs_seeds=[[(fragment_pairs[0][0], fragment_pairs[1][1]), frag_seed_atoms[1]], [(fragment_pairs[1][0], fragment_pairs[0][1]), frag_seed_atoms[0]]]
+
+    new_frag_pairs=[(fragment_pairs[0][0], fragment_pairs[1][1]), (fragment_pairs[1][0], fragment_pairs[0][1])]
     output=[]
-    for [new_frag_pair, frag_seed_atom] in new_frag_pairs_seeds:
+    for new_frag_pair in new_frag_pairs:
         new_mol_choices=new_frag_pair[1].all_connections_with_frag(new_frag_pair[0], forbidden_bonds=forbidden_bonds)
         if len(new_mol_choices)==0:
             return None, None
         new_mol=random.choice(new_mol_choices)
         # For detailed balance, get the inverse choice probability.
-        reverse_seed_atom_id=frag_seed_atom+new_frag_pair[0].chemgraph.nhatoms()
-        tot_choice_prob_ratio*=float(new_mol.nhatoms())/new_mol.atom_multiplicity(reverse_seed_atom_id)/len(new_mol_choices)
+        tot_choice_prob_ratio*=len(new_mol_choices)
         output.append(new_mol)
 
-    return output, np.log(tot_choice_prob_ratio)
+    for fragment_pair in fragment_pairs:
+        tot_choice_prob_ratio/=len(fragment_pair[1].all_connections_with_frag(fragment_pair[0], forbidden_bonds=forbidden_bonds))
+    for new_mol in output:
+        tot_choice_prob_ratio/=len(new_mol.unrepeated_atom_list())*len(possible_fragment_sizes(new_mol,
+                fragment_ratio_range=cross_coupling_fragment_ratio_range, fragment_size_range=cross_coupling_fragment_size_range))
+
+    return output, -np.log(tot_choice_prob_ratio)
 

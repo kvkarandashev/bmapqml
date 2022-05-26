@@ -162,7 +162,7 @@ def add_f2py_args(library_dependencies):
     return (add_flags_arg, *add_args)
 
 
-def precompiled(*module_paths, extensions=["f90", "f"], parent_module_name="molopt", file_in_module_root_dir=__file__):
+def precompiled(*module_paths, extensions=["f90", "f"], parent_module_name="bmapqml", file_in_module_root_dir=__file__):
     for module_path in module_paths:
         try:
             importlib.import_module(parent_module_name+"."+module_path)

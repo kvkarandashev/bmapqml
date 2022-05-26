@@ -1,10 +1,10 @@
 # Do MC optimization for several parallel replicas.
 
-from molopt.chemxpl.valence_treatment import ChemGraph
-from molopt.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.valence_treatment import ChemGraph
+from bmapqml.chemxpl.random_walk import RandomWalk
 import random, math
-from molopt.chemxpl import ExtGraphCompound
-from molopt.chemxpl.minimized_functions import Diatomic_barrier
+from bmapqml.chemxpl import ExtGraphCompound
+from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
 from copy import deepcopy
 
 random.seed(1)
@@ -16,8 +16,8 @@ forbidden_bonds=None #[(17, 9)]
 ln2=math.log(2.)
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
-#betas=[None, ln2, ln2/2]
-betas=[ln2, ln2, ln2]
+betas=[None, ln2, ln2/2]
+#betas=[ln2, ln2, ln2, ln2, ln2, ln2]
 
 num_MC_steps=100000 #100000
 
@@ -58,8 +58,22 @@ for MC_step in range(num_MC_steps):
         histogram[i][cur_egc_id]+=1
         print(i, cur_egc)
 
+global_hist_labels=[]
+global_histogram=[]
+
 for i, beta in enumerate(betas):
     print("Beta:", beta, "index:", i)
     for egc, distr in zip(histogram_labels[i], histogram[i]):
         print("EGC:", egc)
         print("Distribution:", distr)
+    for hl, hv in zip(histogram_labels[i], histogram[i]):
+        if hl not in global_hist_labels:
+            global_hist_labels.append(hl)
+            global_histogram.append(0)
+        i=global_hist_labels.index(hl)
+        global_histogram[i]+=hv
+
+print("Global histogram:")
+for egc, distr in zip(global_hist_labels, global_histogram):
+    print(egc, distr)
+

@@ -201,7 +201,8 @@ def conv_func_mol_egc(inp, forward=True, mol_format=None):
             conv_func_id=1
         return mol_egc_converter[mol_format][conv_func_id](inp)
 
-# TO-DO replace biasing potential with histogram.
+def random_pair(arr_length):
+    return random.sample(range(arr_length), 2)
 
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
@@ -261,8 +262,8 @@ class RandomWalk:
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
         accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
         if accepted:
-            for new_tp_id, replica_id in enumerate(replica_ids):
-                self.cur_tps[replica_id]=new_tps[new_tp_id]
+            for new_tp, replica_id in zip(new_tps, replica_ids):
+                self.cur_tps[replica_id]=new_tp
         return accepted
 
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
@@ -273,13 +274,16 @@ class RandomWalk:
         if self.min_function is not None:
             if self.virtual_beta_present(replica_ids):
                 delta_pot=.0
+                trial_vals=[]
+                old_vals=[]
                 for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
                     if self.virtual_beta_id(replica_id):
-                        delta_pot+=self.eval_min_func(new_tp)-self.eval_min_func(prev_tp)
-                return (delta_pot<.0)
+                        trial_vals.append(self.eval_min_func(new_tp))
+                        old_vals.append(self.eval_min_func(prev_tp))
+                return (min(trial_vals)<min(old_vals))
             else:
                 for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
-                    delta_pot+=self.betas[replica_id]*(self.min_function(new_tp)-self.min_function(prev_tp))
+                    delta_pot+=self.betas[replica_id]*(self.eval_min_func(new_tp)-self.eval_min_func(prev_tp))
 
         for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
             if self.bias_coeff is not None:
@@ -376,7 +380,7 @@ class RandomWalk:
                 old_pair_shuffle_prob=1. # will be ignored anyway
             else:
                 old_pair_shuffle_prob=self.tp_pair_order_prob(replica_ids) 
-            prob_balance-=np.log(new_pair_shuffle_prob/old_pair_shuffle_prob)
+            prob_balance+=np.log(new_pair_shuffle_prob/old_pair_shuffle_prob)
         accepted=self.accept_reject_move(new_pair_tps, prob_balance, replica_ids=replica_ids)
         if accepted:
             self.num_accepted_cross_couplings+=1
@@ -392,13 +396,13 @@ class RandomWalk:
     def genetic_MC_step_all(self, num_genetic_tries=1, randomized_change_params=None, **dummy_kwargs):
         self.init_randomized_change_params(randomized_change_params=randomized_change_params)
         for attempted_change_counter in range(num_genetic_tries):
-            changed_replica_ids=np.random.randint(self.num_replicas, size=(2,))
+            changed_replica_ids=random_pair(self.num_replicas)
             self.genetic_MC_step(changed_replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, change_histogram=True, **dummy_kwargs):
         if self.min_function is not None:
             for attempted_change_counter in range(num_parallel_tempering_tries):
-                old_ids=np.random.randint(self.num_replicas, size=(2,))
+                old_ids=random_pair(self.num_replicas)
                 switch_prob=self.tp_pair_order_prob(old_ids, Metropolis_rejection_prob=True)
                 if random.random()>switch_prob:
                     self.cur_tps[old_ids[0]], self.cur_tps[old_ids[1]]=self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]

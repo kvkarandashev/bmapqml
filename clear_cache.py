@@ -2,7 +2,7 @@
 import os, subprocess
 
 # Delete all __pycache__folders.
-molopt_source_dir=os.path.dirname(__file__)+"/molopt"
+molopt_source_dir=os.path.dirname(__file__)+"/bmapqml"
 checked_dirs=[molopt_source_dir]
 while (len(checked_dirs)!=0):
     checked_item=checked_dirs[0]

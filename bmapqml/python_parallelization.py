@@ -24,7 +24,7 @@ from joblib import Parallel, delayed
 import os, subprocess
 from .utils import mktmpdir, rmdir
 
-num_procs_name="MOLOPT_NUM_PROCS"
+num_procs_name="BMAPQML_NUM_PROCS"
 
 def default_num_procs(num_procs=None):
     if num_procs is None:
@@ -49,7 +49,7 @@ pyscript='''+tmpdir+'''/tmppyscript.py
 
 cat > $pyscript << EOF
 import pickle as pl
-from molopt.python_parallelization import embarassingly_parallel_openmp_enabled
+from bmapqml.python_parallelization import embarassingly_parallel_openmp_enabled
 
 plf=open("$dump_filename", 'rb')
 executed=pl.load(plf)

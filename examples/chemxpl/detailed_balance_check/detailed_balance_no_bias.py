@@ -1,7 +1,7 @@
-from molopt.chemxpl.valence_treatment import ChemGraph
-from molopt.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.valence_treatment import ChemGraph
+from bmapqml.chemxpl.random_walk import RandomWalk
 import random
-from molopt.chemxpl import ExtGraphCompound
+from bmapqml.chemxpl import ExtGraphCompound
 from copy import deepcopy
 import math
 

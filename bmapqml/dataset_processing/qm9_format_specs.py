@@ -1,4 +1,4 @@
-from molopt.orb_ml.oml_compound import OML_compound
+from ..orb_ml.oml_compound import OML_compound
 
 def HOMO_en(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
     oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
