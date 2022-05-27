@@ -1,12 +1,8 @@
 import numpy as np
-import qml
-from qml.kernels import gaussian_kernel, gaussian_kernel_symmetric
-from qml.math import cho_solve
 from sklearn.model_selection import train_test_split
 import random
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import lib_bob as fml
 import numpy as np
 import os
 import rdkit
@@ -22,7 +18,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.externals import joblib
 import pickle
 import deepchem as dc
 
