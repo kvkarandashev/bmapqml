@@ -4,7 +4,6 @@ from joblib import Parallel, delayed
 from rdkit.Chem.rdmolops import GetAdjacencyMatrix
 from rdkit.Chem.rdmolfiles import MolToSmiles
 from g2s.constants import periodic_table
-
 try:
     from xyz2mol import AC2BO, xyz2AC, BO2mol, chiral_stereo_check, AC2mol, int_atom, str_atom
 except ModuleNotFoundError:
@@ -268,7 +267,7 @@ def egc_to_rdkit(egc):
     return mol
 
 
-rdkit_bond_type={1 : Chem.rdchem.BondType.SINGLE, 2 : Chem.rdchem.BondType.DOUBLE, 3 : Chem.rdchem.BondType.TRIPLE}
+rdkit_bond_type={1 : Chem.rdchem.BondType.SINGLE, 2 : Chem.rdchem.BondType.DOUBLE, 3 : Chem.rdchem.BondType.TRIPLE, 4: Chem.rdchem.BondType.QUADRUPLE}
 
 def chemgraph_to_canonical_rdkit(cg):
     # create empty editable mol object
