@@ -32,6 +32,12 @@ orb_ang_mom={"s" : 0, "p" : 1, "d" : 2, "f" : 3, "g" : 4, "h" : 5, "i" : 6}
 
 class AO:
     def __init__(self, ao_label, atom_id=None):
+        if isinstance(ao_label, tuple):
+            self.orientation="unknown"
+            self.ao_types="unknown"
+            self.atom_id=ao_label[0]
+            self.angular=ao_label[1]
+            return
         if atom_id is None:
             info=ao_label.split()
             ao_type_large=info[-1]
@@ -57,48 +63,46 @@ class AO:
     def __repr__(self):
         return ":atom_id:"+str(self.atom_id)+":ao_type:"+self.ao_type+":ang_momentum:"+str(self.angular)+":orientation:"+self.orientation
 
-def potentially_dependent(ao1, ao2):
-    return ((ao1.atom_id==ao2.atom_id) and (ao1.ao_type==ao2.ao_type))
-
 def generate_ao_arr(mol):
+    ao_labels=mol.ao_labels()
     return [AO(ao_label) for ao_label in mol.ao_labels()]
 
 # Contains the same data as a pySCF Mean Field (MF) object.
-class Pseudo_MF:
+class PseudoMF:
     def __init__(self, e_tot=None, mo_coeff=None, mo_occ=None, mo_energy=None):
         self.e_tot=e_tot
         self.mo_coeff=mo_coeff
         self.mo_occ=mo_occ
         self.mo_energy=mo_energy
 
-# Designed to mimic pySCF's Mole object when used in Pipek-Mezey localization.
-class Pseudo_Mole:
-    def __init__(self, atomtypes, coordinates, ovlp_mat, aos, atom_ao_ranges):
-        self.atom=[[atomtype, atomcoords] for atomtype, atomcoords in zip(atomtypes, coordinates)]
+# Stores data and mimics pySCF's Mole object when used in Pipek-Mezey localization
+# or some other instances throughout the orb_ml module.
+class PseudoMole:
+    def __init__(self, ovlp_mat, atom_ao_ranges, angular_momenta):
+        # Relevant data
+        self.natm=ovlp_mat.shape[0]
         self.ovlp_mat=ovlp_mat
-        self._bas=aos
-        self.stdout="PseudoStdout"
         self.atom_ao_ranges=atom_ao_ranges
+        self.angular_momenta=angular_momenta
+        # Irrelevant attributes only there to pass some of pySCF's checks.
         self.verbose=False
-        self.natm=len(self.atom)
+        self.stdout="PseudoStdout"
+    # The returned tuples are boundary indices of shells (first two entries) and atomic orbitals (second
+    # pair of entries) correponding to a given atom. Since shell indices are not used in the localization procedure
+    # their value is set arbitrarily.
     def offset_nr_by_atom(self):
         return [(0, 0, r1, r2) for (r1, r2) in self.atom_ao_ranges]
+    def aoslice_by_atom(self):
+        return self.offset_nr_by_atom()
+    def ao_labels(self):
+        output=[]
+        for atom_id, ao_range in enumerate(self.atom_ao_ranges):
+            for ao_id in range(*ao_range):
+                output.append((atom_id, self.angular_momenta[ao_id]))
+        return output
+    # We only know overlap integrals.
     def intor_symmetric(self, keyword):
         if keyword != "int1e_ovlp":
-            raise Exception("Unimplemented option for Pseudo_Mole class.")
+            raise Exception("Unimplemented option for PseudoMole class.")
         return self.ovlp_mat
-    def intor_cross(self, keyword, mol1, mol2):
-        if len(mol1.atom) != len(mol2.atom):
-            raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
-        for a1, a2 in zip(mol1.atom, mol2.atom):
-            if a1[0] != a2[0]:
-                raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
-            if np.sum(np.abs(a1[1]-a2[1])) > negligible_coord_diff:
-                raise Exception("Called intor_cross of Pseudo_Mole for different molecules")
-        return self.ovlp_mat
-    def has_ecp(self):
-        return False
-    def copy(self):
-        return copy.deepcopy(self)
-    def build(self, *args, basis=None):
-        pass
+

@@ -17,7 +17,7 @@ python ../../clear_cache.py
 used_tests=( FJK_pair_sep_global_Gauss_kernel_wders )
 
 export OMP_NUM_THREADS=2
-export MOLOPT_NUM_PROCS=2 # The variable says how many processes to use during joblib-parallelized parts.
+export BMAPQML_NUM_PROCS=2 # The variable says how many processes to use during joblib-parallelized parts.
                         # Note that learning_curve_building.py at init_compound_list uses a dirty hack to assign it equalling OMP_NUM_THREADS.
 
 for test_script in ${used_tests[@]} 

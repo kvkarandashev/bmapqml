@@ -32,13 +32,17 @@ from .representations import generate_orb_rep_array, gen_propagator_based_coup_m
                             generate_atom_ao_ranges, generate_ao_arr
 from ..utils import dump2pkl, loadpkl, OptionUnavailableError, read_xyz_file
 
+# WARNING: THIS INTERFACE HAS PROBLEMS
+from .xtb_interface import generate_pyscf_mf_mol as xtb_generate_pyscf_mf_mol
+from .tblite_interface import generate_pyscf_mf_mol as tblite_generate_pyscf_mf_mol
+
 mf_creator={"HF" : scf.RHF, "UHF" : scf.UHF, "KS" : dft.RKS, "UKS" : dft.UKS}
 
-is_restricted={"HF" : True, "UHF" : False, "KS" : True, "UKS" : False, "xTB" : True}
+unrestricted_methods=["UHF", "UKS"]
 
-is_HF={"HF" : True, "UHF" : True, "KS" : False, "UKS" : False, "xTB" : False}
+HF_methods=["HF", "UHF"]
 
-is_KS={"HF" : False, "UHF" : False, "KS" : True, "UKS" : True, "xTB" : False}
+KS_methods=["KS", "UKS"]
 
 neglect_orb_occ=0.1
 
@@ -47,14 +51,15 @@ available_orb_types=["standard", "HOMO_removed", "LUMO_added", "first_excitation
 
 available_localization_procedures=["Boys", "IBO", "Pipek-Mezey"]
 
-available_software=["pySCF", "molpro", "xTB"]
+available_software=["pySCF", "molpro", "xTB", "tblite"]
 
-available_calc_types=["HF", "UHF", "KS", "UKS", "xTB"]
+available_calc_types={"pySCF" : ["HF", "UHF", "KS", "UKS"], "xTB" : ["xTB"], "tblite" : ["GFN2-xTB", "GFN1-xTB"], "molpro" : ["HF", "UHF"]}
 
 def assign_avail_check(val, avail_val):
     if val in avail_val:
         return val
     else:
+        print("Not found:", val, avail_val)
         raise OptionUnavailableError
 
 def pySCFNotConvergedErrorMessage(oml_comp=None):
@@ -80,7 +85,7 @@ class OML_compound:
                           or saved to the file otherwise.
         calc_type       - type of the calculation (for now only HF with orb localization and the default basis set are supported).
     """
-    def __init__(self, xyz = None, coordinates=None, nuclear_charges=None, atomtypes=None, mats_savefile=None, calc_type="HF",
+    def __init__(self, xyz = None, coordinates=None, nuclear_charges=None, atomtypes=None, mats_savefile=None, calc_type=None,
                     basis="sto-3g", used_orb_type="standard", use_Huckel=False, optimize_geometry=False, charge=0, spin=None,
                     dft_xc='lda,vwn', dft_nlc='', software="pySCF", pyscf_calc_params=None, use_pyscf_localization=True,
                     write_full_pyscf_chkfile=False, solvent_eps=None, localization_procedure="IBO", temp_calc_dir=None):
@@ -96,10 +101,13 @@ class OML_compound:
         if atomtypes is not None:
             self.atomtypes=atomtypes
             self.nuclear_charges=np.array([nuclear_charge(atomtype) for atomtype in self.atomtypes], dtype=int)
-        if used_orb_type not in available_orb_types:
-            raise Exception
 
-        self.calc_type=assign_avail_check(calc_type, available_calc_types)
+        self.software=assign_avail_check(software, available_software)
+
+        if calc_type is None:
+            self.calc_type=available_calc_types[self.software][0]
+        else:
+            self.calc_type=assign_avail_check(calc_type, available_calc_types[self.software])
 
         self.charge=charge
 
@@ -110,10 +118,9 @@ class OML_compound:
 
         self.mats_savefile=mats_savefile
         self.basis=basis
-        self.used_orb_type=used_orb_type
+        self.used_orb_type=assign_avail_check(used_orb_type, available_orb_types)
         self.use_Huckel=use_Huckel
         self.optimize_geometry=optimize_geometry
-        self.software=assign_avail_check(software, available_software)
         if self.software == "xTB":
             self.calc_type="xTB"
         self.use_pyscf_localization=use_pyscf_localization
@@ -145,7 +152,7 @@ class OML_compound:
 
         self.ovlp_mat=None
         self.orb_mat=None
-        if is_HF[self.calc_type]:
+        if self.calc_type in HF_methods:
             self.j_mat=None
             self.k_mat=None
             self.fock_mat=None
@@ -174,7 +181,7 @@ class OML_compound:
         self.ovlp_mat=calc_res_dict["ovlp_mat"]
         self.orb_mat=calc_res_dict["orb_mat"]
 
-        if is_HF[self.calc_type]:
+        if self.calc_type in HF_methods:
             self.j_mat=calc_res_dict["j_mat"]
             self.k_mat=calc_res_dict["k_mat"]
             self.fock_mat=calc_res_dict["fock_mat"]
@@ -194,7 +201,7 @@ class OML_compound:
                     savefile_prename+=".charge_"+str(self.charge)
                 if (self.spin != self.default_spin_val()):
                     savefile_prename+=".spin_"+str(self.spin)
-                if is_KS[self.calc_type]:
+                if self.calc_type in KS_methods:
                     savefile_prename+=".xc_"+self.dft_xc+".nlc_"+str(self.dft_nlc)
                 if self.software != "pySCF":
                     savefile_prename+="."+self.software+".pySCF_loc_"+str(self.use_pyscf_localization)
@@ -244,7 +251,7 @@ class OML_compound:
             self.e_tot=mf.e_tot
             self.ovlp_mat=pyscf_mol.intor_symmetric('int1e_ovlp')
 
-            if (is_HF[self.calc_type] and (self.solvent_eps is None)):
+            if ((self.calc_type in HF_methods) and (self.solvent_eps is None)):
                 self.j_mat=self.adjust_spin_mat_dimen(mf.get_j())
                 self.k_mat=self.adjust_spin_mat_dimen(mf.get_k())
                 self.fock_mat=self.adjust_spin_mat_dimen(mf.get_fock())
@@ -265,12 +272,15 @@ class OML_compound:
                 if self.localization_procedure == "IBO":
                     new_orb_mat=lo.ibo.ibo(pyscf_mol, occ_orb_arr, **self.pyscf_calc_params.orb_kwargs)
                 else:
+                    kernel_kwargs={}
                     if self.localization_procedure == "Boys":
                         loc_obj=lo.boys.Boys(pyscf_mol, mo_coeff=occ_orb_arr) # TO-DO: self.pyscf_calc_params.orb_kwargs?
                     else: # Pipek-Mezey
                         loc_obj=lo.pipek.PipekMezey(pyscf_mol, occ_orb_arr)
                         loc_obj.pop_method="Mulliken"
-                    loc_obj.kernel()
+                        if self.software != "pySCF":
+                            kernel_kwargs={"mo_coeff" : occ_orb_arr}
+                    loc_obj.kernel(**kernel_kwargs)
                     new_orb_mat=loc_obj.mo_coeff
                 orb_mat.append(new_orb_mat)
         return orb_mat
@@ -282,7 +292,7 @@ class OML_compound:
             saved_data={"mo_coeff" : self.mo_coeff, "mo_occ" : self.mo_occ, "mo_energy" : self.mo_energy, "aos" : self.aos,
                                     "ovlp_mat" : self.ovlp_mat, "orb_mat" : self.orb_mat, "atom_ao_ranges" : self.atom_ao_ranges,
                                     "e_tot" : self.e_tot}
-            if is_HF[self.calc_type]:
+            if self.calc_type in HF_methods:
                 saved_data={**saved_data, "j_mat" : self.j_mat, "k_mat" : self.k_mat, "fock_mat" : self.fock_mat}
             if self.optimize_geometry:
                 saved_data["opt_coords"]=self.opt_coords
@@ -346,7 +356,7 @@ class OML_compound:
         return mol
     def generate_pyscf_mf(self, pyscf_mol, initial_guess_comp=None):
         mf=mf_creator[self.calc_type](pyscf_mol)
-        if is_KS[self.calc_type]:
+        if self.calc_type in KS_methods:
             mf.xc=self.dft_xc
             mf.nlc=self.dft_nlc
         mf.chkfile=self.pyscf_chkfile
@@ -380,8 +390,9 @@ class OML_compound:
 
     def generate_pyscf_mf_mol(self, initial_guess_comp=None):
         if self.software == "xTB":
-            from .xtb_interface import generate_pyscf_mf_mol
-            return generate_pyscf_mf_mol(self)
+            return xtb_generate_pyscf_mf_mol(self)
+        if self.software == "tblite":
+            return tblite_generate_pyscf_mf_mol(self)
         if ext_isfile(self.full_pyscf_chkfile):
             return loadpkl(self.full_pyscf_chkfile)
         pyscf_mol=self.generate_pyscf_mol()
@@ -397,13 +408,13 @@ class OML_compound:
         return output
 
     def alter_mo_occ(self, mo_occ):
-        if is_restricted[self.calc_type]:
+        if self.calc_type not in unrestricted_methods:
             true_mo_occ=mo_occ
         else:
             true_mo_occ=mo_occ[0]
         for i, orb_occ in enumerate(true_mo_occ):
             if orb_occ < neglect_orb_occ:
-                if is_restricted[self.calc_type]:
+                if self.calc_type not in unrestricted_methods:
                     if add_LUMO(self):
                         mo_occ[i]=2.0
                     if remove_HOMO(self):
@@ -442,12 +453,12 @@ class OML_compound:
             if occ < neglect_orb_occ:
                 return orb_id
     def adjust_spin_mat_dimen(self, matrices):
-        if is_restricted[self.calc_type]:
+        if self.calc_type not in unrestricted_methods:
             return np.array([matrices])
         else:
             return matrices
     def num_spins(self):
-        if is_restricted[self.calc_type]:
+        if self.calc_type not in unrestricted_methods:
             return 1
         else:
             return 2
@@ -476,7 +487,7 @@ def add_LUMO(oml_comp):
     return ((used_orb_type=="LUMO_added") or (used_orb_type=="first_excitation"))
 
 def orb_occ_prop_coeff(comp):
-    if (is_restricted[comp.calc_type]):
+    if comp.calc_type not in unrestricted_methods:
         return 2.0
     else:
         return 1.0
