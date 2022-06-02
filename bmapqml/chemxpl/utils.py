@@ -18,7 +18,7 @@ from .modify import replace_heavy_atom, atom_replacement_possibilities
 import numpy as np
 from igraph import Graph
 from ..python_parallelization import default_num_procs
-from ..utils import canonical_atomtype
+from ..utils import canonical_atomtype, read_xyz_file
 import os, pickle, copy, tarfile
 from sortedcontainers import SortedList
 
@@ -30,19 +30,21 @@ def xyz_list2mols_extgraph(xyz_file_list, leave_nones=False, xyz_to_add_data=Fal
     unfiltered_list=Parallel(n_jobs=default_num_procs(), backend=default_parallel_backend)(delayed(try_xyz2mol_extgraph)(None, read_xyz=read_xyz) for read_xyz in read_xyzs)
     output=[]
     for egc_id, (egc, xyz_name) in enumerate(zip(unfiltered_list, xyz_file_list)):
-        if ((egc is None) and leave_nones):
+        if egc is None:
             print("WARNING, failed to create EGC for id", egc_id, "xyz name:", xyz_name)
         else:
             if xyz_to_add_data:
                 egc.additional_data["xyz"]=xyz_name
+        if ((egc is not None) or leave_nones):
             output.append(egc)
     return output
 
 def try_xyz2mol_extgraph(xyz_file, read_xyz=None):
-    try:
+#   TODO add exception handling here.
+#    try:
         return xyz2mol_extgraph(xyz_file, read_xyz=read_xyz)
-    except:
-        return None
+#    except:
+#        return None
 
 def break_into_connected(egc):
     output=[]
@@ -151,11 +153,25 @@ def xyz2mol_graph(nuclear_charges, charge, coords, get_chirality=False):
         chiral_centers = Chem.FindMolChiralCenters(chiral_mol)
         return bond_order_matrix, nuclear_charges, coords, chiral_centers
 
+
 def xyz2mol_extgraph(filepath, get_chirality=False, read_xyz=None):
     if read_xyz is None:
         read_xyz=read_xyz_file(filepath)
-    bond_order_matrix, nuclear_charges, coords=xyz2mol_graph(*read_xyz)
-    return ExtGraphCompound(adjacency_matrix=bond_order_matrix, nuclear_charges=nuclear_charges, coordinates=np.array(coords))
+
+    # Convert numpy array to lists as that is the correct input for xyz2mol_graph function.
+    nuclear_charges=[int(ncharge) for ncharge in read_xyz[0]]
+    coordinates=[[float(atom_coord) for atom_coord in atom_coords] for atom_coords in read_xyz[2]]
+    add_attr_dict=read_xyz[3]
+
+    charge=None
+    if "charge" in add_attr_dict:
+        charge=add_attr_dict["charge"]
+    if charge is None:
+        charge=0
+
+    bond_order_matrix, ncharges, coords=xyz2mol_graph(nuclear_charges, charge, coordinates)
+    return ExtGraphCompound(adjacency_matrix=bond_order_matrix, nuclear_charges=ncharges, coordinates=np.array(coords))
+
 
 # TO-DO: should be fixed if I get to using xbgf again.
 def xbgf2gc(xbgf_file):
