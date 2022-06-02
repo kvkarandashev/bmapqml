@@ -4,7 +4,7 @@
 from xyz2mol import int_atom
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
-from .valence_treatment import ChemGraph, default_valence, int_atom_checked, Fragment, sorted_tuple, connection_forbidden, split_chemgraph_no_dissociation_check
+from .valence_treatment import ChemGraph, default_valence, int_atom_checked, Fragment, sorted_tuple, connection_forbidden, split_chemgraph_no_dissociation_check, max_bo
 from copy import deepcopy
 from sortedcontainers import SortedList
 import random
@@ -104,15 +104,21 @@ def bond_change_possibilities(egc, bond_order_change, forbidden_bonds=None, frag
                         continue
                 if connection_forbidden(egc.nuclear_charges[i], egc.nuclear_charges[j], forbidden_bonds):
                     continue
+                possible_bond_orders=egc.chemgraph.aa_all_bond_orders(*bond_tuple)
+                max_bond_order=max(possible_bond_orders)
                 if bond_order_change > 0:
                     suitable=True
                     for q in bond_tuple:
                         suitable=(suitable and (egc.chemgraph.hatoms[q].nhydrogens>=bond_order_change))
                     if suitable:
-                        possible_resonance_structures=[0]
+                        min_bond_order=min(possible_bond_orders)
+                        suitable=(min(possible_bond_orders)+bond_order_change<=max_bo(egc.chemgraph.hatoms[i], egc.chemgraph.hatoms[j]))
+                    if suitable:
+                        if max_bond_order == min_bond_order:
+                            possible_resonance_structures=[0]
+                        else:
+                            possible_resonance_structures=[egc.chemgraph.aa_all_bond_orders(*bond_tuple, unsorted=True).index(min_bond_order)]
                 else:
-                    possible_bond_orders=egc.chemgraph.aa_all_bond_orders(*bond_tuple)
-                    max_bond_order=max(possible_bond_orders)
                     suitable=(max_bond_order>=-bond_order_change)
                     if (suitable and (max_fragment_num is not None)):
                         if max_bond_order==-bond_order_change:

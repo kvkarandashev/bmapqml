@@ -41,7 +41,7 @@ for MC_step in range(num_MC_steps):
         histogram.append(0)
     cur_egc_id=histogram_labels.index(cur_egc)
     histogram[cur_egc_id]+=1
-    print(cur_egc)
+    print(MC_step, cur_egc)
 
 for egc, distr in zip(histogram_labels, histogram):
     print("EGC:", egc)
