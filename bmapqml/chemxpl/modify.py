@@ -1,6 +1,5 @@
-#TO-DO 1. make everything here invariant w.r.t. resonanse structures.
-# 2. Perhaps add support for atoms with higher valences being added directly?
-
+#TODO Perhaps add support for atoms with higher valences being added directly?
+#TODO Ensure resonance structure invariance for genetic algorithms.
 
 from xyz2mol import int_atom
 import numpy as np
@@ -18,7 +17,7 @@ def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
 
 def atom_pair_equivalent_to_list_member(egc, atom_pair, atom_pair_list):
     for other_atom_pair in atom_pair_list:
-        if egc.chemgraph.pairs_equivalent(atom_pair, other_atom_pair):
+        if egc.chemgraph.pairs_equivalent(atom_pair[:2], other_atom_pair[:2]):
             return True
     return False
 
@@ -72,7 +71,7 @@ def atom_removal_possibilities(egc, deleted_atom=None, exclude_equivalent=True, 
             neighs=egc.chemgraph.graph.neighbors(ha_id)
             if len(neighs)>1:
                 continue
-            if egc.chemgraph.bond_order(ha_id, neighs[0]) != 1:
+            if egc.chemgraph.aa_all_bond_orders(ha_id, neighs[0]) != [1]:
                 continue
         if exclude_equivalent:
             if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
@@ -99,6 +98,7 @@ def bond_change_possibilities(egc, bond_order_change, forbidden_bonds=None, frag
     if bond_order_change != 0:
         for i in range(natoms):
             for j in range(i):
+                bond_tuple=(j, i)
                 if fragment_member_vector is not None:
                     if fragment_member_vector[i]==fragment_member_vector[j]:
                         continue
@@ -106,19 +106,37 @@ def bond_change_possibilities(egc, bond_order_change, forbidden_bonds=None, frag
                     continue
                 if bond_order_change > 0:
                     suitable=True
-                    for q in [i, j]:
+                    for q in bond_tuple:
                         suitable=(suitable and (egc.chemgraph.hatoms[q].nhydrogens>=bond_order_change))
+                    if suitable:
+                        possible_resonance_structures=[0]
                 else:
-                    suitable=(egc.chemgraph.bond_order(j, i)>=-bond_order_change)
+                    possible_bond_orders=egc.chemgraph.aa_all_bond_orders(*bond_tuple)
+                    max_bond_order=max(possible_bond_orders)
+                    suitable=(max_bond_order>=-bond_order_change)
                     if (suitable and (max_fragment_num is not None)):
-                        if egc.chemgraph.bond_order(j, i)==-bond_order_change:
+                        if max_bond_order==-bond_order_change:
                             if egc.chemgraph.num_connected()==max_fragment_num:
                                 suitable=(egc.chemgraph.graph.edge_connectivity(source=i, target=j) != 1)
+                    if suitable:
+                        # If there is a resonance structure for which decreasing bond order breaks the bond then the result of 
+                        # the operation will depend on resonance structure chosen. 
+                        if ( (-bond_order_change in possible_bond_orders) and (-bond_order_change != max_bond_order) and (len(possible_bond_orders) != 1) ):
+                            unsorted_possible_bond_orders=egc.chemgraph.aa_all_bond_orders(*bond_tuple, unsorted=True)
+                            bond_break_index=unsorted_possible_bond_orders.index(-bond_order_change)
+                            max_bond_index=unsorted_possible_bond_orders.index(max_bond_order)
+                            possible_resonance_structures=[bond_break_index]
+                            if max_bond_index != bond_break_index:
+                                possible_resonance_structures.append(max_bond_index)
+                        else:
+                            possible_resonance_structures=[0]
                 if suitable:
                     if exclude_equivalent:
-                        if atom_pair_equivalent_to_list_member(egc, (j, i), output):
+                        if atom_pair_equivalent_to_list_member(egc, bond_tuple, output):
                             continue
-                    output.append((j, i))
+                    for poss_res_struct in possible_resonance_structures:
+                        output.append((*bond_tuple, poss_res_struct))
+
     return output
     
 def valence_change_possibilities(egc, exclude_equivalent=True):
@@ -157,9 +175,9 @@ def remove_heavy_atom(egc, removed_atom_id):
     new_chemgraph.remove_heavy_atom(removed_atom_id)
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
-def change_bond_order(egc, atom_id1, atom_id2, bond_order_change):
+def change_bond_order(egc, atom_id1, atom_id2, bond_order_change, resonance_structure_id=0):
     new_chemgraph=deepcopy(egc.chemgraph)
-    new_chemgraph.change_bond_order(atom_id1, atom_id2, bond_order_change)
+    new_chemgraph.change_bond_order(atom_id1, atom_id2, bond_order_change, resonance_structure_id=resonance_structure_id)
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
 def change_valence(egc, modified_atom_id, new_valence):

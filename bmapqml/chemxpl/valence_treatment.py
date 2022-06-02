@@ -1,7 +1,9 @@
-# TO-DO: Perhaps in the future everything related to graph manipulation should 
+# TODO: Perhaps in the future everything related to graph manipulation should 
 # be included into ExtGraphCompound instead.
-
-# TO-DO Perhaps defining "canonically_permuted" inside a ChemGraph can simplify some expressions.
+# TODO Perhaps defining "canonically_permuted" inside a ChemGraph can simplify some expressions.
+# TODO I have rewritten the way resonance structures are treated, as a result some subroutines used for representation generation
+# may not work.
+# TODO Number of resonance structures considered can be reduced.
 
 import itertools, copy
 import numpy as np
@@ -175,13 +177,19 @@ def hatom_state_coords(ha):
 
 num_state_coords={hatom_state_coords : 5}
 
-# TO-DO perhaps used SortedDict from sortedcontainers more here?
+# TODO perhaps used SortedDict from sortedcontainers more here?
 class ChemGraph:
-    def __init__(self, graph=None, hatoms=None, bond_orders=None, all_bond_orders=None, adj_mat=None, nuclear_charges=None, hydrogen_autofill=False):
+    def __init__(self, graph=None, hatoms=None, bond_orders=None, all_bond_orders=None, adj_mat=None, nuclear_charges=None,
+                            hydrogen_autofill=False, resonance_structure_orders=None, resonance_structure_map=None, resonance_structure_inverse_map=None):
         self.graph=graph
         self.hatoms=hatoms
         self.bond_orders=bond_orders
         self.all_bond_orders=all_bond_orders
+        # Resonance structures.
+        self.resonance_structure_orders=resonance_structure_orders
+        self.resonance_structure_map=resonance_structure_map
+        self.resonance_structure_inverse_map=resonance_structure_inverse_map
+
         if ((self.all_bond_orders is None) and (self.bond_orders is None)):
             self.adj_mat2all_bond_orders(adj_mat)
         if ((self.graph is None) or (self.hatoms is None)):
@@ -223,19 +231,25 @@ class ChemGraph:
                 cur_assigned_valence=hatom.valence
                 self.hatoms[ha_id].valence=hatom.smallest_valid_valence(coordination_number=cur_assigned_valence)
                 self.hatoms[ha_id].nhydrogens+=self.hatoms[ha_id].valence-cur_assigned_valence
+        # TODO Check for ways to combine finding resonance structures with reassigning pi bonds.
         # Check that valences make sense.
         if not self.valences_reasonable():
             # Try to reassign non-sigma bonds.
             self.reassign_nonsigma_bonds()
+        self.init_resonance_structures()
     # If was modified (say, atoms added/removed), some data becomes outdated.
     def changed(self):
         self.canonical_permutation=None
         self.inv_canonical_permutation=None
         self.colors=None
         # TO-DO: perhaps sort by classes in the beginning instead?
-        self.nonequivalence_list=SortedList()
         self.equivalence_vector=np.repeat(-1, self.nhatoms())
         self.bond_equiv_dict={}
+
+        self.resonance_structure_orders=None
+        self.resonance_structure_map=None
+        self.resonance_structure_inverse_map=None
+
     # Checking graph's state.
     def valences_reasonable(self):
         for ha in self.hatoms:
@@ -249,34 +263,29 @@ class ChemGraph:
             if not self.atom_pair_equivalent(atom_id_list[i], atom_id_list[i+1]):
                 return False
         return True
+
+    def check_equivalence_class(self, atom_id):
+        if self.equivalence_vector[atom_id]==-1:
+            self.init_colors()
+            num_classes=max(self.equivalence_vector)+1
+            for equiv_class_id in range(num_classes):
+                example_id=np.where(self.equivalence_vector == equiv_class_id)[0][0]
+                if self.colors[atom_id] == self.colors[example_id]:
+                    if self.uninit_atom_sets_equivalent([atom_id], [example_id]):
+                        self.equivalence_vector[atom_id]=equiv_class_id
+                        return
+            self.equivalence_vector[atom_id]=num_classes
+
     def atom_pair_equivalent(self, atom_id1, atom_id2):
         if atom_id1==atom_id2:
             return True
-        self.init_colors()
-        if self.colors[atom_id1]!=self.colors[atom_id2]:
-            return False
-        if ((self.equivalence_vector[atom_id1]==-1) or (self.equivalence_vector[atom_id2]==-1)):
-            atom_tuple=sorted_tuple(atom_id1, atom_id2)
-            if atom_tuple in self.nonequivalence_list:
-                return False
-            else:
-                output=self.uninit_atom_sets_equivalent([atom_id1], [atom_id2])
-            if output:
-                if ((self.equivalence_vector[atom_id1]==-1) and (self.equivalence_vector[atom_id2]==-1)):
-                    new_class_id=max(self.equivalence_vector)+1
-                    for i in [atom_id1, atom_id2]:
-                        self.equivalence_vector[i]=new_class_id
-                else:
-                    if self.equivalence_vector[atom_id1]==-1:
-                        self.equivalence_vector[atom_id1]=self.equivalence_vector[atom_id2]
-                    else:
-                        self.equivalence_vector[atom_id2]=self.equivalence_vector[atom_id1]
-            else:
-                self.nonequivalence_list.add(atom_tuple)
-            return output
-        else:
-            return (self.equivalence_vector[atom_id1]==self.equivalence_vector[atom_id2])
+        self.check_equivalence_class(atom_id1)
+        self.check_equivalence_class(atom_id2)
+        return (self.equivalence_vector[atom_id1]==self.equivalence_vector[atom_id2])
+
     def uninit_atom_sets_equivalent(self, atom_set1, atom_set2):
+        self.init_colors()
+
         temp_colors1=copy.deepcopy(self.colors)
         temp_colors2=copy.deepcopy(self.colors)
         dummy_color=max(self.colors)+1
@@ -289,7 +298,7 @@ class ChemGraph:
         tuple1, tuple2=sorted_tuples(unsorted_tuple1, unsorted_tuple2)
         if tuple1==tuple2:
             return True
-        if self.bond_order(*tuple1)!=self.bond_order(*tuple2):
+        if self.aa_all_bond_orders(*tuple1)!=self.aa_all_bond_orders(*tuple2):
             return False
         tuple2_matched=None
         for permutated_tuple2 in itertools.permutations(tuple2):
@@ -347,6 +356,46 @@ class ChemGraph:
             return self.bond_orders[stuple]
         else:
             return 0
+
+    def bond_order_float(self, atom_id1, atom_id2):
+        self.init_resonance_structures()
+
+        stuple=sorted_tuple(atom_id1, atom_id2)
+        if stuple in self.bond_orders:
+            if stuple in self.resonance_structure_map:
+                res_addition=.0
+                res_struct_ords=self.resonance_structure_orders[self.resonance_structure_map[stuple]]
+                for res_struct_ord in res_struct_ords:
+                    if stuple in res_struct_ord:
+                        res_addition+=res_struct_ord[stuple]
+                return res_addition/len(res_struct_ords)+1.
+            else:
+                output=self.bond_orders[stuple]                
+        else:
+            return 0.0
+    def aa_all_bond_orders(self, atom_id1, atom_id2, unsorted=False):
+        self.init_resonance_structures()
+
+        stuple=sorted_tuple(atom_id1, atom_id2)
+        if stuple in self.bond_orders:
+            if stuple in self.resonance_structure_map:
+                res_struct_ords=self.resonance_structure_orders[self.resonance_structure_map[stuple]]
+                output=[]
+                for res_struct_ord in res_struct_ords:
+                    if stuple in res_struct_ord:
+                        new_bond_order=res_struct_ord[stuple]+1
+                    else:
+                        new_bond_order=1
+                    if (unsorted or (new_bond_order not in output)):
+                        output.append(new_bond_order)
+                if unsorted:
+                    return output
+                else:
+                    return sorted(output)
+            else:
+                return [self.bond_orders[stuple]]
+        else:
+            return [0]
     # Number of heavy atoms.
     def nhatoms(self):
         return self.graph.vcount()
@@ -357,24 +406,30 @@ class ChemGraph:
     def neighbors(self, hatom_id):
         return self.graph.neighbors(hatom_id)
     # Basic commands for managing the graph.
+    def set_edge_order(self, atom1, atom2, new_edge_order):
+        true_bond_tuple=tuple(sorted_tuple(atom1, atom2))
+        if new_edge_order < 0:
+            raise InvalidChange
+        if new_edge_order == 0:
+            self.graph.delete_edges([true_bond_tuple])
+            del(self.bond_orders[true_bond_tuple])
+        else:
+            self.bond_orders[true_bond_tuple]=new_edge_order
+
     def change_edge_order(self, atom1, atom2, change=0):
         if change != 0:
             if atom1==atom2:
                 raise InvalidChange
             true_bond_tuple=tuple(sorted_tuple(atom1, atom2))
             try:
-                bond_order=self.bond_orders[true_bond_tuple]
+                cur_edge_order=self.bond_orders[true_bond_tuple]
             except KeyError:
-                bond_order=0
+                cur_edge_order=0
                 self.graph.add_edge(*true_bond_tuple)
-            bond_order+=change
-            if bond_order<0:
+            new_edge_order=cur_edge_order+change
+            if new_edge_order < 0:
                 raise InvalidChange
-            if bond_order==0:
-                self.graph.delete_edges([true_bond_tuple])
-                del(self.bond_orders[true_bond_tuple])
-            else:
-                self.bond_orders[true_bond_tuple]=bond_order
+            self.set_edge_order(atom1, atom2, new_edge_order)
 
     def change_hydrogen_number(self, atom_id, hydrogen_number_change):
         self.hatoms[atom_id].nhydrogens+=hydrogen_number_change
@@ -411,8 +466,16 @@ class ChemGraph:
         coord_nums_lists=sorted_by_membership(coordination_numbers, members)
         return extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list
 
-    def all_resonance_structures(self):
-        # TO-DO: Maybe expand to include charges?
+    # TODO: Maybe expand to include charge transfer?
+    def init_resonance_structures(self):
+        if ((self.resonance_structure_orders is not None) and (self.resonance_structure_map is not None) and (self.resonance_structure_inverse_map is not None)):
+            return
+
+        self.resonance_structure_orders=[]
+        self.resonance_structure_map={}
+        self.resonance_structure_inverse_map=[]
+
+
         extra_valence_indices=[]
         coordination_numbers=[]
         for hatom_id, hatom in enumerate(self.hatoms):
@@ -422,10 +485,15 @@ class ChemGraph:
                 extra_valence_indices.append(hatom_id)
                 coordination_numbers.append(cur_coord_number)
         if len(extra_valence_indices)==0:
-            return []
+            return
         extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list=self.extra_valence_subgraphs(extra_valence_indices, coordination_numbers)
-        output=[]
+
         for extra_val_ids, coord_nums, extra_val_subgraph in zip(extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list):
+            for i, val_id1 in enumerate(extra_val_ids):
+                neighs=self.graph.neighbors(val_id1)
+                for val_id2 in extra_val_ids[:i]:
+                    if val_id2 in neighs:
+                        self.resonance_structure_map[(val_id2, val_id1)]=len(self.resonance_structure_orders)
             added_edges_lists=self.complete_valences_attempt(extra_val_ids, coord_nums, extra_val_subgraph, all_possibilities=True)
             if added_edges_lists is None:
                 raise InvalidAdjMat
@@ -441,10 +509,10 @@ class ChemGraph:
                             add_bond_orders[se]=1
                     if add_bond_orders not in subgraph_res_struct:
                         subgraph_res_struct.append(add_bond_orders)
-                output.append(subgraph_res_struct)
-        return output
+                self.resonance_structure_orders.append(subgraph_res_struct)
+                self.resonance_structure_inverse_map.append(extra_val_ids)
 
-    def reassign_nonsigma_bonds_subgraph(self, extra_val_ids, coord_nums, extra_val_subgraph, num_attempts=100000):
+    def reassign_nonsigma_bonds_subgraph(self, extra_val_ids, coord_nums, extra_val_subgraph):
         added_edges=None
         HeavyAtomValenceIterators=[]
         IteratedValenceIds=[]
@@ -547,12 +615,31 @@ class ChemGraph:
                     return added_edges
         
     # More sophisticated commands that are to be called in the "modify" module.
-    def change_bond_order(self, atom1, atom2, bond_order_change):
-        if bond_order_change!=0:
+    def change_bond_order(self, atom1, atom2, bond_order_change, resonance_structure_id=0):
+        if bond_order_change != 0:
+            if len(self.aa_all_bond_orders(atom1, atom2)) != 1:
+                # Make sure that the correct resonance structure is used as initial one.
+                resonance_structure_region=self.resonance_structure_map[sorted_tuple(atom1, atom2)]
+                changed_hatom_ids=self.resonance_structure_inverse_map[resonance_structure_region]
+                cur_resonance_struct_orders=self.resonance_structure_orders[resonance_structure_region][resonance_structure_id]
+                for hatom_considered_num, hatom_id2 in enumerate(changed_hatom_ids):
+                    hatom2_neighbors=self.neighbors(hatom_id2)
+                    for hatom_id1 in changed_hatom_ids[:hatom_considered_num]:
+                        if hatom_id1 in hatom2_neighbors:
+                            stuple=sorted_tuple(hatom_id1, hatom_id2)
+                            if stuple in cur_resonance_struct_orders:
+                                self.set_edge_order(hatom_id1, hatom_id2, 1+cur_resonance_struct_orders[stuple])
+                            else:
+                                self.set_edge_order(hatom_id1, hatom_id2, 1)
+
             self.change_edge_order(atom1, atom2, bond_order_change)
+
             for atom_id in [atom1, atom2]:
                 self.change_hydrogen_number(atom_id, -bond_order_change)
-        self.changed()
+
+            self.changed()
+
+    #TODO Do we need resonance structure invariance here?
     def remove_heavy_atom(self, atom_id):
         for neigh_id in self.neighbors(atom_id):
             cur_bond_order=self.bond_order(neigh_id, atom_id)
@@ -570,6 +657,7 @@ class ChemGraph:
         self.bond_orders=new_bond_orders
         del(self.hatoms[atom_id])
         self.changed()
+
     def add_heavy_atom_chain(self, modified_atom_id, new_chain_atoms, new_chain_atom_valences=None):
         bonded_chain=[modified_atom_id]
         last_added_id=self.nhatoms()
@@ -583,6 +671,7 @@ class ChemGraph:
         for i in range(num_added_atoms):
             self.change_bond_order(bonded_chain[i], bonded_chain[i+1], 1)
         self.changed()
+
     def replace_heavy_atom(self, replaced_atom_id, inserted_atom, inserted_valence=None):
         # Extracting full chemical information of the graph.
         self.hatoms[replaced_atom_id].ncharge=int_atom_checked(inserted_atom)
@@ -592,18 +681,22 @@ class ChemGraph:
         self.hatoms[replaced_atom_id].valence=inserted_valence
         self.change_hydrogen_number(replaced_atom_id, inserted_valence-old_valence)
         self.changed()
+
     def change_valence(self, modified_atom_id, new_valence):
         self.change_hydrogen_number(modified_atom_id, new_valence-self.hatoms[modified_atom_id].valence)
         self.hatoms[modified_atom_id].valence=new_valence
         self.changed()
+
     # Output properties that include hydrogens.
     def full_natoms(self):
         return sum([ha.nhydrogens for ha in self.hatoms])+self.nhatoms()
+
     def full_ncharges(self):
         output=np.ones(self.full_natoms(), dtype=int)
         for ha_id, ha in enumerate(self.hatoms):
             output[ha_id]=ha.ncharge
         return output
+
     def full_adjmat(self):
         natoms=self.full_natoms()
         output=np.zeros((natoms, natoms), dtype=int)
@@ -617,12 +710,13 @@ class ChemGraph:
                 output[cur_h_id, ha_id]=1
                 cur_h_id+=1
         return output
+
     # For properties used to generate representations.
     def get_res_av_bond_orders(self, edge_list=None):
         if edge_list is None:
             edge_list=self.graph.get_edgelist()
         # Get dictionnaries for all resonance structures.
-        res_struct_dict_list=self.all_resonance_structures()
+        res_struct_dict_list=self.resonance_structure_orders
         res_av_bos=np.ones(len(edge_list), dtype=float)
         all_av_res_struct_dict={}
         for res_struct_dict in res_struct_dict_list:
@@ -640,6 +734,7 @@ class ChemGraph:
             if edge in all_av_res_struct_dict:
                 res_av_bos[eid]+=all_av_res_struct_dict[edge]
         return res_av_bos
+
     def get_res_av_bond_lengths(self, edge_list=None):
         if edge_list is None:
             edge_list=self.graph.get_edgelist()
@@ -658,15 +753,18 @@ class ChemGraph:
                     if len(ar_list)>int_bo:
                         bond_lengths[eid]+=int_bo_frac*ar_list[int_bo]
         return bond_lengths
+
     def shortest_paths(self, weights=None):
         if self.nhatoms()==1:
             return np.array([[0.0]])
         else:
             return np.array(self.graph.shortest_paths(weights=weights))
+
     # Procedures used for sorting.
     def init_colors(self):
         if self.colors is None:
             self.colors=list2colors(self.hatoms)
+
     def init_canonical_permutation(self):
         if self.canonical_permutation is None:
             self.init_colors()
@@ -674,9 +772,11 @@ class ChemGraph:
             self.inv_canonical_permutation=np.zeros(self.nhatoms(), dtype=int)
             for pos_counter, pos in enumerate(self.canonical_permutation):
                 self.inv_canonical_permutation[pos]=pos_counter
+
     def get_inv_canonical_permutation(self):
         self.init_canonical_permutation()
         return self.inv_canonical_permutation
+
     def comparison_iterator(self):
         iterators=[iter([self.nhatoms()])]
         if self.canonical_permutation is None:
@@ -687,14 +787,19 @@ class ChemGraph:
             iterators.append(iter([len(neighbor_permuted_list)]))
             iterators.append(iter(sorted(neighbor_permuted_list)))
         return itertools.chain(*iterators)
+
     def __lt__(self, ch2):
         return (triple_gt_witer(self, ch2) is False)
+
     def __gt__(self, ch2):
         return (triple_gt_witer(self, ch2) is True)
+
     def __eq__(self, ch2):
         return (triple_gt_witer(self, ch2) is None)
+
     def __str__(self):
         return "heavy atoms: "+str(self.hatoms)+" , bonds&orders: "+str(self.bond_orders)
+
     def __repr__(self):
         return str(self)
 

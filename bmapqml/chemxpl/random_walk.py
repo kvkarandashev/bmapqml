@@ -15,7 +15,8 @@ except ModuleNotFoundError:
                       'Visit: https://github.com/jensengroup/xyz2mol')
 
 
-# TO-DO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
+# TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
+# TODO 3. keep_histogram option needs more testing.
 
 default_change_list=[add_heavy_atom_chain, remove_heavy_atom, replace_heavy_atom, change_bond_order, change_valence]
 
@@ -34,7 +35,7 @@ def inverse_possibility_label(change_function, possibility_label):
 
 def egc_change_func(egc_in, possibility_label, final_possibility_val, change_function):
     if change_function is change_bond_order:
-        return change_function(egc_in, *final_possibility_val, possibility_label)
+        return change_function(egc_in, *final_possibility_val[:2], possibility_label, resonance_structure_id=final_possibility_val[-1])
     if change_function is remove_heavy_atom:
         return change_function(egc_in, final_possibility_val)
     if change_function is change_valence:
@@ -128,8 +129,10 @@ class TrajectoryPoint:
 
         self.additional_data=None
     # TO-DO better way to write this?
-    def init_possibility_info(self, bond_order_changes=[-1, 1], possible_elements=['C'], **other_kwargs):
-        if self.bond_order_change_possibilities is None:
+    def init_possibility_info(self, bond_order_changes=[-1, 1], possible_elements=['C'], restricted_tps=None, **other_kwargs):
+        # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
+        # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
+        if (self.bond_order_change_possibilities is None) or (self.egc.chemgraph.canonical_permutation is None): # The latter check is made j
             self.bond_order_change_possibilities={}
             for bond_order_change in bond_order_changes:
                 cur_possibilities=bond_change_possibilities(self.egc, bond_order_change, **other_kwargs)
@@ -149,6 +152,30 @@ class TrajectoryPoint:
                 if len(addition_possibilities) != 0:
                     self.chain_addition_possibilities[possible_element]=addition_possibilities
             self.valence_change_possibilities=valence_change_possibilities(self.egc)
+            if restricted_tps is not None:
+                self.clear_possibility_info(restricted_tps)
+
+    def clear_possibility_info(self, restricted_tps):
+        for poss_func, poss_dict in self.possibilities().items():
+            poss_key_id=0
+            poss_keys=list(poss_dict.keys())
+            while poss_key_id != len(poss_keys):
+                poss_key=poss_keys[poss_key_id]
+                poss_list=poss_dict[poss_key]
+
+                poss_id=0
+                while poss_id != len(poss_list):
+                    result=egc_change_func(self.egc, poss_key, poss_list[poss_id], poss_func)
+                    if TrajectoryPoint(egc=result) in restricted_tps:
+                        poss_id+=1
+                    else:
+                        del(poss_list[poss_id])
+                if len(poss_list)==0:
+                    del(poss_dict[poss_key])
+                    del(poss_keys[poss_key_id])
+                else:
+                    poss_key_id+=1
+
     def possibilities(self):
         return {add_heavy_atom_chain : self.chain_addition_possibilities,
                     replace_heavy_atom : self.nuclear_charge_change_possibilities,
@@ -206,8 +233,9 @@ def random_pair(arr_length):
 
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
-    def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, restart_trajectory=None, conserve_stochiometry=False,
-                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, additional_data_function=None, num_replicas=None):
+    def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, starting_histogram=None, conserve_stochiometry=False,
+                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, additional_data_function=None, num_replicas=None,
+                    no_exploration=False, no_exploration_smove_adjust=False, restricted_tps=None):
         self.num_replicas=num_replicas
         if isinstance(betas, list):
             self.num_replicas=len(betas)
@@ -221,17 +249,29 @@ class RandomWalk:
         if isinstance(self.betas, list):
             assert(len(self.betas)==self.num_replicas)
 
+
         self.cur_tps=[TrajectoryPoint(egc=init_egc) for init_egc in init_egcs]
-        if restart_trajectory is None:
-            self.explored_egcs=SortedList()
+        if starting_histogram is None:
+            if keep_histogram:
+                self.histogram=SortedList()
+                self.update_histogram()
+            else:
+                self.histogram=None
         else:
-            self.explored_egcs=restart_trajectory
+            self.histogram=starting_histogram
+
+        self.no_exploration=no_exploration
+        if self.no_exploration:
+            if restricted_tps is None:
+                raise Exception
+            else:
+                self.restricted_tps=restricted_tps
+                self.no_exploration_smove_adjust=no_exploration_smove_adjust
+
         self.bias_coeff=bias_coeff
         self.randomized_change_params=randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
         self.keep_histogram=keep_histogram
-        if self.keep_histogram:
-            self.update_histogram()
         self.change_list=default_change_list
         self.bound_enforcing_coeff=bound_enforcing_coeff
         self.conserve_stochiometry=conserve_stochiometry
@@ -258,6 +298,10 @@ class RandomWalk:
                 self.randomized_change_params["forbidden_bonds"]=tidy_forbidden_bonds(self.randomized_change_params["forbidden_bonds"])
         self.used_randomized_change_params=copy.deepcopy(self.randomized_change_params)
 
+        if self.no_exploration:
+            if self.no_exploration_smove_adjust:
+                self.used_randomized_change_params["restricted_tps"]=self.restricted_tps
+
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
         accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
@@ -267,6 +311,16 @@ class RandomWalk:
         return accepted
 
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
+
+        if self.no_exploration:
+            for new_tp in new_tps:
+                if new_tp not in self.restricted_tps:
+                    return False
+        if self.histogram is not None:
+            for new_tp_id in range(len(new_tps)):
+                true_new_tp_id=self.histogram_index_add(new_tps[new_tp_id])
+                new_tps[new_tp_id]=self.histogram[true_new_tp_id]
+
         delta_pot=prob_balance
 
         prev_tps=[self.cur_tps[replica_id] for replica_id in replica_ids]
@@ -453,27 +507,27 @@ class RandomWalk:
         return self.min_function(tp)
     # If we want to re-merge two different trajectories.
     def combine_with(self, other_rw):
-        for tp in other_rw.explored_egcs:
-            if tp in self.explored_egcs:
-                tp_index=self.explored_egcs.index(tp)
-                self.explored_egcs[tp_index].num_visits+=tp.num_visits
+        for tp in other_rw.histogram:
+            if tp in self.histogram:
+                tp_index=self.histogram.index(tp)
+                self.histogram[tp_index].num_visits+=tp.num_visits
             else:
-                self.explored_egcs.add(tp)
+                self.histogram.add(tp)
     # Procedures for biasing the potential.
-    def explored_index_add(self, tp):
-        if tp not in self.explored_egcs:
-            self.explored_egcs.add(tp)
-        return self.explored_egcs.index(tp)
+    def histogram_index_add(self, tp):
+        if tp not in self.histogram:
+            self.histogram.add(tp)
+        return self.histogram.index(tp)
     def biasing_potential(self, tp):
         if self.bias_coeff is None:
             return 0.0
         else:
-            tp_index=self.explored_index_add(tp)
-            return self.explored_egcs[tp_index].num_visits*self.bias_coeff
+            tp_index=self.histogram_index_add(tp)
+            return self.histogram[tp_index].num_visits*self.bias_coeff
     def update_histogram(self):
         for replica_id in range(self.num_replicas):
-            tp_index=self.explored_index_add(self.cur_tps[replica_id])
-            self.explored_egcs[tp_index].num_visits+=1
+            tp_index=self.histogram_index_add(self.cur_tps[replica_id])
+            self.histogram[tp_index].num_visits+=1
 
 def merge_random_walks(*rw_list):
     output=rw_list[0]
