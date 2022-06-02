@@ -308,6 +308,9 @@ class RandomWalk:
         if accepted:
             for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.cur_tps[replica_id]=new_tp
+        if self.keep_histogram:
+            self.update_histogram()
+
         return accepted
 
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
@@ -399,13 +402,11 @@ class RandomWalk:
                 return (1.0+np.exp(-delta_pot))**(-1)
 
     # Basic move procedures.
-    def MC_step(self, change_histogram=True, replica_id=0, **dummy_kwargs):
+    def MC_step(self, replica_id=0, **dummy_kwargs):
         changed_tp=self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance=randomized_change(changed_tp, change_prob_dict=self.change_list, **self.used_randomized_change_params)
         accepted=self.accept_reject_move([new_tp], prob_balance, replica_ids=[replica_id])
-        if (self.keep_histogram and change_histogram):
-            self.update_histogram()
         return accepted
 
     def genetic_MC_step(self, replica_ids):
@@ -453,7 +454,7 @@ class RandomWalk:
             changed_replica_ids=random_pair(self.num_replicas)
             self.genetic_MC_step(changed_replica_ids)
 
-    def parallel_tempering(self, num_parallel_tempering_tries=1, change_histogram=True, **dummy_kwargs):
+    def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
         if self.min_function is not None:
             for attempted_change_counter in range(num_parallel_tempering_tries):
                 old_ids=random_pair(self.num_replicas)
