@@ -1,5 +1,3 @@
-
-
 # If we explore diatomic molecule graph, this function will create  
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
@@ -41,5 +39,4 @@ class QM9_properties:
         X_test = dc.feat.RDKitDescriptors(
             ipc_avg=True).featurize([canon_SMILES])
         prediction = self.scaler_function.inverse_transform(self.ml_model.predict(X_test).reshape(-1,1))
-        print(canon_SMILES)
         return prediction[-1]
