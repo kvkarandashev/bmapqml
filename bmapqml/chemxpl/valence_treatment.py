@@ -111,7 +111,10 @@ class HeavyAtom:
         self.nhydrogens=nhydrogens
     # Valence-related.
     def avail_val_list(self):
-        return valences_int[self.ncharge]
+        if self.ncharge==0:
+            return self.valence
+        else:
+            return valences_int[self.ncharge]
     def valence_reasonable(self):
         val_list=self.avail_val_list()
         if isinstance(val_list, tuple):
@@ -119,6 +122,9 @@ class HeavyAtom:
         else:
             return (self.valence==val_list)
     def smallest_valid_valence(self, coordination_number=None, show_id=False):
+        if self.ncharge==0:
+            return self.valence
+
         val_list=self.avail_val_list()
         if isinstance(val_list, tuple):
             needed_id=None
@@ -157,7 +163,16 @@ class HeavyAtom:
             return val_list
     # Procedures for ordering.
     def comparison_iterator(self):
-        return iter([self.valence-self.nhydrogens, s_int[self.ncharge], p_int[self.ncharge], period_int[self.ncharge], self.valence_val_id()])
+        if self.ncharge==0:
+            s=-1
+            p=-1
+            per=-1
+        else:
+            s=s_int[self.ncharge]
+            p=p_int[self.ncharge]
+            per=period_int[self.ncharge]
+
+        return iter([self.valence-self.nhydrogens, s, p, per, self.valence_val_id()])
     def __lt__(self, ha2):
         return (triple_gt_witer(self, ha2) is False)
     def __gt__(self, ha2):
@@ -183,6 +198,7 @@ def hatom_state_coords(ha):
 num_state_coords={hatom_state_coords : 5}
 
 # TODO perhaps used SortedDict from sortedcontainers more here?
+# TODO revise initialization procedure, does not work if hatoms and bond_orders initialized.
 class ChemGraph:
     def __init__(self, graph=None, hatoms=None, bond_orders=None, all_bond_orders=None, adj_mat=None, nuclear_charges=None,
                             hydrogen_autofill=False, resonance_structure_orders=None, resonance_structure_map=None, resonance_structure_inverse_map=None):
@@ -194,6 +210,10 @@ class ChemGraph:
         self.resonance_structure_orders=resonance_structure_orders
         self.resonance_structure_map=resonance_structure_map
         self.resonance_structure_inverse_map=resonance_structure_inverse_map
+
+        if self.hatoms is not None:
+            if nuclear_charges is None:
+                self.nuclear_charges=np.array([ha.ncharge for ha in self.hatoms])
 
         if ((self.all_bond_orders is None) and (self.bond_orders is None)):
             self.adj_mat2all_bond_orders(adj_mat)
@@ -438,7 +458,7 @@ class ChemGraph:
 
     def change_hydrogen_number(self, atom_id, hydrogen_number_change):
         self.hatoms[atom_id].nhydrogens+=hydrogen_number_change
-        if self.hatoms[atom_id].nhydrogens<0:
+        if (self.hatoms[atom_id].nhydrogens<0):
             raise InvalidChange
     # For reassigning multiple bonds if valence composition is invalid, and all related procedures.
     def reassign_nonsigma_bonds(self):
@@ -621,24 +641,14 @@ class ChemGraph:
                         output.append(copy.deepcopy(added_edges))
                 else:
                     return added_edges
-        
+
     # More sophisticated commands that are to be called in the "modify" module.
     def change_bond_order(self, atom1, atom2, bond_order_change, resonance_structure_id=0):
         if bond_order_change != 0:
             if len(self.aa_all_bond_orders(atom1, atom2)) != 1:
                 # Make sure that the correct resonance structure is used as initial one.
                 resonance_structure_region=self.resonance_structure_map[sorted_tuple(atom1, atom2)]
-                changed_hatom_ids=self.resonance_structure_inverse_map[resonance_structure_region]
-                cur_resonance_struct_orders=self.resonance_structure_orders[resonance_structure_region][resonance_structure_id]
-                for hatom_considered_num, hatom_id2 in enumerate(changed_hatom_ids):
-                    hatom2_neighbors=self.neighbors(hatom_id2)
-                    for hatom_id1 in changed_hatom_ids[:hatom_considered_num]:
-                        if hatom_id1 in hatom2_neighbors:
-                            stuple=sorted_tuple(hatom_id1, hatom_id2)
-                            if stuple in cur_resonance_struct_orders:
-                                self.set_edge_order(hatom_id1, hatom_id2, 1+cur_resonance_struct_orders[stuple])
-                            else:
-                                self.set_edge_order(hatom_id1, hatom_id2, 1)
+                self.adjust_resonance_valences(resonance_structure_region, resonance_structure_id)
 
             self.change_edge_order(atom1, atom2, bond_order_change)
 
@@ -646,6 +656,21 @@ class ChemGraph:
                 self.change_hydrogen_number(atom_id, -bond_order_change)
 
             self.changed()
+
+    # 
+    def adjust_resonance_valences(self, resonance_structure_region, resonance_structure_id):
+        self.init_resonance_structures()
+        changed_hatom_ids=self.resonance_structure_inverse_map[resonance_structure_region]
+        cur_resonance_struct_orders=self.resonance_structure_orders[resonance_structure_region][resonance_structure_id]
+        for hatom_considered_num, hatom_id2 in enumerate(changed_hatom_ids):
+            hatom2_neighbors=self.neighbors(hatom_id2)
+            for hatom_id1 in changed_hatom_ids[:hatom_considered_num]:
+                if hatom_id1 in hatom2_neighbors:
+                    stuple=sorted_tuple(hatom_id1, hatom_id2)
+                    if stuple in cur_resonance_struct_orders:
+                        self.set_edge_order(hatom_id1, hatom_id2, 1+cur_resonance_struct_orders[stuple])
+                    else:
+                        self.set_edge_order(hatom_id1, hatom_id2, 1)
 
     #TODO Do we need resonance structure invariance here?
     def remove_heavy_atom(self, atom_id):
@@ -666,19 +691,32 @@ class ChemGraph:
         del(self.hatoms[atom_id])
         self.changed()
 
-    def add_heavy_atom_chain(self, modified_atom_id, new_chain_atoms, new_chain_atom_valences=None):
+    def add_heavy_atom_chain(self, modified_atom_id, new_chain_atoms, new_chain_atom_valences=None, chain_bond_orders=None):
+
         bonded_chain=[modified_atom_id]
         last_added_id=self.nhatoms()
         num_added_atoms=len(new_chain_atoms)
         self.graph.add_vertices(num_added_atoms)
-        for new_chain_atom in new_chain_atoms:
+        for chain_id, new_chain_atom in enumerate(new_chain_atoms):
             bonded_chain.append(last_added_id)
             last_added_id+=1
-            self.hatoms.append(HeavyAtom(new_chain_atom))
+            if new_chain_atom_valences is None:
+                new_valence=None
+            else:
+                new_valence=new_chain_atom_valences[chain_id]
+            self.hatoms.append(HeavyAtom(new_chain_atom, valence=new_valence))
             self.hatoms[-1].nhydrogens=self.hatoms[-1].valence
-        for i in range(num_added_atoms):
-            self.change_bond_order(bonded_chain[i], bonded_chain[i+1], 1)
+
+        # TODO find a way to avoid using *.changed() several times?
         self.changed()
+
+        for i in range(num_added_atoms):
+            if chain_bond_orders is None:
+                new_bond_order=1
+            else:
+                new_bond_order=chain_bond_orders[i]
+            self.change_bond_order(bonded_chain[i], bonded_chain[i+1], new_bond_order)
+
 
     def replace_heavy_atom(self, replaced_atom_id, inserted_atom, inserted_valence=None):
         # Extracting full chemical information of the graph.
@@ -812,50 +850,38 @@ class ChemGraph:
         return str(self)
 
 
-# For merging chemgraphs together or splitting them.
-def combine_chemgraphs(cg1, cg2, connection_tuples=[], count_equivalences=False):
-    new_graph=disjoint_union([cg1.graph, cg2.graph])
+# For splitting chemgraphs.
+def combine_chemgraphs(cg1, cg2):
     new_hatoms=copy.deepcopy(cg1.hatoms+cg2.hatoms)
+    new_graph=disjoint_union([cg1.graph, cg2.graph])
     id2_shift=cg1.nhatoms()
     new_bond_orders=copy.deepcopy(cg1.bond_orders)
     for bond_tuple, bond_order in cg2.bond_orders.items():
         new_bond_tuple=tuple(np.array(bond_tuple)+id2_shift)
         new_bond_orders[new_bond_tuple]=bond_order
-    output=ChemGraph(graph=new_graph, hatoms=new_hatoms, bond_orders=new_bond_orders)
-    if count_equivalences:
-        equiv_count=1
-    for connection_tuple in connection_tuples:
-        connection_args=list(connection_tuple)
-        connection_args[1]+=id2_shift
-        if count_equivalences:
-            num_opportunities=0
-            for id1 in range(output.nhatoms()):
-                for id2 in range(id1):
-                    if output.pairs_equivalent((id1, id2), connection_args):
-                        num_opportunities+=1
-            equiv_count*=num_opportunities
-        output.change_bond_order(*connection_args)
-    if count_equivalences:
-        return output, equiv_count
-    else:
-        return output
+    return ChemGraph(hatoms=new_hatoms, bond_orders=new_bond_orders, graph=new_graph)
 
-#TO-DO this partially duplicates with splitting EGC's in utility.py
+#TODO this partially duplicates with splitting EGC's in utility.py and shares similar code to
+# modify's randomized_split_chemgraph
 def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=False):
     if copied:
         cg=cg_input
     else:
         cg=copy.deepcopy(cg_input)
     subgraphs_vertex_ids=sorted_by_membership(list(range(cg.nhatoms())), membership_vector)
+    broken_bonds=[]
+
     new_graph_list=[]
     new_hatoms_list=[]
     new_bond_orders_list=[]
     new_bond_positions_orders_dict_list=[]
+
     for vertex_ids in subgraphs_vertex_ids:
         new_graph_list.append(cg.graph.subgraph(vertex_ids))
         new_hatoms_list.append([cg.hatoms[vertex_id] for vertex_id in vertex_ids])
         new_bond_orders_list.append({})
         new_bond_positions_orders_dict_list.append({})
+
     # Create bond order dictionnaries:
     for vertex_id in range(cg.nhatoms()):
         mv1=membership_vector[vertex_id]
@@ -871,6 +897,7 @@ def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=Fa
                     new_bond_positions_orders_dict_list[mv1][internal_id1].append(cur_bond_order)
                 else:
                     new_bond_positions_orders_dict_list[mv1][internal_id1]=[cur_bond_order]
+
     output=[]
     for graph, hatoms, bond_orders, bond_positions_orders_dict in zip(new_graph_list, new_hatoms_list, new_bond_orders_list, new_bond_positions_orders_dict_list):
         bond_positions_orders=[]
@@ -879,9 +906,16 @@ def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=Fa
                 bond_positions_orders.append((atom_id, connection_order))
                 hatoms[atom_id].nhydrogens+=connection_order
         new_cg=ChemGraph(graph=graph, hatoms=hatoms, bond_orders=bond_orders)
-        output.append(Fragment(chemgraph=new_cg, bond_positions_orders=bond_positions_orders))
+
+        # Append virtual atoms at the place of broken bonds.
+        for modified_atom, extra_bond_orders in bond_positions_orders_dict.items():
+            for extra_bond_order in extra_bond_orders:
+                new_cg.add_heavy_atom_chain(modified_atom, [0], chain_bond_orders=[extra_bond_order], new_chain_atom_valences=[extra_bond_order])
+
+        output.append(new_cg)
     return output
 
+# TODO do we need it?
 def split_chemgraph(cg, membership_vector):
     output=[]
     cg_copy=copy.deepcopy(cg)
@@ -909,109 +943,12 @@ def split_chemgraph(cg, membership_vector):
 
 
 
-
 def connection_forbidden(nc1, nc2, forbidden_bonds):
     if ((nc1 is None) or (nc2 is None) or (forbidden_bonds is None)):
         return False
     nc_tuple=sorted_tuple(int_atom_checked(nc1), int_atom_checked(nc2))
     return (nc_tuple in forbidden_bonds)
 
-class Fragment:
-    def __init__(self, chemgraph=None, bond_positions_orders=[], **chemgraph_kwargs):
-        if chemgraph is None:
-            self.chemgraph=ChemGraph(**chemgraph_kwargs)
-        else:
-            self.chemgraph=chemgraph
-        if len(bond_positions_orders)==0:
-            self.bond_positions_orders=[]
-        else:
-            self.bond_positions_orders=sorted(bond_positions_orders, key = lambda x : x[::-1])
-            # TO-DO Does it make sense to forbid position duplication?
-#            for i, t in enumerate(self.bond_positions_orders[:-1]):
-#                if t[0]==self.bond_positions_orders[i+1][0]:
-#                    raise Exception("Duplicated bonding position.")
-    def add_to(self, chemgraph, connecting_positions):
-        connection_tuples=[(conn_pos, *bond_pos_order) for conn_pos, bond_pos_order in zip(connecting_positions, self.bond_positions_orders)]
-        return combine_chemgraphs(chemgraph, self.chemgraph, connection_tuples)
-    #TO-DO revise for symmetry's sake? Or perhaps add everything related to detailed balance inside genetic algorithms?
-    def connection_opportunities(self, chemgraph, forbidden_bonds=None):
-        output=[]
-        for checked_hatom_ids in itertools.product(*[range(chemgraph.nhatoms()) for i in range(len(self.bond_positions_orders))]):
-            to_add=True
-            extra_hydrogens={}
-            for checked_hatom_id, (other_atom_id, needed_extra_valence) in zip(checked_hatom_ids, self.bond_positions_orders):
-                if connection_forbidden(self.chemgraph.hatoms[other_atom_id].ncharge, chemgraph.hatoms[checked_hatom_id].ncharge, forbidden_bonds):
-                    to_add=False
-                    break
-                if checked_hatom_id not in extra_hydrogens:
-                    extra_hydrogens[checked_hatom_id]=chemgraph.hatoms[checked_hatom_id].nhydrogens
-                extra_hydrogens[checked_hatom_id]-=needed_extra_valence
-                if extra_hydrogens[checked_hatom_id]<0:
-                    to_add=False
-                    break
-            if to_add:
-                output.append(checked_hatom_ids)
-        return output
-    def all_connections_with_frag(self, other_fragment, forbidden_bonds=None):
-        if self.bo_list() != other_fragment.bo_list():
-            return []
-        permutation_iterators=[]
-        cur_bo=-1
-        cur_iterator=None
-        for bp, bo in other_fragment.bond_positions_orders:
-            if bo==cur_bo:
-                cur_iterator.append(bp)
-            else:
-                cur_bo=bo
-                if cur_iterator is not None:
-                    permutation_iterators.append(itertools.permutations(cur_iterator))
-                cur_iterator=[bp]
-        permutation_iterators.append(itertools.permutations(cur_iterator))
-
-        conn_opp_candidates=[]
-        for perm_lists in itertools.product(*permutation_iterators):
-            new_candidate=[]
-            for pl in perm_lists:
-                new_candidate+=list(pl)
-            conn_opp_candidates.append(new_candidate)
-        if forbidden_bonds is not None:
-            filtered_conn_opp_candidates=[]
-            for conn_opp_candidate in conn_opp_candidates:
-                to_add=True
-                for (conn_atom_self, bo), conn_atom_other in zip(self.bond_positions_orders, conn_opp_candidate):
-                    if connection_forbidden(self.chemgraph.hatoms[conn_atom_self].ncharge, other_fragment.chemgraph.hatoms[conn_atom_other].ncharge, forbidden_bonds):
-                        to_add=False
-                        break
-                if to_add:
-                    filtered_conn_opp_candidates.append(conn_opp_candidate)
-            conn_opp_candidates=filtered_conn_opp_candidates
-        output=SortedList()
-        for conn_opp_candidate in conn_opp_candidates:
-            new_mol=self.add_to(other_fragment.chemgraph, conn_opp_candidate)
-            if new_mol not in output:
-                output.add(new_mol)
-        return output
-
-    def bo_list(self):
-        return [bo for (bp, bo) in self.bond_positions_orders]
-    def __repr__(self):
-        return str(self)
-    def __str__(self):
-        output=str(self.chemgraph)+"\nConnection positions: "
-        for bp, bo in self.bond_positions_orders:
-            output+="("+str(bp)+","+str(bo)+")"
-        return output
-    def comparison_iterator(self):
-        cg_comp_iter=self.chemgraph.comparison_iterator()
-        cn_bond_positions_orders=[(self.chemgraph.canonical_permutation[bp], bo) for (bp, bo) in self.bond_positions_orders]
-        cn_bond_positions_orders.sort(key = lambda x : x[0])
-        return itertools.chain(cg_comp_iter, iter(cn_bond_positions_orders))
-    def __lt__(self, ch2):
-        return (triple_gt_witer(self, ch2) is False)
-    def __gt__(self, ch2):
-        return (triple_gt_witer(self, ch2) is True)
-    def __eq__(self, ch2):
-        return (triple_gt_witer(self, ch2) is None)
 
 #   Utility functions
 def possible_closed_pairs(closed_atom, extra_valences, extra_val_subgraph):

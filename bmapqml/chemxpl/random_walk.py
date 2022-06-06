@@ -93,6 +93,7 @@ def randomized_change(tp, change_prob_dict=default_change_list, **other_kwargs):
 
     new_tp=TrajectoryPoint(egc=new_egc)
     new_tp.init_possibility_info(**other_kwargs)
+
     # Calculate the chances of doing the inverse operation
     inv_proc=inverse_procedure[cur_change_procedure]
     inverse_possibilities, total_inverse_prob=random_choice_from_dict(new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc)
@@ -143,6 +144,7 @@ class TrajectoryPoint:
             self.chain_addition_possibilities={}
             for possible_element in possible_elements:
                 repl_possibilities=atom_replacement_possibilities(self.egc, possible_element, **other_kwargs)
+
                 if len(repl_possibilities) != 0:
                     self.nuclear_charge_change_possibilities[possible_element]=repl_possibilities
                 removal_possibilities=atom_removal_possibilities(self.egc, deleted_atom=possible_element, only_end_atoms=True, **other_kwargs)

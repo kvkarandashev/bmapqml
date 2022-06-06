@@ -4,10 +4,11 @@
 from xyz2mol import int_atom
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
-from .valence_treatment import ChemGraph, default_valence, int_atom_checked, Fragment, sorted_tuple, connection_forbidden, split_chemgraph_no_dissociation_check, max_bo
+from .valence_treatment import ChemGraph, default_valence, int_atom_checked, sorted_tuple, connection_forbidden,\
+                            split_chemgraph_no_dissociation_check, max_bo, combine_chemgraphs
 from copy import deepcopy
 from sortedcontainers import SortedList
-import random
+import random, itertools
 
 def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
     for other_atom_id in atom_id_list:
@@ -197,10 +198,100 @@ def add_fragment(egc, fragment, connecting_positions):
 
 
 
+
+# Manipulating fragments.
+def true_nhatoms(cg):
+    return sum([ha.ncharge != 0 for ha in cg.hatoms])
+
+def connect_fragments(frag1, frag2, connection_tuples):
+
+    new_mol=combine_chemgraphs(frag1, frag2)
+
+    to_delete=[]
+
+    for connection_tuple in connection_tuples:
+        vatom1=connection_tuple[0]
+        vatom2=connection_tuple[1]+frag1.nhatoms()
+        conn_val=new_mol.hatoms[vatom1].valence
+        assert(conn_val == new_mol.hatoms[vatom2].valence)
+        connected_atoms=[]
+        for vatom in [vatom1, vatom2]:
+            connected_atom=new_mol.neighbors(vatom)[0]
+            old_tuple=sorted_tuple(vatom, connected_atom)
+            new_mol.change_bond_order(*old_tuple, -conn_val)
+            assert(old_tuple not in new_mol.bond_orders)
+            connected_atoms.append(connected_atom)
+            to_delete.append(vatom)
+        new_mol.change_bond_order(*connected_atoms, conn_val)
+
+    to_delete.sort(reverse=True)
+
+    for i in to_delete:
+        new_mol.remove_heavy_atom(i)
+    return new_mol
+
+def fragment_bond_order_dict(frag):
+    output={}
+    for ha_id, ha in enumerate(frag.hatoms):
+        if ha.ncharge==0:
+            if ha.valence in output:
+                output[ha.valence].append(ha_id)
+            else:
+                output[ha.valence]=[ha_id]
+    return output
+
+def connected_charge(cg, vatom_id):
+    return cg.hatoms[cg.neighbors(vatom_id)[0]].ncharge
+
+def possible_connection_tuples(frag1, frag2, forbidden_bonds=None):
+    frag1_bos=fragment_bond_order_dict(frag1)
+    frag2_bos=fragment_bond_order_dict(frag2)
+
+    # Size consistency checks.
+    if sorted(frag1_bos.keys()) != sorted(frag2_bos.keys()):
+        return []
+
+    for valence in frag1_bos:
+        if len(frag1_bos[valence]) != len(frag2_bos[valence]):
+            return []
+
+    permutation_operators=[]
+    for valence in frag1_bos:
+        permutation_operators.append(itertools.permutations(frag2_bos[valence]))
+
+    connection_tuples_possibilities=[]
+    for perm_lists2 in itertools.product(*permutation_operators):
+        connection_tuples=[]
+        abort=False
+        for valence_id, (valence, connection_positions_1) in enumerate(frag1_bos.items()):
+            connection_positions_2=perm_lists2[valence_id]
+            for cp1, cp2 in zip(connection_positions_1, connection_positions_2):
+                if forbidden_bonds is not None:
+                    if sorted_tuple(connected_charge(frag1, cp1), connected_charge(frag2, cp2)) in forbidden_bonds:
+                        abort=True
+                        break
+                connection_tuples.append((cp1, cp2))
+            if abort:
+                break
+        if not abort:
+            connection_tuples_possibilities.append(connection_tuples)
+
+    return connection_tuples_possibilities
+
+def all_fragment_connections(frag1, frag2, forbidden_bonds=None):
+    output=[]
+    connection_tuples_lists=possible_connection_tuples(frag1, frag2, forbidden_bonds=forbidden_bonds)
+    for connection_tuples in connection_tuples_lists:
+        new_mol=connect_fragments(frag1, frag2, connection_tuples)
+        if new_mol not in output:
+            output.append(new_mol)
+    return output
+
 # Procedures for genetic algorithms.
+
 def possible_fragment_sizes(cg, fragment_ratio_range=[.0, .5], fragment_size_range=None):
     if fragment_ratio_range is None:
-        bounds=copy.deepcopy(fragment_size_range)
+        bounds=deepcopy(fragment_size_range)
     else:
         bounds=[int(r*cg.nhatoms()) for r in fragment_ratio_range ]
     if bounds[1] >=cg.nhatoms():
@@ -210,10 +301,26 @@ def possible_fragment_sizes(cg, fragment_ratio_range=[.0, .5], fragment_size_ran
             bounds[j]=1
     return range(bounds[0], bounds[1]+1)
 
-def randomized_split_chemgraph(cg, **frag_size_kwargs):
-    pfsizes=possible_fragment_sizes(cg, **frag_size_kwargs)
-    fragment_size=random.choice(pfsizes)
+def possible_pair_fragment_sizes(cg_pair, nhatoms_range=None, **possible_fragment_sizes_kwargs):
+    possible_fragment_sizes_iterators=[]
+    for cg in cg_pair:
+        possible_fragment_sizes_iterators.append(possible_fragment_sizes(cg, **possible_fragment_sizes_kwargs))
+    output=[]
+    for size_tuple in itertools.product(*possible_fragment_sizes_iterators):
+        if nhatoms_range is not None:
+            unfit=False
+            for cg, ordered_size_tuple in zip(cg_pair, itertools.permutations(size_tuple)):
+                new_mol_size=cg.nhatoms()+ordered_size_tuple[1]-ordered_size_tuple[0]
+                if (new_mol_size<nhatoms_range[0]) or (new_mol_size>nhatoms_range[1]):
+                    unfit=True
+                    break
+            if unfit:
+                continue
+        output.append(size_tuple)
+    return output
 
+#   TODO add splitting by heavy-H bond?
+def randomized_split_membership_vector(cg, fragment_size):
     membership_vector=np.zeros(cg.nhatoms(), dtype=int)
 
     origin_choices=cg.unrepeated_atom_list()
@@ -238,36 +345,101 @@ def randomized_split_chemgraph(cg, **frag_size_kwargs):
             random.shuffle(new_to_add)
             del(new_to_add[:len(new_to_add)-remaining_atoms])
         prev_to_add=new_to_add
-    # Break the molecule down into the fragments.
-    frags=split_chemgraph_no_dissociation_check(cg, membership_vector)
-    return frags, len(origin_choices)*len(pfsizes)
 
-def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, .5], cross_coupling_fragment_size_range=None, forbidden_bonds=None, **dummy_kwargs):
-    tot_choice_prob_ratio=1.0
-    fragment_pairs=[]
-    for cg in cg_pair:
-        fragment_pair, num_choices=randomized_split_chemgraph(cg, fragment_ratio_range=cross_coupling_fragment_ratio_range, fragment_size_range=cross_coupling_fragment_size_range)
-        tot_choice_prob_ratio*=num_choices
-        fragment_pairs.append(fragment_pair)
-    if fragment_pairs[0][0].bo_list() != fragment_pairs[1][0].bo_list():
+    return membership_vector
+
+def split_chemgraph_by_membership_vector(cg, membership_vector):
+    # Check whether some resonance structures are affected by the split.
+    affected_resonance_structure_regions=[]
+    resonance_structure_orders_iterators=[]
+    cg.init_resonance_structures()
+    for rsr_id, rsr_nodelist in enumerate(cg.resonance_structure_inverse_map):
+        for i in rsr_nodelist[:-1]:
+            if membership_vector[i] != membership_vector[-1]:
+                affected_resonance_structure_regions.append(rsr_id)
+                resonance_structure_orders_iterators.append(range(len(cg.resonance_structure_orders[rsr_id])))
+                break
+    # Break the molecule down into the fragments.
+    frags=[]
+    if len(affected_resonance_structure_regions)==0:
+        frags=[split_chemgraph_no_dissociation_check(cg, membership_vector)]
+    else:
+        #TODO pre-check whether relevant bonds are affected?
+        used_cg=deepcopy(cg)
+        for resonance_structure_orders_ids in itertools.product(*resonance_structure_orders_iterators):
+            for resonance_structure_region_id, resonance_structure_orders_id in zip(affected_resonance_structure_regions, resonance_structure_orders_ids):
+                used_cg.adjust_resonance_valences(resonance_structure_region_id, resonance_structure_orders_id)
+            new_frags=split_chemgraph_no_dissociation_check(used_cg, membership_vector)
+            if new_frags not in frags:
+                frags.append(new_frags)
+    return frags
+
+def all_potential_couplings(cg1, membership_vector1, cg2, membership_vector2, forbidden_bonds=None):
+    frags1_list=split_chemgraph_by_membership_vector(cg1, membership_vector1)
+    frags2_list=split_chemgraph_by_membership_vector(cg2, membership_vector2)
+    mol_pairs=[]
+
+    for frags1 in frags1_list:
+        for frags2 in frags2_list:
+
+            new_frag_pairs=[[frags1[0], frags2[1]], [frags2[0], frags1[1]]]
+            new_mols_unpaired=[]
+            membership_vectors=[]
+
+            for new_frag_pair in new_frag_pairs:
+                new_mols_unpaired_row=[]
+                candidate_mols=all_fragment_connections(*new_frag_pair, forbidden_bonds=forbidden_bonds)
+                backward_membership_vector=np.append(np.zeros((true_nhatoms(new_frag_pair[0]),), dtype=int), np.ones((true_nhatoms(new_frag_pair[1]),), dtype=int))
+                for candidate_mol in candidate_mols:
+                    added_list=[candidate_mol, backward_membership_vector]
+                    if added_list not in new_mols_unpaired_row:
+                        new_mols_unpaired_row.append(added_list)
+                membership_vectors.append(backward_membership_vector)
+                new_mols_unpaired.append(new_mols_unpaired_row)
+
+            for added_list1, added_list2 in itertools.product(*new_mols_unpaired):
+                mol_pair=[*added_list1, *added_list2]
+                if mol_pair not in mol_pairs:
+                    mol_pairs.append(mol_pair)
+
+    return mol_pairs
+
+
+def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, .5], cross_coupling_fragment_size_range=None, forbidden_bonds=None, nhatoms_range=None, **dummy_kwargs):
+
+    ppfs_kwargs={"nhatoms_range" : nhatoms_range, "fragment_ratio_range" : cross_coupling_fragment_ratio_range, "fragment_size_range" : cross_coupling_fragment_size_range}
+    apc_kwargs={"forbidden_bonds" : forbidden_bonds}
+
+    pair_fragment_sizes=possible_pair_fragment_sizes(cg_pair, **ppfs_kwargs)
+
+    if len(pair_fragment_sizes)==0:
         return None, None
 
-    new_frag_pairs=[(fragment_pairs[0][0], fragment_pairs[1][1]), (fragment_pairs[1][0], fragment_pairs[0][1])]
-    output=[]
-    for new_frag_pair in new_frag_pairs:
-        new_mol_choices=new_frag_pair[1].all_connections_with_frag(new_frag_pair[0], forbidden_bonds=forbidden_bonds)
-        if len(new_mol_choices)==0:
-            return None, None
-        new_mol=random.choice(new_mol_choices)
-        # For detailed balance, get the inverse choice probability.
-        tot_choice_prob_ratio*=len(new_mol_choices)
-        output.append(new_mol)
+    tot_choice_prob_ratio=float(len(pair_fragment_sizes))
 
-    for fragment_pair in fragment_pairs:
-        tot_choice_prob_ratio/=len(fragment_pair[1].all_connections_with_frag(fragment_pair[0], forbidden_bonds=forbidden_bonds))
-    for new_mol in output:
-        tot_choice_prob_ratio/=len(new_mol.unrepeated_atom_list())*len(possible_fragment_sizes(new_mol,
-                fragment_ratio_range=cross_coupling_fragment_ratio_range, fragment_size_range=cross_coupling_fragment_size_range))
+    final_pair_fragment_sizes=random.choice(pair_fragment_sizes)
 
-    return output, -np.log(tot_choice_prob_ratio)
+    membership_vectors=[randomized_split_membership_vector(cg, fragment_size) for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes)]
+
+    all_pot_coup_args=[]
+    for cg, membership_vector in zip(cg_pair, membership_vectors):
+        all_pot_coup_args+=[cg, membership_vector]
+
+    trial_mols=all_potential_couplings(*all_pot_coup_args, **apc_kwargs)
+
+    if len(trial_mols)==0:
+        return None, None
+
+    tot_choice_prob_ratio*=len(trial_mols)
+    final_result=random.choice(trial_mols)
+
+    # Actual generated pair of molecules.
+    new_cg_pair=[final_result[0], final_result[2]]
+
+    # Account for probability of choosing the correct fragment sizes to do the inverse move.
+    tot_choice_prob_ratio/=len(possible_pair_fragment_sizes(new_cg_pair, **ppfs_kwargs))
+    # Account for probability of choosing the necessary fragment pair to do the inverse move.
+    tot_choice_prob_ratio/=len(all_potential_couplings(*final_result, **apc_kwargs))
+
+    return new_cg_pair, -np.log(tot_choice_prob_ratio)
 
