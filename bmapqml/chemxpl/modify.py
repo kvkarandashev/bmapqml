@@ -336,7 +336,7 @@ def possible_pair_fragment_sizes(cg_pair, nhatoms_range=None, **possible_fragmen
     return output
 
 #   TODO add splitting by heavy-H bond?
-def randomized_split_membership_vector(cg, fragment_size):
+def randomized_split_membership_vector(cg, origin_choices, fragment_size):
     membership_vector=np.zeros(cg.nhatoms(), dtype=int)
 
     origin_choices=cg.unrepeated_atom_list()
@@ -377,7 +377,11 @@ def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, 
 
     final_pair_fragment_sizes=random.choice(pair_fragment_sizes)
 
-    membership_vectors=[randomized_split_membership_vector(cg, fragment_size) for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes)]
+    membership_vectors=[]
+    for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes):
+        origin_choices=cg.unrepeated_atom_list()
+        tot_choice_prob_ratio*=len(origin_choices)
+        membership_vectors.append(randomized_split_membership_vector(cg, origin_choices, fragment_size))
 
     fragment_pairs=[FragmentPair(cg, membership_vector) for cg, membership_vector in zip(cg_pair, membership_vectors)]
 
@@ -401,11 +405,14 @@ def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, 
     backwards_fragment_pairs=[FragmentPair(new_cg, new_membership_vector) for new_cg, new_membership_vector in zip(new_cg_pair, new_membership_vectors)]
     backwards_mdtuples=matching_dict_tuples(*backwards_fragment_pairs)
 
-    # Happend when two single bonds coming from the same atom "collapse" into one double bond.
+    # Happens when two single bonds coming from the same atom "collapse" into one double bond.
     if len(backwards_mdtuples)==0:
         return None, None
 
     tot_choice_prob_ratio/=len(backwards_mdtuples)
+
+    for new_cg in new_cg_pair:
+        tot_choice_prob_ratio/=len(new_cg.unrepeated_atom_list())
 
     return new_cg_pair, -np.log(tot_choice_prob_ratio)
 

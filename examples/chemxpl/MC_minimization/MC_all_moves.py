@@ -56,7 +56,7 @@ for MC_step in range(num_MC_steps):
             histogram[i].append(0)
         cur_egc_id=histogram_labels[i].index(cur_egc)
         histogram[i][cur_egc_id]+=1
-        print(i, cur_egc)
+    print(MC_step, cur_egcs)
 
 global_hist_labels=[]
 global_histogram=[]
