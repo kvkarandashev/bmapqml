@@ -1,4 +1,4 @@
-# If we explore diatomic molecule graph, this function will create  
+# If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge=max(possible_nuclear_charges)
@@ -15,6 +15,16 @@ class Diatomic_barrier:
             return 2.
     def bond_pot(self, cg):
         return float(cg.bond_order(0, 1)-1)
+
+class OrderSlide:
+    def __init__(self, possible_nuclear_charges_input):
+        possible_nuclear_charges=sorted(possible_nuclear_charges_input)
+        self.order_dict={}
+        for i, ncharge in enumerate(possible_nuclear_charges):
+            self.order_dict[ncharge]=i
+    def __call__(self, trajectory_point_in):
+        return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
+
 
 class QM9_properties:
 

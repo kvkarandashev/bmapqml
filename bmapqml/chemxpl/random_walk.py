@@ -1,4 +1,4 @@
-# TO-DO revise everything associated with nhatoms range?
+# TODO For forward and backward probabilities, comment more on where different signs come from.
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
 from .modify import atom_replacement_possibilities, atom_removal_possibilities, chain_addition_possibilities, bond_change_possibilities, valence_change_possibilities,\

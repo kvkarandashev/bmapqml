@@ -13,6 +13,7 @@ from .periodic import valences_int, period_int, s_int, p_int, unshared_pairs, co
 from g2s.constants import periodic_table, atom_radii
 from sortedcontainers import SortedList
 
+
 try:
     from xyz2mol import int_atom
 except ModuleNotFoundError:
@@ -31,20 +32,16 @@ DEFAULT_ELEMENT=1
 # To avoid equality expressions for two reals.
 irrelevant_bond_order_difference=1.0e-8
 
-# Check that atom_id is integer rather than string element representation.
-def int_atom_checked(atom_id):
-    if isinstance(atom_id, str):
-        return int_atom(atom_id)
-    else:
-        return atom_id
-
-# Default valence for a given element.
-def default_valence(atom_id):
-    val_list=valences_int[int_atom_checked(atom_id)]
-    if isinstance(val_list, tuple):
-        return val_list[0]
-    else:
-        return val_list
+# Sorting-related.
+# Sort a list into several lists by membership.
+def sorted_by_membership(membership_vector, l=None):
+    if l is None:
+        l=list(range(len(membership_vector)))
+    n=max(membership_vector)
+    output=[[] for i in range(n+1)]
+    for val, m in zip(l, membership_vector):
+        output[m].append(val)
+    return output
 
 # Sorted a tuple either by its value or by value of ordering tuple.
 def sorted_tuple(*orig_tuple, ordering_tuple=None):
@@ -61,6 +58,24 @@ def sorted_tuples(*orig_tuples):
     for orig_tuple in orig_tuples:
         output.append(sorted_tuple(*orig_tuple))
     return sorted(output)
+
+
+
+
+# Check that atom_id is integer rather than string element representation.
+def int_atom_checked(atom_id):
+    if isinstance(atom_id, str):
+        return int_atom(atom_id)
+    else:
+        return atom_id
+
+# Default valence for a given element.
+def default_valence(atom_id):
+    val_list=valences_int[int_atom_checked(atom_id)]
+    if isinstance(val_list, tuple):
+        return val_list[0]
+    else:
+        return val_list
 
 # Color obj_list in a way that each equal obj1 and obj2 were the same color.
 # Used for defining canonical permutation of a graph.
@@ -92,14 +107,6 @@ def triple_gt_witer(obj1, obj2):
         if output is not None:
             return output
     return None
-
-# Sort a list into several lists by membership.
-def sorted_by_membership(l, membership_vector):
-    n=max(membership_vector)
-    output=[[] for i in range(n+1)]
-    for val, m in zip(l, membership_vector):
-        output[m].append(val)
-    return output
 
 # Auxiliary class mainly used to keep valences in check.
 class HeavyAtom:
@@ -216,9 +223,21 @@ class ChemGraph:
                 self.nuclear_charges=np.array([ha.ncharge for ha in self.hatoms])
 
         if ((self.all_bond_orders is None) and (self.bond_orders is None)):
-            self.adj_mat2all_bond_orders(adj_mat)
+            if self.graph is None:
+                self.adj_mat2all_bond_orders(adj_mat)
+            else:
+                self.bond_orders={}
+                for e in self.graph.get_edgelist():
+                    self.bond_orders[e]=1
         if ((self.graph is None) or (self.hatoms is None)):
             self.init_graph_natoms(np.array(nuclear_charges), hydrogen_autofill=hydrogen_autofill)
+        # TODO Check for ways to combine finding resonance structures with reassigning pi bonds.
+        # Check that valences make sense.
+
+        if not self.valences_reasonable():
+            # Try to reassign non-sigma bonds.
+            self.reassign_nonsigma_bonds()
+
         self.changed()
         self.init_resonance_structures()
     def adj_mat2all_bond_orders(self, adj_mat):
@@ -257,11 +276,6 @@ class ChemGraph:
                 cur_assigned_valence=hatom.valence
                 self.hatoms[ha_id].valence=hatom.smallest_valid_valence(coordination_number=cur_assigned_valence)
                 self.hatoms[ha_id].nhydrogens+=self.hatoms[ha_id].valence-cur_assigned_valence
-        # TODO Check for ways to combine finding resonance structures with reassigning pi bonds.
-        # Check that valences make sense.
-        if not self.valences_reasonable():
-            # Try to reassign non-sigma bonds.
-            self.reassign_nonsigma_bonds()
     # If was modified (say, atoms added/removed), some data becomes outdated.
     def changed(self):
         self.canonical_permutation=None
@@ -277,8 +291,14 @@ class ChemGraph:
 
     # Checking graph's state.
     def valences_reasonable(self):
-        for ha in self.hatoms:
+        for ha_id, ha in enumerate(self.hatoms):
             if not ha.valence_reasonable():
+                return False
+            cur_val=ha.nhydrogens
+            for neigh in self.neighbors(ha_id):
+                btuple=sorted_tuple(ha_id, neigh)
+                cur_val+=self.bond_orders[btuple]
+            if ha.valence != cur_val:
                 return False
         return True
     def coordination_number(self, hatom_id):
@@ -487,12 +507,13 @@ class ChemGraph:
         ts_components=total_subgraph.components()
         members=ts_components.membership
         extra_val_subgraph_list=ts_components.subgraphs()
-        extra_val_ids_lists=sorted_by_membership(extra_valence_indices, members)
-        coord_nums_lists=sorted_by_membership(coordination_numbers, members)
+        extra_val_ids_lists=sorted_by_membership(members, extra_valence_indices)
+        coord_nums_lists=sorted_by_membership(members, coordination_numbers)
         return extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list
 
     # TODO: Maybe expand to include charge transfer?
     def init_resonance_structures(self):
+
         if ((self.resonance_structure_orders is not None) and (self.resonance_structure_map is not None) and (self.resonance_structure_inverse_map is not None)):
             return
 
@@ -851,24 +872,12 @@ class ChemGraph:
 
 
 # For splitting chemgraphs.
-def combine_chemgraphs(cg1, cg2):
-    new_hatoms=copy.deepcopy(cg1.hatoms+cg2.hatoms)
-    new_graph=disjoint_union([cg1.graph, cg2.graph])
-    id2_shift=cg1.nhatoms()
-    new_bond_orders=copy.deepcopy(cg1.bond_orders)
-    for bond_tuple, bond_order in cg2.bond_orders.items():
-        new_bond_tuple=tuple(np.array(bond_tuple)+id2_shift)
-        new_bond_orders[new_bond_tuple]=bond_order
-    return ChemGraph(hatoms=new_hatoms, bond_orders=new_bond_orders, graph=new_graph)
-
-#TODO this partially duplicates with splitting EGC's in utility.py and shares similar code to
-# modify's randomized_split_chemgraph
 def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=False):
     if copied:
         cg=cg_input
     else:
         cg=copy.deepcopy(cg_input)
-    subgraphs_vertex_ids=sorted_by_membership(list(range(cg.nhatoms())), membership_vector)
+    subgraphs_vertex_ids=sorted_by_membership(membership_vector)
     broken_bonds=[]
 
     new_graph_list=[]
@@ -915,32 +924,15 @@ def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=Fa
         output.append(new_cg)
     return output
 
-# TODO do we need it?
-def split_chemgraph(cg, membership_vector):
-    output=[]
-    cg_copy=copy.deepcopy(cg)
-    fragments=split_chemgraph_no_dissociation_check(cg_copy, membership_vector, copied=True)
-    for fragment in fragments:
-        if fragment.chemgraph.num_connected()==1:
-            output.append(fragment)
-        else:
-            # Break it further down.
-            fragment_mv=np.array(fragment.chemgraph.graph.components().membership)
-            connection_opportunities=np.zeros(len(fragment_mv), dtype=int)
-            for (bp, bo) in fragment.bond_positions_orders:
-                connection_opportunities[bp]=bo
-            sorted_connection_opportunities=sorted_by_membership(connection_opportunities, fragment_mv)
-            additional_frags=split_chemgraph_no_dissociation_check(fragment.chemgraph, fragment_mv)
-            new_fragments=[]
-            for f, cur_connection_opportunities in zip(additional_frags, sorted_connection_opportunities):
-                for co_id, co in enumerate(cur_connection_opportunities):
-                    if co != 0:
-                        f.bond_positions_orders.append((co_id, co))
-                new_fragments.append(f)
-            new_fragments.sort(key = lambda x : x.chemgraph.nhatoms(), reverse=True)
-            output+=new_fragments
-    return output
-
+def combine_chemgraphs(cg1, cg2):
+    new_hatoms=copy.deepcopy(cg1.hatoms+cg2.hatoms)
+    new_graph=disjoint_union([cg1.graph, cg2.graph])
+    id2_shift=cg1.nhatoms()
+    new_bond_orders=copy.deepcopy(cg1.bond_orders)
+    for bond_tuple, bond_order in cg2.bond_orders.items():
+        new_bond_tuple=tuple(np.array(bond_tuple)+id2_shift)
+        new_bond_orders[new_bond_tuple]=bond_order
+    return ChemGraph(hatoms=new_hatoms, bond_orders=new_bond_orders, graph=new_graph)
 
 
 def connection_forbidden(nc1, nc2, forbidden_bonds):
