@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 from rdkit import Chem  
 import pickle as pickle
-from sklearn.model_selection import train_test_split
 from sklearn import metrics
 from sklearn.pipeline import Pipeline
 from sklearn.kernel_ridge import KernelRidge
@@ -20,11 +19,9 @@ from rdkit.Avalon.pyAvalonTools import GetAvalonFP
 from qml.utils import alchemy
 from rdkit import RDLogger
 from rdkit.Chem import AllChem
-from sklearn.preprocessing import MinMaxScaler
 from rdkit.Chem import DataStructs
 import collections
 import pdb
-import deepchem as dc
 
 random.seed(1337)
 np.random.seed(1337)
@@ -45,35 +42,44 @@ np.random.seed(1337)
 
 def ExplicitBitVect_to_NumpyArray(fp_vec):
 
+    """
+    Convert the rdkit fingerprint to a numpy array
+    """
+
     fp2 = np.zeros((0,), dtype=int)
     DataStructs.ConvertToNumpyArray(fp_vec, fp2)
     return fp2
 
-    #return np.array(list(intmap))
 
 
 
 def get_single_FP(smi, fp_type):
+    
+    """
+    Computes the fingerprint of a molecule given its SMILES
+    Input:
+    smi: SMILES string
+    fp_type: type of fingerprint to be computed
+    """
+
     from rdkit.Chem import rdMolDescriptors
     mol = Chem.MolFromSmiles(smi)
 
     if fp_type=="MorganFingerprint":
         fp_mol = rdMolDescriptors.GetMorganFingerprintAsBitVect(
             mol,
-            radius=3,
-            nBits=4096,
+            radius=4,
+            nBits=8192,
             useFeatures=True,
         )
-
-    if fp_type=="TopologicalTorsion":
-        fp_mol = rdMolDescriptors.GetHashedTopologicalTorsionFingerprintAsBitVect(
-            mol,  nBits=4096)
-    if fp_type=="Avalon":
-        fp_mol = GetAvalonFP(mol, nBits=4096)
 
     return fp_mol
 
 def get_all_FP(SMILES, fp_type):
+
+    """
+    Returns a list of fingerprints for all the molecules in the list of SMILES
+    """
 
     X = []
     for smi in tqdm(SMILES):
@@ -85,7 +91,15 @@ def get_all_FP(SMILES, fp_type):
 
 
 def atomization_en(EN, ATOMS, normalize=False):
-    
+
+    """
+    Compute the atomization energy, if normalize is True, 
+    the output is normalized by the number of atoms. This allows 
+    predictions to be consistent when comparing molecules of different size
+    with respect to their bond energies i.e. set to True if the number of atoms 
+    changes in during the optimization process
+    """
+
     en_H = -0.500273 
     en_C = -37.846772
     en_N = -54.583861
@@ -149,35 +163,17 @@ def read_xyz(path):
                     
     return atoms, coordinates, smile, prop
 
-def gen_conf(SMILES):
 
-    RDKITS = []
-    FAILED = []
-
-    for ind, smi in enumerate(SMILES):
-
-        try:
-            mol=Chem.MolFromSmiles(smi)
-            mol=Chem.AddHs(mol, explicitOnly=True)
-            AllChem.EmbedMolecule(mol)
-            #AllChem.MMFFOptimizeMolecule(mol)
-            AllChem.UFFOptimizeMoleculeConfs(mol)
-            RDKITS.append(mol)
-
-        except Exception as e:
-            FAILED.append(ind)
-    
-    RDKITS,FAILED = np.array(RDKITS), np.array(FAILED)
-    return RDKITS,FAILED
-    
 
 def process_qm9(directory):
-    len(os.listdir(directory))
+    
+    """
+    Reads the xyz files in the directory on 'path' as well as the properties of 
+    the molecules in the same directory.
+    """
+
 
     file = os.listdir(directory)[0]
-    with open(directory+file, 'r') as f:
-        content = f.readlines()
-
 
     data = []
     smiles = []
@@ -223,8 +219,10 @@ if __name__ == "__main__":
     process=True
     TARGET_PROPERTY = 'atomization'
 
+
     if process:
         df = process_qm9('/store/jan/datasets/qm9/')
+                         #/store/common/jan/qm9/')
     else:
         df = pd.read_csv('qm9.csv')
 
@@ -237,31 +235,18 @@ if __name__ == "__main__":
     SMILES, y = SMILES[inds], y[inds]
 
 
-    param_grid = [{"krr__gamma": np.logspace(-11, -6, num=50), "krr__alpha": [1e-8, 1e-7]}]
+    param_grid = [{"krr__gamma": np.logspace(-11, -4, num=50), "krr__alpha": [1e-8, 1e-7]}]
 
 
-    N = [2**(i) for i in range(6, 13, 1)] 
-    #N.append(107037)
+    N = [64, 128, 512] #[2**(i) for i in range(6, 13, 1)] 
 
-    """
-    Try different representations!
-    RDKitDescriptors is the best one
-    #best model at 0.19 eV for the atomization energy with gamma = 5.96*1e-8 for N = 32768 for RDKitDescriptors
-    note atomization energy is  here not normalized by atomic size (following the usual definition).
-    for MC with different molecule sizes, set normalize=True in atomization_en()
-    """
-
-    DESCRIPTORS = [dc.feat.RDKitDescriptors(ipc_avg=True).featurize(SMILES),get_all_FP(SMILES, fp_type="MorganFingerprint"),get_all_FP(SMILES, fp_type="Avalon")]
+    DESCRIPTORS = [get_all_FP(SMILES, fp_type="MorganFingerprint")]
 
 
     for X in DESCRIPTORS:
 
         X_train, X_test, y_train, y_test = train_test_split(X,   y, random_state=1337, test_size=0.20, shuffle=True)
-        scaler = MinMaxScaler()
-        y_train = scaler.fit_transform(y_train.reshape(-1,1)).flatten()
-        y_test  = scaler.transform(y_test.reshape(-1,1)).flatten()
-        scalerfile = 'scaler.sav'
-        pickle.dump(scaler, open(scalerfile, 'wb'))
+        #pdb.set_trace()
         lrn_crv      = []
         for n in N:
 
@@ -269,17 +254,13 @@ if __name__ == "__main__":
             grid_search = GridSearchCV(clf, param_grid, cv=5, return_train_score=True, verbose=0, n_jobs=8, refit=True)
             grid_search.fit(X_train[:n], y_train[:n])
             best_model = grid_search.best_estimator_
+            print(best_model)
             predictions     = best_model.predict(X_test)
-            MAE             = metrics.mean_absolute_error(scaler.inverse_transform(predictions.reshape(-1,1)).flatten(), scaler.inverse_transform(y_test.reshape(-1,1)).flatten())
+            MAE             = metrics.mean_absolute_error(predictions, y_test)
             lrn_crv.append(MAE)
             print(n, MAE*27, best_model)
 
-            #model_name = "ATOMIZATION_NORM_QM9_FEATURES_{}".format(n)
-            #model_name = "GAP_QM9_FEATURES_{}".format(n)
-            #pickle.dump(best_model, open("./ml_data/"+model_name, 'wb'))
-
-    exit()
-    scalerfile = 'scaler.sav'
-    scaler = pickle.load(open(scalerfile, 'rb'))
-    model = pickle.load(open(model_name, 'rb'))
-    predictions = scaler.inverse_transform(model.predict(X_test))
+            model_name = "ATOMIZATION__{}".format(n)
+            
+    #pickle.dump(best_model, open("./ml_data/"+model_name, 'wb'))
+    #print("Saved model to disk")

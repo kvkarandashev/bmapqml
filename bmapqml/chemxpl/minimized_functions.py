@@ -24,23 +24,61 @@ class QM9_properties:
     model_path : Path to the QM9 machine created with train_qm9.py
     """
 
-    def __init__(self, model_path):
+    def __init__(self, model_path, verbose=False):
         import joblib
-        self.scaler_function = joblib.load(model_path+"scaler.sav")
+        import rdkit
+        from rdkit import Chem  
+        from rdkit.Chem import DataStructs
+        from rdkit.Chem import rdMolDescriptors
+
         self.ml_model = joblib.load(model_path+"ATOMIZATION")
+        self.verbose = verbose
                                                        
 
     def __call__(self, trajectory_point_in):
         from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
-        import deepchem as dc
     
         _, _, _, canon_SMILES = chemgraph_to_canonical_rdkit(
             trajectory_point_in.egc.chemgraph)
-        print(canon_SMILES)
-        X_test = dc.feat.RDKitDescriptors(
-            ipc_avg=True).featurize([canon_SMILES])
+        
+        X_test = self.ExplicitBitVect_to_NumpyArray(self.get_single_FP(canon_SMILES))
         prediction = self.scaler_function.inverse_transform(self.ml_model.predict(X_test).reshape(-1,1))
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES, "Prediction: ", prediction)
         return prediction[-1]
+
+    def get_single_FP(self, smi):
+        
+        """
+        Computes the fingerprint of a molecule given its SMILES
+        Input:
+        smi: SMILES string
+        fp_type: type of fingerprint to be computed
+        """
+
+        
+        mol = Chem.MolFromSmiles(smi)
+
+    
+        fp_mol = rdMolDescriptors.GetMorganFingerprintAsBitVect(
+            mol,
+            radius=4,
+            nBits=8192,
+            useFeatures=True,
+        )
+
+        return fp_mol
+
+    def ExplicitBitVect_to_NumpyArray(self, fp_vec):
+
+        """
+        Convert the rdkit fingerprint to a numpy array
+        """
+
+        fp2 = np.zeros((0,), dtype=int)
+        DataStructs.ConvertToNumpyArray(fp_vec, fp2)
+        return fp2
 
 class multi_obj:
 
@@ -95,3 +133,4 @@ class multi_obj:
             s+=value
 
         return s
+
