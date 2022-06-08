@@ -49,7 +49,8 @@ from bmapqml.chemxpl.utils import xyz_list2mols_extgraph
 
 
 
-output = xyz_list2mols_extgraph(["t.xyz"])
+#output = xyz_list2mols_extgraph(["/home/jan/projects/MOLOPT/molopt/examples/chemxpl/MC_minimization/t.xyz"])
+output = xyz_list2mols_extgraph(["./t.xyz"])
 
 init_ncharges=[17, 17]
 init_bond_orders={(0, 1) : 1}

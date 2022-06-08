@@ -336,4 +336,3 @@ def egc_with_coords(egc, coords=None, methods="MMFF"):
     return output
 
 
-
