@@ -1,3 +1,4 @@
+import pdb
 # If we explore diatomic molecule graph, this function will create  
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
@@ -16,8 +17,8 @@ class Diatomic_barrier:
     def bond_pot(self, cg):
         return float(cg.bond_order(0, 1)-1)
 
-class QM9_properties:
-
+class QM9_properties:  
+    
     """
     Interface for QM9 property prediction, uses RdKit features
     that can be extracted only from a molecular graph
@@ -25,13 +26,9 @@ class QM9_properties:
     """
 
     def __init__(self, model_path, verbose=False):
-        import joblib
-        import rdkit
-        from rdkit import Chem  
-        from rdkit.Chem import DataStructs
-        from rdkit.Chem import rdMolDescriptors
 
-        self.ml_model = joblib.load(model_path+"ATOMIZATION")
+        import joblib
+        self.ml_model = joblib.load(model_path+"ATOMIZATION_512")
         self.verbose = verbose
                                                        
 
@@ -40,16 +37,19 @@ class QM9_properties:
     
         _, _, _, canon_SMILES = chemgraph_to_canonical_rdkit(
             trajectory_point_in.egc.chemgraph)
-        
+
+     
         X_test = self.ExplicitBitVect_to_NumpyArray(self.get_single_FP(canon_SMILES))
-        prediction = self.scaler_function.inverse_transform(self.ml_model.predict(X_test).reshape(-1,1))
+        prediction = self.ml_model.predict(X_test.reshape(1, -1))
 
         if self.verbose:
-            print("SMILE:", canon_SMILES, "Prediction: ", prediction)
+            print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
         return prediction[-1]
 
     def get_single_FP(self, smi):
-        
+        import rdkit
+        from rdkit import Chem
+        from rdkit.Chem import rdMolDescriptors  
         """
         Computes the fingerprint of a molecule given its SMILES
         Input:
@@ -71,7 +71,10 @@ class QM9_properties:
         return fp_mol
 
     def ExplicitBitVect_to_NumpyArray(self, fp_vec):
-
+        import numpy as np 
+        import rdkit
+        from rdkit.Chem import DataStructs
+        from rdkit import Chem
         """
         Convert the rdkit fingerprint to a numpy array
         """
@@ -79,6 +82,10 @@ class QM9_properties:
         fp2 = np.zeros((0,), dtype=int)
         DataStructs.ConvertToNumpyArray(fp_vec, fp2)
         return fp2
+
+    def canonize(self,mol):
+        from rdkit import Chem
+        return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)    
 
 class multi_obj:
 
