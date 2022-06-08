@@ -67,10 +67,8 @@ histogram=[[] for i in range(negcs)]
 histogram_labels=[[] for i in range(negcs)]
 
 
-model_path = "/store/common/jan/export/"
-min_func = QM9_properties(model_path=model_path)
-#multi_obj([QM9_properties(model_path=model_path),QM9_properties(model_path=model_path)], [1,0.2],init_egcs, True)
-#QM9_properties(model_path=model_path)
+model_path = "/store/common/jan/qm9/"
+min_func = QM9_properties(model_path=model_path, verbose=True)
 
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params,
                             bound_enforcing_coeff=bound_enforcing_coeff, betas=betas, min_function=min_func, init_egcs=init_egcs, conserve_stochiometry=True)
@@ -108,4 +106,3 @@ for i, beta in enumerate(betas):
 print("Global histogram:")
 for egc, distr in zip(global_hist_labels, global_histogram):
     print(egc, distr)
-

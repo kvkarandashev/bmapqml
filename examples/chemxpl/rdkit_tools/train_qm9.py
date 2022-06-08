@@ -9,19 +9,14 @@ import rdkit
 import numpy as np
 import pandas as pd
 from rdkit import Chem  
-import pickle as pickle
+import pickle as pickle1
 from sklearn import metrics
 from sklearn.pipeline import Pipeline
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.model_selection import GridSearchCV
-from rdkit.Chem import AllChem
-from rdkit.Avalon.pyAvalonTools import GetAvalonFP
 from qml.utils import alchemy
-from rdkit import RDLogger
-from rdkit.Chem import AllChem
 from rdkit.Chem import DataStructs
 import collections
-import pdb
 
 random.seed(1337)
 np.random.seed(1337)
@@ -90,7 +85,7 @@ def get_all_FP(SMILES, fp_type):
     return X
 
 
-def atomization_en(EN, ATOMS, normalize=False):
+def atomization_en(EN, ATOMS, normalize=True):
 
     """
     Compute the atomization energy, if normalize is True, 
@@ -185,7 +180,7 @@ def process_qm9(directory):
         data.append((atoms, coordinates))
         smiles.append(smile)  # The SMILES representation
 
-        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=False)
+        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=True)
         prop += [ATOMIZATION]
         properties.append(prop)  # The molecules properties
 
@@ -216,13 +211,12 @@ def process_qm9(directory):
 
 
 if __name__ == "__main__":
-    process=True
+    process= True
     TARGET_PROPERTY = 'atomization'
 
 
     if process:
-        df = process_qm9('/store/jan/datasets/qm9/')
-                         #/store/common/jan/qm9/')
+        df = process_qm9('/store/common/jan/qm9/')
     else:
         df = pd.read_csv('qm9.csv')
 
@@ -235,32 +229,38 @@ if __name__ == "__main__":
     SMILES, y = SMILES[inds], y[inds]
 
 
-    param_grid = [{"krr__gamma": np.logspace(-11, -4, num=50), "krr__alpha": [1e-8, 1e-7]}]
+
+    param_grid = [{"krr__gamma": np.logspace(-11, -9, num=30), "krr__alpha": [1e-8]}]
 
 
-    N = [64, 128, 512] #[2**(i) for i in range(6, 13, 1)] 
+    N = [512]
+    #[10000]
+    # [64, 128, 512, 1024, 2048, ] #[2**(i) for i in range(6, 13, 1)] 
 
-    DESCRIPTORS = [get_all_FP(SMILES, fp_type="MorganFingerprint")]
+    X = get_all_FP(SMILES, fp_type="MorganFingerprint")
+    X_train, X_test, y_train, y_test = train_test_split(X,   y, random_state=1337, test_size=0.20, shuffle=True)
+    
+    """
+    Nullmodel
+    """
 
+    print('Nullmodel')
+    print(metrics.mean_absolute_error(y_test, np.ones_like(y_test)*np.mean(y_train))*27)
+    
+    lrn_crv      = []
+    for n in N:
 
-    for X in DESCRIPTORS:
+        clf = Pipeline([('krr', KernelRidge(kernel="laplacian"))])
+        grid_search = GridSearchCV(clf, param_grid, cv=3, return_train_score=True, verbose=0, n_jobs=8, refit=True)
+        grid_search.fit(X_train[:n], y_train[:n])
+        best_model = grid_search.best_estimator_
+        print(best_model)
+        predictions     = best_model.predict(X_test)
+        MAE             = metrics.mean_absolute_error(predictions, y_test)
+        lrn_crv.append(MAE)
+        print("value",n, MAE*27, best_model)
 
-        X_train, X_test, y_train, y_test = train_test_split(X,   y, random_state=1337, test_size=0.20, shuffle=True)
-        #pdb.set_trace()
-        lrn_crv      = []
-        for n in N:
+        model_name = "ATOMIZATION_{}".format(n)
 
-            clf = Pipeline([('krr', KernelRidge(kernel="laplacian"))])
-            grid_search = GridSearchCV(clf, param_grid, cv=5, return_train_score=True, verbose=0, n_jobs=8, refit=True)
-            grid_search.fit(X_train[:n], y_train[:n])
-            best_model = grid_search.best_estimator_
-            print(best_model)
-            predictions     = best_model.predict(X_test)
-            MAE             = metrics.mean_absolute_error(predictions, y_test)
-            lrn_crv.append(MAE)
-            print(n, MAE*27, best_model)
-
-            model_name = "ATOMIZATION__{}".format(n)
-            
-    #pickle.dump(best_model, open("./ml_data/"+model_name, 'wb'))
-    #print("Saved model to disk")
+        pickle.dump(best_model, open("./ml_data/"+model_name, 'wb'))
+        print("Saved model to disk")
