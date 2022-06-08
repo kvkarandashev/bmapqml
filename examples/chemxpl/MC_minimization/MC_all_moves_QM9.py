@@ -67,7 +67,7 @@ histogram=[[] for i in range(negcs)]
 histogram_labels=[[] for i in range(negcs)]
 
 
-model_path = "/store/common/jan/qm9/"
+model_path = "/store/common/jan/"
 min_func = QM9_properties(model_path=model_path, verbose=True)
 
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params,
