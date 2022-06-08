@@ -91,6 +91,9 @@ def randomized_change(tp, change_prob_dict=default_change_list, **other_kwargs):
 
     new_egc=egc_change_func(tp.egc, possibility_label, final_possibility_val, cur_change_procedure)
 
+    if new_egc is None:
+        return None, None
+
     new_tp=TrajectoryPoint(egc=new_egc)
     new_tp.init_possibility_info(**other_kwargs)
 
@@ -168,7 +171,7 @@ class TrajectoryPoint:
                 poss_id=0
                 while poss_id != len(poss_list):
                     result=egc_change_func(self.egc, poss_key, poss_list[poss_id], poss_func)
-                    if TrajectoryPoint(egc=result) in restricted_tps:
+                    if (result is None) or (TrajectoryPoint(egc=result) in restricted_tps):
                         poss_id+=1
                     else:
                         del(poss_list[poss_id])
@@ -177,6 +180,7 @@ class TrajectoryPoint:
                     del(poss_keys[poss_key_id])
                 else:
                     poss_key_id+=1
+
 
     def possibilities(self):
         return {add_heavy_atom_chain : self.chain_addition_possibilities,
@@ -408,6 +412,8 @@ class RandomWalk:
         changed_tp=self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance=randomized_change(changed_tp, change_prob_dict=self.change_list, **self.used_randomized_change_params)
+        if new_tp is None:
+            return False
         accepted=self.accept_reject_move([new_tp], prob_balance, replica_ids=[replica_id])
         return accepted
 

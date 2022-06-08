@@ -13,7 +13,7 @@ possible_elements=['P', 'N']
 forbidden_bonds=[(15, 15)]
 #forbidden_bonds=None
 
-MC_step_num=50000
+MC_step_num=50000 #50000
 
 bias_coeff=None
 

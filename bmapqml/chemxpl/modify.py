@@ -49,7 +49,7 @@ def atom_replacement_possibilities(egc, inserted_atom, inserted_valence=None, re
                     break
             if cont:
                 continue
-        if ha.smallest_valid_valence()!=ha.valence:
+        if default_valence(ha.ncharge)!=ha.valence:
             continue
         if ha.valence-inserted_valence<=ha.nhydrogens:
             if exclude_equivalent:
@@ -69,7 +69,7 @@ def atom_removal_possibilities(egc, deleted_atom=None, exclude_equivalent=True, 
         if deleted_atom is not None:
             if ha.ncharge != deleted_iac:
                 continue
-        if ha.smallest_valid_valence()!=ha.valence:
+        if default_valence(ha.ncharge)!=ha.valence:
             continue
         if only_end_atoms:
             neighs=egc.chemgraph.graph.neighbors(ha_id)
@@ -97,6 +97,7 @@ def chain_addition_possibilities(egc, chain_starting_element=None, forbidden_bon
     return possible_ids
 
 def bond_change_possibilities(egc, bond_order_change, forbidden_bonds=None, fragment_member_vector=None, max_fragment_num=None, exclude_equivalent=True, **other_kwargs):
+
     natoms=egc.num_heavy_atoms()
     output=[]
     if bond_order_change != 0:
@@ -185,6 +186,13 @@ def remove_heavy_atom(egc, removed_atom_id):
 def change_bond_order(egc, atom_id1, atom_id2, bond_order_change, resonance_structure_id=0):
     new_chemgraph=deepcopy(egc.chemgraph)
     new_chemgraph.change_bond_order(atom_id1, atom_id2, bond_order_change, resonance_structure_id=resonance_structure_id)
+
+    if new_chemgraph.non_default_valence_present():
+        old_non_default_valences=new_chemgraph.non_default_valences()
+        new_chemgraph.reassign_nonsigma_bonds()
+        if old_non_default_valences != new_chemgraph.non_default_valences():
+            return None
+            
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
 def change_valence(egc, modified_atom_id, new_valence):
@@ -257,12 +265,21 @@ class FragmentPair:
 
         new_graph=disjoint_union([remainder_subgraph, other_frag_subgraph])
 
+        created_bonds=[]
+
         for btuple1, btuple2 in zip(switched_bond_tuples_self, switched_bond_tuples_other):
             internal_id1=self.sorted_vertices[0].index(btuple1[0])
             internal_id2=other_fp.sorted_vertices[1].index(btuple2[1])+nhatoms1
-            new_graph.add_edge(internal_id1, internal_id2)
+
+            new_bond_tuple=(internal_id1, internal_id2)
+            if new_bond_tuple in created_bonds:
+                return None, None # from detailed balance concerns
+            else:
+                created_bonds.append(new_bond_tuple)
+            
+            new_graph.add_edge(*new_bond_tuple)
             if forbidden_bonds is not None:
-                if sorted_tuple(new_hatoms[internal_id1].ncharge, new_hatoms[internal_id2].ncharge) in forbidden_bonds:
+                if connection_forbidden(*[new_hatoms[internal_id].ncharge for internal_id in new_bond_tuple], forbidden_bonds):
                     return None, None
 
         return ChemGraph(hatoms=new_hatoms, graph=new_graph), new_membership_vector
@@ -404,10 +421,6 @@ def randomized_cross_coupling(cg_pair, cross_coupling_fragment_ratio_range=[.0, 
     # Account for probability of choosing the necessary resonance structure.
     backwards_fragment_pairs=[FragmentPair(new_cg, new_membership_vector) for new_cg, new_membership_vector in zip(new_cg_pair, new_membership_vectors)]
     backwards_mdtuples=matching_dict_tuples(*backwards_fragment_pairs)
-
-    # Happens when two single bonds coming from the same atom "collapse" into one double bond.
-    if len(backwards_mdtuples)==0:
-        return None, None
 
     tot_choice_prob_ratio/=len(backwards_mdtuples)
 

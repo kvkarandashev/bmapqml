@@ -208,7 +208,8 @@ num_state_coords={hatom_state_coords : 5}
 # TODO revise initialization procedure, does not work if hatoms and bond_orders initialized.
 class ChemGraph:
     def __init__(self, graph=None, hatoms=None, bond_orders=None, all_bond_orders=None, adj_mat=None, nuclear_charges=None,
-                            hydrogen_autofill=False, resonance_structure_orders=None, resonance_structure_map=None, resonance_structure_inverse_map=None):
+                            hydrogen_autofill=False, resonance_structure_orders=None, resonance_structure_map=None, resonance_structure_inverse_map=None,
+                            hydrogen_numbers=None):
         self.graph=graph
         self.hatoms=hatoms
         self.bond_orders=bond_orders
@@ -230,7 +231,7 @@ class ChemGraph:
                 for e in self.graph.get_edgelist():
                     self.bond_orders[e]=1
         if ((self.graph is None) or (self.hatoms is None)):
-            self.init_graph_natoms(np.array(nuclear_charges), hydrogen_autofill=hydrogen_autofill)
+            self.init_graph_natoms(np.array(nuclear_charges), hydrogen_autofill=hydrogen_autofill, hydrogen_numbers=hydrogen_numbers)
         # TODO Check for ways to combine finding resonance structures with reassigning pi bonds.
         # Check that valences make sense.
 
@@ -240,13 +241,15 @@ class ChemGraph:
 
         self.changed()
         self.init_resonance_structures()
+
     def adj_mat2all_bond_orders(self, adj_mat):
         self.all_bond_orders={}
         for atom1, adj_mat_row in enumerate(adj_mat):
             for atom2, adj_mat_val in enumerate(adj_mat_row[:atom1]):
                 if adj_mat_val != 0:
                     self.all_bond_orders[(atom2, atom1)]=adj_mat_val
-    def init_graph_natoms(self, nuclear_charges, hydrogen_autofill=False):
+
+    def init_graph_natoms(self, nuclear_charges, hydrogen_autofill=False, hydrogen_numbers=None):
         self.hatoms=[]
         if self.bond_orders is not None:
             heavy_bond_orders=self.bond_orders
@@ -272,10 +275,18 @@ class ChemGraph:
                     else:
                         self.hatoms[true_id].nhydrogens+=bond_order
         if hydrogen_autofill:
-            for ha_id, hatom in enumerate(self.hatoms):
-                cur_assigned_valence=hatom.valence
-                self.hatoms[ha_id].valence=hatom.smallest_valid_valence(coordination_number=cur_assigned_valence)
-                self.hatoms[ha_id].nhydrogens+=self.hatoms[ha_id].valence-cur_assigned_valence
+            if hydrogen_numbers is None:
+                for ha_id, hatom in enumerate(self.hatoms):
+                    cur_assigned_valence=hatom.valence
+                    self.hatoms[ha_id].valence=hatom.smallest_valid_valence(coordination_number=cur_assigned_valence)
+                    self.hatoms[ha_id].nhydrogens+=self.hatoms[ha_id].valence-cur_assigned_valence
+            else:
+                for ha_id, nhydrogens in enumerate(hydrogen_numbers):
+                    self.hatoms[ha_id].nhydrogens=nhydrogens
+                    self.hatoms[ha_id].valence=nhydrogens
+                for e in self.graph.get_edgelist():
+                    self.hatoms[e[0]].valence+=self.bond_orders[e]
+                    self.hatoms[e[1]].valence+=self.bond_orders[e]
     # If was modified (say, atoms added/removed), some data becomes outdated.
     def changed(self):
         self.canonical_permutation=None
@@ -301,8 +312,10 @@ class ChemGraph:
             if ha.valence != cur_val:
                 return False
         return True
+
     def coordination_number(self, hatom_id):
         return len(self.neighbors(hatom_id))+self.hatoms[hatom_id].nhydrogens
+
     def atoms_equivalent(self, *atom_id_list):
         for i in range(len(atom_id_list)-1):
             if not self.atom_pair_equivalent(atom_id_list[i], atom_id_list[i+1]):
@@ -338,6 +351,21 @@ class ChemGraph:
             temp_colors1[atom_id1]=dummy_color
             temp_colors2[atom_id2]=dummy_color
         return self.graph.isomorphic_vf2(self.graph, color1=temp_colors1, color2=temp_colors2)
+
+    def non_default_valence_present(self):
+        for ha in self.hatoms:
+            if ha.valence_val_id() != 0:
+                return True
+        return False
+
+    def non_default_valences(self):
+        output=[]
+        for ha_id, ha in enumerate(self.hatoms):
+            cur_val_id=ha.valence_val_id()
+            if cur_val_id != 0:
+                output.append((ha_id, cur_val_id))
+        return output
+
     #TO-DO a better graph-based way to do it?
     def pairs_equivalent(self, unsorted_tuple1, unsorted_tuple2):
         tuple1, tuple2=sorted_tuples(unsorted_tuple1, unsorted_tuple2)
@@ -498,6 +526,8 @@ class ChemGraph:
                 coordination_numbers.append(cur_coord_number)
                 extra_valence_indices.append(hatom_id)
             hatom.valence=hatom.smallest_valid_valence(cur_coord_number)
+        if len(extra_valence_indices)==0: # no non-sigma bonds to reassign
+            return
         extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list=self.extra_valence_subgraphs(extra_valence_indices, coordination_numbers)
         for extra_val_ids, coord_nums, extra_val_subgraph in zip(extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list):
             self.reassign_nonsigma_bonds_subgraph(extra_val_ids, coord_nums, extra_val_subgraph)
