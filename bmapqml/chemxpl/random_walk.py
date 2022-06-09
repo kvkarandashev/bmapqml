@@ -209,10 +209,11 @@ class TrajectoryPoint:
             output[quant_name]=self.calculated_data[quant_name]
         return output
 
-    def update_additional_data(self, additional_data_func):
-        new_add_data=additional_data_func(self)
-        for label, val in new_add_data.items():
-            self.additional_data[label]=val
+    def visit_num(self, replica_id):
+        if self.num_visits is None:
+            return 0
+        else:
+            return self.num_visits[replica_id]
 
     def __lt__(self, tp2):
         return (self.egc < tp2.egc)
@@ -280,9 +281,14 @@ def random_pair(arr_length):
 
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
-    def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, starting_histogram=None, conserve_stochiometry=False,
+    def __init__(self, init_egcs=None, bias_coeff=None, vbeta_bias_coeff=None, randomized_change_params={}, starting_histogram=None, conserve_stochiometry=False,
                     bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, num_replicas=None,
                     no_exploration=False, no_exploration_smove_adjust=False, restricted_tps=None, min_function_name="MIN_FUNCTION", num_saved_candidates=None):
+        """
+        betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
+        bias_coeff : biasing potential applied to push real beta replicas out of local minima
+        vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
+        """
         self.num_replicas=num_replicas
         if isinstance(betas, list):
             self.num_replicas=len(betas)
@@ -301,7 +307,7 @@ class RandomWalk:
         if starting_histogram is None:
             if keep_histogram:
                 self.histogram=SortedList()
-                self.update_histogram()
+                self.update_histogram(list(range(self.num_replicas)))
             else:
                 self.histogram=None
         else:
@@ -316,6 +322,8 @@ class RandomWalk:
                 self.no_exploration_smove_adjust=no_exploration_smove_adjust
 
         self.bias_coeff=bias_coeff
+        self.vbeta_bias_coeff=vbeta_bias_coeff
+
         self.randomized_change_params=randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
         self.keep_histogram=keep_histogram
@@ -365,7 +373,7 @@ class RandomWalk:
 
 
         if self.keep_histogram:
-            self.update_histogram()
+            self.update_histogram(replica_ids)
         if self.num_saved_candidates is not None:
             self.update_saved_candidates()
 
@@ -393,8 +401,15 @@ class RandomWalk:
                 old_vals=[]
                 for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
                     if self.virtual_beta_id(replica_id):
-                        trial_vals.append(self.eval_min_func(new_tp))
-                        old_vals.append(self.eval_min_func(prev_tp))
+                        trial_val=self.eval_min_func(new_tp)
+                        old_val=self.eval_min_func(prev_tp)
+
+                        if self.vbeta_bias_coeff is not None:
+                            trial_val+=self.vbeta_bias_coeff*new_tp.visit_num(replica_id)
+                            old_val+=self.vbeta_bias_coeff*prev_tp.visit_num(replica_id)
+
+                        trial_vals.append(trial_val)
+                        old_vals.append(old_val)
                 return (min(trial_vals)<min(old_vals))
             else:
                 for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
@@ -587,12 +602,9 @@ class RandomWalk:
             return 0.0
         else:
             tp_index=self.histogram_index_add(tp)
-            if self.histogram[tp_index].num_visits is None:
-                return .0
-            else:
-                return self.histogram[tp_index].num_visits[replica_id]*self.bias_coeff
-    def update_histogram(self):
-        for replica_id in range(self.num_replicas):
+            return self.histogram[tp_index].visit_num(replica_id)*self.bias_coeff
+    def update_histogram(self, replica_ids):
+        for replica_id in replica_ids:
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
             if self.histogram[tp_index].num_visits is None:
                 self.histogram[tp_index].num_visits=np.zeros((self.num_replicas,), dtype=int)

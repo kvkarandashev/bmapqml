@@ -29,7 +29,8 @@ betas=[None, None, ref_beta, ref_beta/2, ref_beta/4, ref_beta/8]
 
 num_MC_steps=2000
 
-bias_coeff=.1
+bias_coeff=.25
+vbeta_bias_coeff=1.e-5
 bound_enforcing_coeff=1.0
 
 """
@@ -69,7 +70,7 @@ current_best=[]
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params,
                             bound_enforcing_coeff=bound_enforcing_coeff, betas=betas, min_function=min_func,
                             init_egcs=init_egcs, conserve_stochiometry=False, min_function_name="QM9_model",
-                            keep_histogram=True, num_saved_candidates=4)
+                            keep_histogram=True, num_saved_candidates=4, vbeta_bias_coeff=vbeta_bias_coeff)
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
     # We can access "num_saved_candidates" of best candidates encountered so far as follows:
