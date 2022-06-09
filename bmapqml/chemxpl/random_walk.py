@@ -353,13 +353,16 @@ class RandomWalk:
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
-        self.moves_since_changed+=1
 
         accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
         if accepted:
             for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.cur_tps[replica_id]=new_tp
                 self.moves_since_changed[replica_id]=0
+        else:
+            for replica_id in replica_ids:
+                self.moves_since_changed[replica_id]+=1
+
 
         if self.keep_histogram:
             self.update_histogram()
@@ -432,7 +435,7 @@ class RandomWalk:
                 if egc.num_heavy_atoms() < final_nhatoms_range[0]:
                     output+=final_nhatoms_range[0]-egc.num_heavy_atoms()
         return output
-
+    # TODO do we still need Metropolis_rejection_prob? Does not appear anywhere.
     def tp_pair_order_prob(self, replica_ids, tp_pair=None, Metropolis_rejection_prob=False):
         if tp_pair is None:
             tp_pair=[self.cur_tps[replica_id] for replica_id in replica_ids]
@@ -512,20 +515,12 @@ class RandomWalk:
             self.genetic_MC_step(changed_replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
-        self.moves_since_changed+=1
 
         if self.min_function is not None:
             for attempted_change_counter in range(num_parallel_tempering_tries):
                 old_ids=random_pair(self.num_replicas)
-                switch_prob=self.tp_pair_order_prob(old_ids, Metropolis_rejection_prob=True)
-                if random.random()>switch_prob:
-                    self.cur_tps[old_ids[0]], self.cur_tps[old_ids[1]]=self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]
-                    for old_id in old_ids:
-                        self.moves_since_changed[old_id]=0
-
-            if self.keep_histogram:
-                self.update_histogram()
-
+                trial_tps=[self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]]
+                accepted=self.accept_reject_move(trial_tps, .0, replica_ids=old_ids)
 
     def global_random_change(self, prob_dict={"simple" : 0.5, "genetic" : 0.25, "tempering" : 0.25}, **other_kwargs):
         cur_procedure=random.choices(list(prob_dict), weights=list(prob_dict.values()))[0]
@@ -592,7 +587,10 @@ class RandomWalk:
             return 0.0
         else:
             tp_index=self.histogram_index_add(tp)
-            return self.histogram[tp_index].num_visits[replica_id]*self.bias_coeff
+            if self.histogram[tp_index].num_visits is None:
+                return .0
+            else:
+                return self.histogram[tp_index].num_visits[replica_id]*self.bias_coeff
     def update_histogram(self):
         for replica_id in range(self.num_replicas):
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
