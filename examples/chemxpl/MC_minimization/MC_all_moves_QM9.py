@@ -21,11 +21,11 @@ possible_elements=['Cl', 'F', "C", "O", "N"]
 
 forbidden_bonds=None #[(17, 9)]
 
-ln2=math.log(2.)
+ref_beta=1.
+#ref_beta=2000.
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
-betas=[None, ln2, ln2/2]
-#betas=[ln2, ln2, ln2, ln2, ln2, ln2]
+betas=[None, ref_beta, ref_beta/2]
 
 num_MC_steps=100
 
@@ -76,6 +76,7 @@ for MC_step in range(num_MC_steps):
     print("Current best at step:", MC_step)
     for i, cc in enumerate(rw.saved_candidates):
         print(i, cc)
+    print("Number of moves since last change:", rw.moves_since_changed)
 
 print("Number of explored molecules:", len(rw.histogram))
 

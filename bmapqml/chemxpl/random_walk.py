@@ -338,6 +338,7 @@ class RandomWalk:
         # For storing statistics on move success.
         self.num_attempted_cross_couplings=0
         self.num_accepted_cross_couplings=0
+        self.moves_since_changed=np.zeros((self.num_replicas,), dtype=int)
 
     def init_randomized_change_params(self, randomized_change_params=None):
         if randomized_change_params is not None:
@@ -352,10 +353,13 @@ class RandomWalk:
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
+        self.moves_since_changed+=1
+
         accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
         if accepted:
             for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.cur_tps[replica_id]=new_tp
+                self.moves_since_changed[replica_id]=0
 
         if self.keep_histogram:
             self.update_histogram()
@@ -508,12 +512,20 @@ class RandomWalk:
             self.genetic_MC_step(changed_replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
+        self.moves_since_changed+=1
+
         if self.min_function is not None:
             for attempted_change_counter in range(num_parallel_tempering_tries):
                 old_ids=random_pair(self.num_replicas)
                 switch_prob=self.tp_pair_order_prob(old_ids, Metropolis_rejection_prob=True)
                 if random.random()>switch_prob:
                     self.cur_tps[old_ids[0]], self.cur_tps[old_ids[1]]=self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]
+                    for old_id in old_ids:
+                        self.moves_since_changed[old_id]=0
+
+            if self.keep_histogram:
+                self.update_histogram()
+
 
     def global_random_change(self, prob_dict={"simple" : 0.5, "genetic" : 0.25, "tempering" : 0.25}, **other_kwargs):
         cur_procedure=random.choices(list(prob_dict), weights=list(prob_dict.values()))[0]
