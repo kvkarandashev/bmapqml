@@ -9,6 +9,8 @@ from rdkit.Chem.rdmolfiles import MolToSmiles, MolFromSmiles
 from bmapqml.chemxpl.utils import xyz2mol_extgraph
 from rdkit.Chem.rdmolops import AddHs
 from copy import deepcopy
+from sortedcontainers import SortedList
+from bmapqml.utils import dump2pkl
 import pdb
 #nuclear_charges, atomic_symbols, xyz_coordinates, add_attr_dict = xyz2mol_extgraph(
 #    "./t.xyz")
@@ -46,9 +48,6 @@ global_change_params={"num_parallel_tempering_tries" : 5, "num_genetic_tries" : 
 
 from bmapqml.chemxpl.utils import xyz_list2mols_extgraph
 
-
-
-
 #output = xyz_list2mols_extgraph(["/home/jan/projects/MOLOPT/molopt/examples/chemxpl/MC_minimization/t.xyz"])
 output = xyz_list2mols_extgraph(["./t.xyz"])
 
@@ -63,46 +62,22 @@ negcs=len(betas)
 
 init_egcs=[ExtGraphCompound(chemgraph=deepcopy(init_cg)) for i in range(negcs)]
 
-histogram=[[] for i in range(negcs)]
-histogram_labels=[[] for i in range(negcs)]
-
-
 model_path = "/store/common/jan/"
 min_func = QM9_properties(model_path=model_path, verbose=True)
+min_func_name = "QM9_model"
 
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params,
-                            bound_enforcing_coeff=bound_enforcing_coeff, betas=betas, min_function=min_func, init_egcs=init_egcs, conserve_stochiometry=True)
+                            bound_enforcing_coeff=bound_enforcing_coeff, betas=betas, min_function=min_func,
+                            init_egcs=init_egcs, conserve_stochiometry=True, min_function_name="QM9_model",
+                            keep_histogram=True, num_saved_candidates=3)
 for MC_step in range(num_MC_steps):
-    # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
-    #try:
     rw.global_random_change(**global_change_params)
-    cur_egcs=[tp.egc for tp in rw.cur_tps]
-    for i in range(negcs):
-        cur_egc=cur_egcs[i]
-        if cur_egc not in histogram_labels[i]:
-            histogram_labels[i].append(deepcopy(cur_egc))
-            histogram[i].append(0)
-        cur_egc_id=histogram_labels[i].index(cur_egc)
-        histogram[i][cur_egc_id]+=1
-        print(i, cur_egc)
-    #except Exception as e:
-    #    print(e)
+    # We can access "num_saved_candidates" of best candidates encountered so far as follows:
+    print("Current best at step:", MC_step)
+    for i, cc in enumerate(rw.saved_candidates):
+        print(i, cc)
 
-global_hist_labels=[]
-global_histogram=[]
+print("Number of explored molecules:", len(rw.histogram))
 
-for i, beta in enumerate(betas):
-    print("Beta:", beta, "index:", i)
-    for egc, distr in zip(histogram_labels[i], histogram[i]):
-        print("EGC:", egc)
-        print("Distribution:", distr)
-    for hl, hv in zip(histogram_labels[i], histogram[i]):
-        if hl not in global_hist_labels:
-            global_hist_labels.append(hl)
-            global_histogram.append(0)
-        i=global_hist_labels.index(hl)
-        global_histogram[i]+=hv
-
-print("Global histogram:")
-for egc, distr in zip(global_hist_labels, global_histogram):
-    print(egc, distr)
+dump2pkl(rw.histogram, "QM9_histogram.pkl")
+dump2pkl(rw.saved_candidates, "QM9_best_candidates.pkl")

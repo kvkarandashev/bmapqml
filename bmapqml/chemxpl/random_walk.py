@@ -118,11 +118,14 @@ def randomized_change(tp, change_prob_dict=default_change_list, **other_kwargs):
 
 # This class stores all the infromation needed to preserve detailed balance of the random walk.
 class TrajectoryPoint:
-    def __init__(self, egc=None, cg=None, num_visits=0):
+    def __init__(self, egc=None, cg=None, num_visits=None):
         if egc is None:
             if cg is not None:
                 egc=ExtGraphCompound(chemgraph=cg)
         self.egc=egc
+
+        if num_visits is not None:
+            num_visits=copy.deecopy(num_visits)
         self.num_visits=num_visits
         # Information for keeping detailed balance.
         self.bond_order_change_possibilities=None
@@ -131,7 +134,8 @@ class TrajectoryPoint:
         self.valence_change_possibilities=None
         self.chain_addition_possibilities=None
 
-        self.additional_data=None
+        self.calculated_data={}
+
     # TO-DO better way to write this?
     def init_possibility_info(self, bond_order_changes=[-1, 1], possible_elements=['C'], restricted_tps=None, **other_kwargs):
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
@@ -188,12 +192,28 @@ class TrajectoryPoint:
                     remove_heavy_atom : self.atom_removal_possibilities,
                     change_bond_order : self.bond_order_change_possibilities,
                     change_valence : self.valence_change_possibilities}
+
+    def calc_or_lookup(self, func_dict, args_dict=None, kwargs_dict=None):
+        output={}
+        for quant_name in func_dict.keys():
+            if quant_name not in self.calculated_data:
+                if args_dict is None:
+                    args=()
+                else:
+                    args=args_dict[quant_name]
+                if kwargs_dict is None:
+                    kwargs={}
+                else:
+                    kwargs=kwargs_dict[quant_name]
+                self.calculated_data[quant_name]=func_dict[quant_name](self, *args, **kwargs)
+            output[quant_name]=self.calculated_data[quant_name]
+        return output
+
     def update_additional_data(self, additional_data_func):
         new_add_data=additional_data_func(self)
         for label, val in new_add_data.items():
             self.additional_data[label]=val
-    def calc_min_function(self, min_function):
-        return min_function(**self.additional_data)
+
     def __lt__(self, tp2):
         return (self.egc < tp2.egc)
     def __gt__(self, tp2):
@@ -205,6 +225,27 @@ class TrajectoryPoint:
     def __repr__(self):
         return str(self)
 
+# Auxiliary class for more convenient maintenance of candidate compound list.
+class CandidateCompound:
+    def __init__(self, tp, func_val):
+        self.tp=tp
+        self.func_val=func_val
+    def __eq__(self, cc2):
+        return (self.tp == cc2.tp)
+    def __gt__(self, cc2):
+        if self==cc2:
+            return False
+        else:
+            return self.func_val > cc2.func_val
+    def __lt__(self, cc2):
+        if self==cc2:
+            return False
+        else:
+            return self.func_val < cc2.func_val
+    def __str__(self):
+        return "(CandidateCompound,func_val:"+str(self.func_val)+",ChemGraph:"+str(self.tp.egc.chemgraph)
+    def __repr__(self):
+        return str(self)
 
 def tidy_forbidden_bonds(forbidden_bonds):
     if forbidden_bonds is None:
@@ -240,8 +281,8 @@ def random_pair(arr_length):
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
     def __init__(self, init_egcs=None, bias_coeff=None, randomized_change_params={}, starting_histogram=None, conserve_stochiometry=False,
-                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, additional_data_function=None, num_replicas=None,
-                    no_exploration=False, no_exploration_smove_adjust=False, restricted_tps=None):
+                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, num_replicas=None,
+                    no_exploration=False, no_exploration_smove_adjust=False, restricted_tps=None, min_function_name="MIN_FUNCTION", num_saved_candidates=None):
         self.num_replicas=num_replicas
         if isinstance(betas, list):
             self.num_replicas=len(betas)
@@ -252,9 +293,9 @@ class RandomWalk:
                 self.num_replicas=1
             init_egcs=[init_egcs for i in range(self.num_replicas)]
         self.betas=betas
+
         if isinstance(self.betas, list):
             assert(len(self.betas)==self.num_replicas)
-
 
         self.cur_tps=[TrajectoryPoint(egc=init_egc) for init_egc in init_egcs]
         if starting_histogram is None:
@@ -287,11 +328,12 @@ class RandomWalk:
         self.hydrogen_nums=None
 
         self.min_function=min_function
-        self.additional_data_function=additional_data_function
-
-        if self.additional_data_function is not None:
-            for i in range(self.num_replicas):
-                self.cur_tps[i].update_additional_data(self.additional_data_function)
+        if self.min_function is not None:
+            self.min_function_name=min_function_name
+            self.min_function_dict={self.min_function_name : self.min_function}
+        self.num_saved_candidates=num_saved_candidates
+        if self.num_saved_candidates is not None:
+            self.saved_candidates=[]
 
         # For storing statistics on move success.
         self.num_attempted_cross_couplings=0
@@ -314,8 +356,11 @@ class RandomWalk:
         if accepted:
             for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.cur_tps[replica_id]=new_tp
+
         if self.keep_histogram:
             self.update_histogram()
+        if self.num_saved_candidates is not None:
+            self.update_saved_candidates()
 
         return accepted
 
@@ -327,8 +372,8 @@ class RandomWalk:
                     return False
         if self.histogram is not None:
             for new_tp_id in range(len(new_tps)):
-                true_new_tp_id=self.histogram_index_add(new_tps[new_tp_id])
-                new_tps[new_tp_id]=self.histogram[true_new_tp_id]
+                histogram_new_tp_id=self.histogram_index_add(new_tps[new_tp_id])
+                new_tps[new_tp_id]=self.histogram[histogram_new_tp_id]
 
         delta_pot=prob_balance
 
@@ -350,7 +395,7 @@ class RandomWalk:
 
         for replica_id, new_tp, prev_tp in zip(replica_ids, new_tps, prev_tps):
             if self.bias_coeff is not None:
-                delta_pot+=self.biasing_potential(new_tp)-self.biasing_potential(prev_tp)
+                delta_pot+=self.biasing_potential(new_tp, replica_id)-self.biasing_potential(prev_tp, replica_id)
             if self.bound_enforcing_coeff is not None:
                 delta_pot+=self.bound_enforcing_pot(new_tp, replica_id)-self.bound_enforcing_pot(prev_tp, replica_id)
 
@@ -489,6 +534,7 @@ class RandomWalk:
         self.num_replicas=len(self.cur_tps)
         if self.betas is not None:
             assert(len(self.betas)==self.num_replicas)
+
     def converted_current_egcs(self, mol_format=None):
         return [conv_func_mol_egc(cur_tp.egc, mol_format=mol_format, forward=False) for cur_tp in self.cur_tps]
 
@@ -513,7 +559,8 @@ class RandomWalk:
 
     # Either evaluate minimized function or look it up.
     def eval_min_func(self, tp):
-        return self.min_function(tp)
+        return tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
+
     # If we want to re-merge two different trajectories.
     def combine_with(self, other_rw):
         for tp in other_rw.histogram:
@@ -527,16 +574,29 @@ class RandomWalk:
         if tp not in self.histogram:
             self.histogram.add(tp)
         return self.histogram.index(tp)
-    def biasing_potential(self, tp):
+
+    def biasing_potential(self, tp, replica_id):
         if self.bias_coeff is None:
             return 0.0
         else:
             tp_index=self.histogram_index_add(tp)
-            return self.histogram[tp_index].num_visits*self.bias_coeff
+            return self.histogram[tp_index].num_visits[replica_id]*self.bias_coeff
     def update_histogram(self):
         for replica_id in range(self.num_replicas):
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
-            self.histogram[tp_index].num_visits+=1
+            if self.histogram[tp_index].num_visits is None:
+                self.histogram[tp_index].num_visits=np.zeros((self.num_replicas,), dtype=int)
+            self.histogram[tp_index].num_visits[replica_id]+=1
+    def update_saved_candidates(self):
+        for tp in self.cur_tps:
+            if self.min_function_name in tp.calculated_data:
+                new_cc=CandidateCompound(tp, tp.calculated_data[self.min_function_name])
+                if new_cc not in self.saved_candidates:
+                    self.saved_candidates.append(new_cc)
+        self.saved_candidates.sort()
+        if len(self.saved_candidates)>self.num_saved_candidates:
+            del(self.saved_candidates[self.num_saved_candidates:])
+
 
 def merge_random_walks(*rw_list):
     output=rw_list[0]

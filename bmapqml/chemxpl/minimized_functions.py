@@ -26,6 +26,12 @@ class OrderSlide:
         return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
+from .utils import chemgraph_to_canonical_rdkit   
+
+def trajectory_point_to_canonical_rdkit(tp_in):
+    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+
+
 class QM9_properties:
 
     """
@@ -39,15 +45,15 @@ class QM9_properties:
         import joblib
         self.ml_model = joblib.load(model_path+"ATOMIZATION_512")
         self.verbose = verbose
-                                                       
+
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
     def __call__(self, trajectory_point_in):
         from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
-    
-        _, _, _, canon_SMILES = chemgraph_to_canonical_rdkit(
-            trajectory_point_in.egc.chemgraph)
 
-     
+        # KK: This demonstrates how expensive intermediate data can be saved too.
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+
         X_test = self.ExplicitBitVect_to_NumpyArray(self.get_single_FP(canon_SMILES))
         prediction = self.ml_model.predict(X_test.reshape(1, -1))
 
