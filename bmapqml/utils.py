@@ -23,8 +23,11 @@
 
 # Miscellaneous functions and classes used throughout the code.
 import pickle, subprocess
+
+from matplotlib.pyplot import fignum_exists
 from .data import NUCLEAR_CHARGE
 import numpy as np
+import pdb
 
 def canonical_atomtype(atomtype):
     return atomtype[0].upper()+atomtype[1:].lower()
@@ -136,4 +139,73 @@ def execute_string(string):
     subprocess.run(["chmod", "+x", script_name])
     subprocess.run(["./"+script_name])
     rmdir(script_name)
+
+
+
+from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+
+def trajectory_point_to_canonical_rdkit(tp_in):
+    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+
+class analyze_random_walk:
+
+    """
+    Class for analyzing a random walk after the simulation.
+    Visualize chemical space and convex hull of the walk.
+    """
+
+    def __init__(self, histogram, saved_candidates):
+
+        """
+        histogram : list of all unique encountered points in the random walk.
+        saved_candidates : list of all saved best candidates in the random walk.
+
+        """
+        import pickle
+
+        self.histogram=self.convert_to_smiles(pickle.load(open(histogram, "rb")))
+        self.saved_candidates=pickle.load(open(saved_candidates, "rb"))
+        self.saved_candidates_tps, self.saved_candidates_func_val = [],[]
+
+        for mol in self.saved_candidates:
+            self.saved_candidates_tps.append(mol.tp)
+            self.saved_candidates_func_val.append(mol.func_val)
+
+    
+        del(self.saved_candidates)
+        self.saved_candidates = self.convert_to_smiles(self.saved_candidates_tps)
+        self.saved_candidates_func_val = np.array(self.saved_candidates_func_val)
+        
+    
+    def convert_to_smiles(self, mols):
+
+        """
+        Convert the list of molecules to SMILES strings.
+        """
+        
+        import rdkit
+        from rdkit import Chem
+
+        """
+        tp_list: list of molecules as trajectory points
+        smiles_mol: list of rdkit molecules
+        """
+        smiles_mol = []
+        for tp in mols:
+            
+            rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
+            smiles_mol.append(rdkit_obj[3])
+
+        return smiles_mol
+
+
+    def visualize(self, output_file):
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots((1,1),figsize=(10,10))
+        ax.set_xlabel("Candidate ID")
+        ax.set_ylabel("Accepted")
+        ax.set_title("Accepted candidates vs. candidates")
+        ax.plot(range(self.num_candidates), [self.histogram[i] for i in range(self.num_candidates)], "b-")
+
 
