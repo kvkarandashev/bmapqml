@@ -41,66 +41,27 @@ class QM9_properties:
     """
 
     def __init__(self, model_path, verbose=False):
+        import pickle
+        #from bmapqml import examples
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
-        import joblib
-        self.ml_model = joblib.load(model_path+"ATOMIZATION_512")
-        self.verbose = verbose
-
+        self.ml_model = pickle.load(open(model_path+"KRR_1024_atomization", "rb"))
+        self.verbose  = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
     def __call__(self, trajectory_point_in):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
         from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = self.ExplicitBitVect_to_NumpyArray(self.get_single_FP(canon_SMILES))
+        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
         prediction = self.ml_model.predict(X_test.reshape(1, -1))
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
-        return prediction[-1]
-
-    def get_single_FP(self, smi):
-        import rdkit
-        from rdkit import Chem
-        from rdkit.Chem import rdMolDescriptors  
-        """
-        Computes the fingerprint of a molecule given its SMILES
-        Input:
-        smi: SMILES string
-        fp_type: type of fingerprint to be computed
-        """
-
-        
-        mol = Chem.MolFromSmiles(smi)
-
-    
-        fp_mol = rdMolDescriptors.GetMorganFingerprintAsBitVect(
-            mol,
-            radius=4,
-            nBits=8192,
-            useFeatures=True,
-        )
-
-        return fp_mol
-
-    def ExplicitBitVect_to_NumpyArray(self, fp_vec):
-        import numpy as np 
-        import rdkit
-        from rdkit.Chem import DataStructs
-        from rdkit import Chem
-        """
-        Convert the rdkit fingerprint to a numpy array
-        """
-
-        fp2 = np.zeros((0,), dtype=int)
-        DataStructs.ConvertToNumpyArray(fp_vec, fp2)
-        return fp2
-
-    def canonize(self,mol):
-        from rdkit import Chem
-        return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)    
+        return prediction[-1]   
 
 class multi_obj:
 

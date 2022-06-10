@@ -9,6 +9,7 @@ class KRR():
         
         """
         User must provide a kernelfunction
+        kernel_type: string
         """
         self.kernel_type = kernel_type
 
@@ -18,6 +19,8 @@ class KRR():
         
         """
         Fit kernel model to the training data and perform a hyperparameter search.
+        X_train: numpy array of representations of the training data
+        y_train: numpy array of labels of the training data
         """
 
         import numpy as np
@@ -54,6 +57,8 @@ class KRR():
         """
         Predict the labels of the test data X_test 
         using the trained model.
+
+        X_test: numpy array
         """
 
         import numpy as np
@@ -70,4 +75,15 @@ class KRR():
         K_test  =   self.kernel_func(X_test, self.X_train, self.sigmas)
         y_pred  =   np.dot(K_test, self.alphas)
 
+
         return y_pred
+
+    def save(self, filename):
+        from bmapqml.utils import dump2pkl
+
+        """
+        Save the trained model to a file. 
+        filename: string
+        """
+
+        dump2pkl(self, filename)
