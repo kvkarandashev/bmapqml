@@ -26,10 +26,16 @@ class OrderSlide:
         return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
-from .utils import chemgraph_to_canonical_rdkit   
+#from .utils import chemgraph_to_canonical_rdkit   
 
-def trajectory_point_to_canonical_rdkit(tp_in):
-    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+#def trajectory_point_to_canonical_rdkit(tp_in):
+#    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+
+#from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+
+#def trajectory_point_to_canonical_rdkit(tp_in):
+#    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+
 
 
 class QM9_properties:
@@ -43,9 +49,10 @@ class QM9_properties:
     def __init__(self, model_path, verbose=False):
         import pickle
         #from bmapqml import examples
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
-        self.ml_model = pickle.load(open(model_path+"KRR_1024_atomization", "rb"))
+        self.ml_model = pickle.load(open(model_path+"KRR_4096_atomization", "rb"))
         self.verbose  = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
@@ -61,7 +68,46 @@ class QM9_properties:
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
-        return prediction[-1]   
+        return prediction[-1]   * 0.037
+
+
+import pdb
+class Rdkit_properties:
+    def __init__(self,model_path):
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        #from rdkit.Chem.Lipinski import HeavyAtomCount,NumHAcceptors, NumHeteroatoms,NumRotatableBonds, NHOHCount, NOCount, NumHDonors, RingCount, NumSaturatedHeterocycles, NumSaturatedRings, FractionCSP3
+        #from rdkit.Chem.Descriptors import MaxPartialCharge, MinPartialCharge, MinAbsPartialCharge, MaxAbsPartialCharge,ExactMolWt,MolWt,FpDensityMorgan1,FpDensityMorgan2,FpDensityMorgan3,NumRadicalElectrons,NumValenceElectrons
+        #from rdkit.Chem.Crippen import MolLogP, MolMR
+        
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+
+    def __call__(self, trajectory_point_in):
+        import rdkit
+        import numpy as np
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        from rdkit import Chem
+       # from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+        from rdkit.Chem.Descriptors import MaxPartialCharge,HeavyAtomCount
+        from rdkit.Chem.Lipinski import HeavyAtomCount,NumHAcceptors, NumHeteroatoms,NumRotatableBonds, NHOHCount, NOCount, NumHDonors, RingCount, NumSaturatedHeterocycles, NumSaturatedRings, FractionCSP3
+        from rdkit.Chem.Crippen import MolLogP, MolMR
+        fct = MolMR
+        #pdb.set_trace()
+        # KK: This demonstrates how expensive intermediate data can be saved too.
+        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+        rdkit_mol = Chem.AddHs(rdkit_mol)
+        #pdb.set_trace()
+        value = fct(rdkit_mol)
+
+        """
+        if v == 0:
+            v = 1e-1
+        value = 1/v
+        """
+
+
+
+        print(canon_SMILES, value)
+        return np.exp(-value)
 
 class multi_obj:
 
@@ -116,4 +162,6 @@ class multi_obj:
             s+=value
 
         return s
+
+
 
