@@ -142,9 +142,10 @@ def execute_string(string):
 
 
 
-from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+
 
 def trajectory_point_to_canonical_rdkit(tp_in):
+    from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
     return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
 
 class analyze_random_walk:
@@ -154,18 +155,21 @@ class analyze_random_walk:
     Visualize chemical space and convex hull of the walk.
     """
 
-    def __init__(self, histogram, saved_candidates):
+    def __init__(self, histogram, saved_candidates, model_path=None):
 
         """
         histogram : list of all unique encountered points in the random walk.
         saved_candidates : list of all saved best candidates in the random walk.
-
+        minimize_fct : if desired reevaluate all unique molecules using this function
         """
+
         import pickle
 
         self.histogram=self.convert_to_smiles(pickle.load(open(histogram, "rb")))
         self.saved_candidates=pickle.load(open(saved_candidates, "rb"))
         self.saved_candidates_tps, self.saved_candidates_func_val = [],[]
+        self.model_path= None or model_path
+
 
         for mol in self.saved_candidates:
             self.saved_candidates_tps.append(mol.tp)
@@ -182,7 +186,7 @@ class analyze_random_walk:
         """
         Convert the list of molecules to SMILES strings.
         """
-        
+
         import rdkit
         from rdkit import Chem
 
@@ -197,6 +201,20 @@ class analyze_random_walk:
             smiles_mol.append(rdkit_obj[3])
 
         return smiles_mol
+
+    def evaluate_histogram(self):
+
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+
+        """
+        Compute values of a function evaluated on all unique smiles in the random walk.
+        """
+        self.ml_model = pickle.load(open(self.model_path+"KRR_1024_atomization", "rb"))
+        X_test = rdkit_descriptors.get_all_FP(self.histogram, fp_type="both")
+        self.predictions = self.ml_model.predict(X_test)
+
+        del(X_test)
+        del(self.ml_model)
 
 
     def visualize(self, output_file):
