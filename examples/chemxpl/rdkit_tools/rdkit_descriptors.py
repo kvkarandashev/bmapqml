@@ -258,7 +258,7 @@ def process_qm9(directory):
         data.append((atoms, coordinates))
         smiles.append(smile)  # The SMILES representation
 
-        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=False)
+        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=True)
         prop += [ATOMIZATION]
         properties.append(prop)  # The molecules properties
 

@@ -32,8 +32,8 @@ if __name__ == "__main__":
     np.random.shuffle(inds)
     SMILES, y = SMILES[inds], y[inds]
                     
-    N = [2048]
-    #[2**16]    
+    N = [20000]
+    #[32768] #uses only single core why?
     X = get_all_FP(SMILES, fp_type="both")
 
     X_train, X_test, y_train, y_test = train_test_split(X,   y, random_state=1337, test_size=0.20, shuffle=True)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     errors = []
     for n in N:
-        reg = KRR(kernel_type="laplacian")
+        reg = KRR(kernel_type="laplacian", scale_features=True)
         reg.fit(X_train[:n], y_train[:n])
         y_pred = reg.predict(X_test)
         MAE    = mae(y_test, y_pred)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         print(n, MAE)
 
         errors.append(MAE)
-        #pdb.set_trace()
+       # pdb.set_trace()
 
     reg.save('/store/common/jan/qm9/KRR_{}_{}'.format(n, TARGET_PROPERTY))
     print(errors)
