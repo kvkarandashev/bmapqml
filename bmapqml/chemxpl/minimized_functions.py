@@ -32,7 +32,9 @@ class QM9_properties:
     """
     Interface for QM9 property prediction, uses RdKit features
     that can be extracted only from a molecular graph
+    
     model_path : Path to the QM9 machine created with train_qm9.py
+    verbose    : If True, prints the SMILE and prediction
     """
 
     def __init__(self, model_path, verbose=False):
@@ -64,7 +66,7 @@ class multi_obj:
     Combine multiple minimize functions in various different ways.
     Adjust weights for each property necessary because properties live on different orders 
     of magnitude. Clever way might be to use approximate average values of these properties in the 
-    chemical space of interest
+    chemical space of interest, e.g. :
 
     Average values in QM9
      6.8  eV for band gap
@@ -72,6 +74,7 @@ class multi_obj:
 
     fct_list    : List of minimized functions
     fct_weights : Weights between minimized functions, len(fct_weights) == len(fct_list)
+    verbose     : Print information about the function and molecule
     """
 
 
@@ -110,6 +113,18 @@ class multi_obj:
 
 
 class Rdkit_properties:
+
+    """
+    Test function to minimize/maximize a property of a molecule given by a SMILES string which can be
+    evaluated directly using rdkit. This does not use any machine learning models and is only for testing
+    E.g. if max=True and rdkit_property=rdkit.descriptors.NumRotatableBonds the algorithm should maximize the
+    number of rotatible bonds of the molecule. This can be checked by running the simulation.
+
+    model_path : dummy path (not needed)
+    rdkit_property : rdkit property to minimize/maximize
+    verbose : print out information about the molecule
+    """
+
     def __init__(self,model_path, rdkit_property, max=True, verbose=True):
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         self.rdkit_property=rdkit_property
@@ -119,7 +134,6 @@ class Rdkit_properties:
 
     def __call__(self, trajectory_point_in):
         import numpy as np
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
         from rdkit import Chem
     
         fct = self.rdkit_property
