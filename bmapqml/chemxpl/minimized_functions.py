@@ -26,17 +26,6 @@ class OrderSlide:
         return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
-#from .utils import chemgraph_to_canonical_rdkit   
-
-#def trajectory_point_to_canonical_rdkit(tp_in):
-#    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
-
-#from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
-
-#def trajectory_point_to_canonical_rdkit(tp_in):
-#    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
-
-
 
 class QM9_properties:
 
@@ -48,11 +37,10 @@ class QM9_properties:
 
     def __init__(self, model_path, verbose=False):
         import pickle
-        #from bmapqml import examples
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
-        self.ml_model = pickle.load(open(model_path+"KRR_4096_atomization", "rb"))
+        self.ml_model = pickle.load(open(model_path, "rb"))
         self.verbose  = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
@@ -68,100 +56,85 @@ class QM9_properties:
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
-        return prediction[-1]   * 0.037
-
-
-import pdb
-class Rdkit_properties:
-    def __init__(self,model_path):
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
-        #from rdkit.Chem.Lipinski import HeavyAtomCount,NumHAcceptors, NumHeteroatoms,NumRotatableBonds, NHOHCount, NOCount, NumHDonors, RingCount, NumSaturatedHeterocycles, NumSaturatedRings, FractionCSP3
-        #from rdkit.Chem.Descriptors import MaxPartialCharge, MinPartialCharge, MinAbsPartialCharge, MaxAbsPartialCharge,ExactMolWt,MolWt,FpDensityMorgan1,FpDensityMorgan2,FpDensityMorgan3,NumRadicalElectrons,NumValenceElectrons
-        #from rdkit.Chem.Crippen import MolLogP, MolMR
-        
-        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
-
-    def __call__(self, trajectory_point_in):
-        import rdkit
-        import numpy as np
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        from rdkit import Chem
-       # from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
-        from rdkit.Chem.Descriptors import MaxPartialCharge,HeavyAtomCount
-        from rdkit.Chem.Lipinski import HeavyAtomCount,NumHAcceptors, NumHeteroatoms,NumRotatableBonds, NHOHCount, NOCount, NumHDonors, RingCount, NumSaturatedHeterocycles, NumSaturatedRings, FractionCSP3
-        from rdkit.Chem.Crippen import MolLogP, MolMR
-        fct = MolMR
-        #pdb.set_trace()
-        # KK: This demonstrates how expensive intermediate data can be saved too.
-        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
-        rdkit_mol = Chem.AddHs(rdkit_mol)
-        #pdb.set_trace()
-        value = fct(rdkit_mol)
-
-        """
-        if v == 0:
-            v = 1e-1
-        value = 1/v
-        """
-
-
-
-        print(canon_SMILES, value)
-        return np.exp(-value)
+        return prediction[-1]
 
 class multi_obj:
 
     """
     Combine multiple minimize functions in various different ways.
     Adjust weights for each property necessary because properties live on different orders 
-    of magnitude. Clever way might be to normalize each property by the initial
-    value at the fist point of the trajectory
+    of magnitude. Clever way might be to use approximate average values of these properties in the 
+    chemical space of interest
+
+    Average values in QM9
+     6.8  eV for band gap
+    -1.9  eV for atomization energy
 
     fct_list    : List of minimized functions
     fct_weights : Weights between minimized functions, len(fct_weights) == len(fct_list)
     """
 
-    def __init__(self, fct_list, fct_weights, init_gc, normalize=True):
 
+    def __init__(self, fct_list, fct_weights, verbose=False):
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
         self.fct_list   = fct_list
         self.fct_weights = fct_weights
-        self.normalize = normalize
-        self.init_gc    = init_gc
-
-
-        """
-        trajectory_point_in must be initial cg!!!
-        but getting an error with how i implemented it below
-        if self.normalize:
-            self.fct_initial = []
-            for fct in zip(self.fct_list):
-                #print(self.fct_list)
-                #print(fct)
-                print(self.init_gc)
-                print(fct[0].__call__(self.init_gc[0]))
-                self.fct_initial.append(fct[0].__call__(self.init_gc))
-                #print(fct[0].__call__(self.init_gc))
-        """
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+        self.verbose = verbose
 
     def __call__(self,trajectory_point_in):
-        
+        import numpy as np
+        #from joblib import Parallel, delayed
+
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
         s = 0
-        for fct, w in zip(self.fct_list,self.fct_weights): 
-            
-            """
-            uncomment as soon as there is a way to get the initial values
-            of each property. 
-            Possible evaluate the properties in parallel to make it faster
-            """
 
-            #, self.fct_initial):
-            #value = (w/abs(fct_init)) * fct.__call__(trajectory_point_in)
+        #values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
+        values = []
 
-            value = w * fct.__call__(trajectory_point_in)
-            s+=value
+        for fct in self.fct_list: 
+
+            values.append(fct.__call__(trajectory_point_in))
+
+        values = np.array(values)
+
+        s = np.dot(self.fct_weights, values)
+
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES, "v1", values[0],"v2", values[1])
 
         return s
+
+
+
+class Rdkit_properties:
+    def __init__(self,model_path, rdkit_property, max=True, verbose=True):
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        self.rdkit_property=rdkit_property
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+        self.max = max
+        self.verbose = verbose
+
+    def __call__(self, trajectory_point_in):
+        import numpy as np
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        from rdkit import Chem
+    
+        fct = self.rdkit_property
+        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+        rdkit_mol = Chem.AddHs(rdkit_mol)
+        value = fct(rdkit_mol)
+
+
+        if self.verbose:
+            print(canon_SMILES, value)
+
+        if self.max:
+            return np.exp(-value)
+        else:
+            return value
 
 
 

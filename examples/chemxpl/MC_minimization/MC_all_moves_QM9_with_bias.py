@@ -11,6 +11,7 @@ from rdkit.Chem.rdmolops import AddHs
 from copy import deepcopy
 from sortedcontainers import SortedList
 from bmapqml.utils import dump2pkl
+import numpy as np
 import pdb
 #nuclear_charges, atomic_symbols, xyz_coordinates, add_attr_dict = xyz2mol_extgraph(
 #    "./t.xyz")
@@ -41,7 +42,7 @@ randomized_change_params = {"max_fragment_num": 1, "nhatoms_range": [2, 2], "fin
 
 
 
-randomized_change_params = {"max_fragment_num": 1, "nhatoms_range": [10, 14], "final_nhatoms_range": [10, 14],
+randomized_change_params = {"max_fragment_num": 1, "nhatoms_range": [5, 5], "final_nhatoms_range": [5, 5],
                             "possible_elements": possible_elements, "bond_order_changes": [-1, 1],
                             "forbidden_bonds": forbidden_bonds}
 global_change_params={"num_parallel_tempering_tries" : 10, "num_genetic_tries" : 10, "prob_dict" : {"simple" : 0.5, "genetic" : 0.25, "tempering" : 0.25}}
@@ -60,20 +61,34 @@ init_cg = output[0].chemgraph
 negcs=len(betas)
 
 init_egcs=[ExtGraphCompound(chemgraph=deepcopy(init_cg)) for i in range(negcs)]
-
-model_path = "/store/common/jan/qm9/"
 # "/store/common/jan/"
 #min_func = QM9_properties(model_path=model_path, verbose=True)
 #min_func_name = "QM9_model"
 
-min_func = Rdkit_properties(model_path)
-min_func_name = "max_charge"
+#from rdkit.Chem.Descriptors import MinAbsPartialCharge
+#min_func = Rdkit_properties(model_path, MinAbsPartialCharge, max=True)
+#min_func_name = "max_charge"
+
+
+"""
+     6.8  eV for band gap
+    -1.9  eV for atomization energy
+"""
+
+
+WEIGHTS = np.array([ (1/1.9), (1/6.8)])
+
+min_func = multi_obj(
+    [QM9_properties("/store/common/jan/qm9/KRR_12000_atomization",verbose=False),QM9_properties("/store/common/jan/qm9/KRR_12000_gap",verbose=False)
+], WEIGHTS, verbose=True)
+
+min_func_name = "multi_obj"
 
 current_best=[]
 
 rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params,
                             bound_enforcing_coeff=bound_enforcing_coeff, betas=betas, min_function=min_func,
-                            init_egcs=init_egcs, conserve_stochiometry=False, min_function_name="max_charge",
+                            init_egcs=init_egcs, conserve_stochiometry=False, min_function_name=min_func_name,
                             keep_histogram=True, num_saved_candidates=4, vbeta_bias_coeff=vbeta_bias_coeff)
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
