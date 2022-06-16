@@ -91,7 +91,7 @@ class multi_obj:
 
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        s = 0
+        sum = 0
 
         #values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
         values = []
@@ -102,13 +102,66 @@ class multi_obj:
 
         values = np.array(values)
 
-        s = np.dot(self.fct_weights, values)
+        sum = np.dot(self.fct_weights, values)
 
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "v1", values[0],"v2", values[1])
 
-        return s
+        return sum
+
+
+
+    def evaluate_point(self, trajectory_point_in):
+        """
+        Evaluate the function on a single trajectory point 
+        """
+
+        import numpy as np
+        #from joblib import Parallel, delayed
+        #values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
+
+        values = []
+        for fct in self.fct_list: 
+
+            values.append(fct.__call__(trajectory_point_in))
+
+        sum = np.dot(self.fct_weights, values)
+        values.append(sum)
+        values = np.array(values)
+ 
+        return values
+
+
+
+    def evaluate_trajectory(self, trajectory_points):
+        """
+        Evaluate the function on a list of trajectory points 
+        """
+
+        import numpy as np
+        from joblib import Parallel, delayed
+        values = Parallel(n_jobs=12)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        return np.array(values)
+
+        """
+        values = []
+        for trajectory_point_in in trajectory_points:
+            sum = 0
+            curr_values = []
+            for fct in self.fct_list: 
+
+                curr_values.append(fct.__call__(trajectory_point_in))
+
+            sum = np.dot(self.fct_weights, np.array(curr_values))
+            curr_values.append(sum)
+            curr_values = np.array(curr_values)
+            values.append(curr_values)
+
+        values = np.array(values)
+
+        return values        
+        """
 
 
 

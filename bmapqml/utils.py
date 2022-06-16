@@ -155,7 +155,7 @@ class analyze_random_walk:
     Visualize chemical space and convex hull of the walk.
     """
 
-    def __init__(self, histogram, saved_candidates, model_path=None):
+    def __init__(self, histogram, saved_candidates, model=None, verbose=False):
 
         """
         histogram : list of all unique encountered points in the random walk.
@@ -164,11 +164,11 @@ class analyze_random_walk:
         """
 
         import pickle
-
+        self.tps     = pickle.load(open(histogram, "rb"))
         self.histogram=self.convert_to_smiles(pickle.load(open(histogram, "rb")))
         self.saved_candidates=pickle.load(open(saved_candidates, "rb"))
         self.saved_candidates_tps, self.saved_candidates_func_val = [],[]
-        self.model_path= None or model_path
+        self.model = None or model
 
 
         for mol in self.saved_candidates:
@@ -180,6 +180,8 @@ class analyze_random_walk:
         self.saved_candidates = self.convert_to_smiles(self.saved_candidates_tps)
         self.saved_candidates_func_val = np.array(self.saved_candidates_func_val)
         
+        if verbose:
+            print("Number of unique points in the random walk:", len(self.tps))
     
     def convert_to_smiles(self, mols):
 
@@ -204,26 +206,57 @@ class analyze_random_walk:
 
     def evaluate_histogram(self):
 
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-
         """
         Compute values of a function evaluated on all unique smiles in the random walk.
         """
-        self.ml_model = pickle.load(open(self.model_path+"KRR_1024_atomization", "rb"))
-        X_test = rdkit_descriptors.get_all_FP(self.histogram, fp_type="both")
-        self.predictions = self.ml_model.predict(X_test)
 
-        del(X_test)
-        del(self.ml_model)
+        values = self.model.evaluate_trajectory(self.tps)
+        return values
+
 
 
     def visualize(self, output_file):
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots((1,1),figsize=(10,10))
-        ax.set_xlabel("Candidate ID")
-        ax.set_ylabel("Accepted")
-        ax.set_title("Accepted candidates vs. candidates")
-        ax.plot(range(self.num_candidates), [self.histogram[i] for i in range(self.num_candidates)], "b-")
+        fig,ax1= plt.subplots(figsize=(15,8))
 
 
+        p1_acc  = accepted["Eat"].values
+        p2_acc  = accepted["Egap"].values
+        summe = accepted["sum"].values 
+        #summe  = accepted[" dGANDen"].values
+
+
+        #All_dG_new = All_dG_new*0.0175
+        xi = np.linspace(min(p1_acc), max(p1_acc), 1000)
+        yi = np.linspace(min(p2_acc), max(p2_acc), 1000)
+
+        # Perform linear interpolation of the data (x,y)
+        # on a grid defined by (xi,yi)
+        triang = tri.Triangulation(p1_acc, p2_acc)
+        interpolator = tri.LinearTriInterpolator(triang,summe)
+        Xi, Yi = np.meshgrid(xi, yi)
+        zi = interpolator(Xi, Yi)
+
+        ax1.contour(xi, yi, zi, levels=14, linewidths=0.5, colors='k')
+        #ax1.contourf(xi, yi, zi, levels=14, cmap="RdBu_r")
+        sc = ax1.scatter(p1_acc, p2_acc,s =0.05, c=summe)
+        plt.xlabel("$E_{\\rm {at}}/ N^{\\rm tot}$"  + " [eV]")
+        plt.ylabel("$E_{\\rm {gap}}$" + " [eV]")
+
+        clb = plt.colorbar(sc)
+        clb.set_label("sum"+" [eV]") 
+
+        ax1.spines['right'].set_color('none')
+        ax1.spines['top'].set_color('none')
+        ax1.spines['bottom'].set_position(('axes', -0.05))
+        ax1.spines['bottom'].set_color('black')
+        ax1.spines['left'].set_color('black')
+        ax1.yaxis.set_ticks_position('left')
+        ax1.xaxis.set_ticks_position('bottom')
+        ax1.spines['left'].set_position(('axes', -0.05))
+
+        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+
+        #plt.savefig("sum.pdf")
+        plt.savefig("sum_const.png")
