@@ -156,7 +156,8 @@ class analyze_random_walk:
     """
 
     def __init__(self, histogram, saved_candidates, model=None, verbose=False):
-
+        import numpy as np
+        
         """
         histogram : list of all unique encountered points in the random walk.
         saved_candidates : list of all saved best candidates in the random walk.
@@ -165,7 +166,7 @@ class analyze_random_walk:
 
         import pickle
         self.tps     = pickle.load(open(histogram, "rb"))
-        self.histogram=self.convert_to_smiles(pickle.load(open(histogram, "rb")))
+        self.histogram= np.array(self.convert_to_smiles(pickle.load(open(histogram, "rb"))))
         self.saved_candidates=pickle.load(open(saved_candidates, "rb"))
         self.saved_candidates_tps, self.saved_candidates_func_val = [],[]
         self.model = None or model
@@ -204,59 +205,63 @@ class analyze_random_walk:
 
         return smiles_mol
 
-    def evaluate_histogram(self):
-
+    def evaluate_histogram(self, save_histogram=False):
+        import numpy as np
         """
         Compute values of a function evaluated on all unique smiles in the random walk.
         """
 
-        values = self.model.evaluate_trajectory(self.tps)
-        return values
+        self.values = self.model.evaluate_trajectory(self.tps)
+
+        if save_histogram:
+            np.savez_compressed("QM9_histogram_values", values=self.values)
+
+        return self.values
+
+    def compute_pareto_front(self):
+        
+        """
+        values: array of function values
+        Returns values of points in the pareto front.
+        pareto_front as well as the indices
+        """
+        
+        try:
+            two_dim = self.values[:,:2]
+        except:
+            self.values = np.load("QM9_histogram_values.npz")["values"]
+            two_dim = self.values[:,:2]
+
+        """    
+        else:
+            self.evaluate_histogram(save_histogram=False)
+            two_dim = self.values[:,:2]
+        finally:
+            print("Could not load property values")
+        """
+
+        Xs, Ys = two_dim[:,0], two_dim[:,1]
+        maxY = False
+        sorted_list = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxY)
+        pareto_front = [sorted_list[0]]
+        
+        for pair in sorted_list[1:]:
+            if maxY:
+                if pair[1] >= pareto_front[-1][1]:
+                    pareto_front.append(pair)
+            else:
+                if pair[1] <= pareto_front[-1][1]:
+                    pareto_front.append(pair)
+
+        inds = []   
+        for pair in pareto_front:
+            if pair[0] in two_dim[:,0] and pair[1] in two_dim[:,1]:
+                inds.append( int(np.where(two_dim[:,0]==pair[0]) and np.where(two_dim[:,1]==pair[1])[0][0]))
+        
+        inds =np.array(inds)
+        inds  = inds.astype('int')
 
 
+        self.pareto_mols = self.histogram[inds]
 
-    def visualize(self, output_file):
-        import matplotlib.pyplot as plt
-
-        fig,ax1= plt.subplots(figsize=(15,8))
-
-
-        p1_acc  = accepted["Eat"].values
-        p2_acc  = accepted["Egap"].values
-        summe = accepted["sum"].values 
-        #summe  = accepted[" dGANDen"].values
-
-
-        #All_dG_new = All_dG_new*0.0175
-        xi = np.linspace(min(p1_acc), max(p1_acc), 1000)
-        yi = np.linspace(min(p2_acc), max(p2_acc), 1000)
-
-        # Perform linear interpolation of the data (x,y)
-        # on a grid defined by (xi,yi)
-        triang = tri.Triangulation(p1_acc, p2_acc)
-        interpolator = tri.LinearTriInterpolator(triang,summe)
-        Xi, Yi = np.meshgrid(xi, yi)
-        zi = interpolator(Xi, Yi)
-
-        ax1.contour(xi, yi, zi, levels=14, linewidths=0.5, colors='k')
-        #ax1.contourf(xi, yi, zi, levels=14, cmap="RdBu_r")
-        sc = ax1.scatter(p1_acc, p2_acc,s =0.05, c=summe)
-        plt.xlabel("$E_{\\rm {at}}/ N^{\\rm tot}$"  + " [eV]")
-        plt.ylabel("$E_{\\rm {gap}}$" + " [eV]")
-
-        clb = plt.colorbar(sc)
-        clb.set_label("sum"+" [eV]") 
-
-        ax1.spines['right'].set_color('none')
-        ax1.spines['top'].set_color('none')
-        ax1.spines['bottom'].set_position(('axes', -0.05))
-        ax1.spines['bottom'].set_color('black')
-        ax1.spines['left'].set_color('black')
-        ax1.yaxis.set_ticks_position('left')
-        ax1.xaxis.set_ticks_position('bottom')
-        ax1.spines['left'].set_position(('axes', -0.05))
-
-        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-
-        #plt.savefig("sum.pdf")
-        plt.savefig("sum_const.png")
+        return np.array(pareto_front), np.int_(inds), self.pareto_mols
