@@ -87,13 +87,9 @@ class multi_obj:
 
     def __call__(self,trajectory_point_in):
         import numpy as np
-        #from joblib import Parallel, delayed
-
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
         sum = 0
-
-        #values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
         values = []
 
         for fct in self.fct_list: 
@@ -138,30 +134,28 @@ class multi_obj:
         """
         Evaluate the function on a list of trajectory points 
         """
-
+        
         import numpy as np
+
         from joblib import Parallel, delayed
-        values = Parallel(n_jobs=12)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        #Aparently this is the fastest way to do this:
+        values = Parallel(n_jobs=4)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
 
+        
         """
+        #from tqdm import tqdm
         values = []
-        for trajectory_point_in in trajectory_points:
-            sum = 0
-            curr_values = []
-            for fct in self.fct_list: 
-
-                curr_values.append(fct.__call__(trajectory_point_in))
-
-            sum = np.dot(self.fct_weights, np.array(curr_values))
-            curr_values.append(sum)
-            curr_values = np.array(curr_values)
-            values.append(curr_values)
+        for tp_in in tqdm(trajectory_points):
+            values.append(self.evaluate_point(tp_in))
 
         values = np.array(values)
 
-        return values        
+        return values                
+    
         """
+
+    
 
 
 

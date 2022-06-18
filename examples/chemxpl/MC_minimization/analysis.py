@@ -1,52 +1,20 @@
 
 from bmapqml.utils import analyze_random_walk
 import numpy as np
-from bmapqml.chemxpl.minimized_functions import QM9_properties,multi_obj,Rdkit_properties
+from bmapqml.chemxpl.minimized_functions import QM9_properties,multi_obj
+import argparse
+import matplotlib.pyplot as plt
+import matplotlib.tri as tri
+import seaborn as sns
 import pdb
 
-def compute_pareto_front(values):
-    
-    """
-    values: array of function values
-    Returns indices of points in the pareto front.
-    pareto_front as well as the indices
-    """
+parser = argparse.ArgumentParser(description='INPUT PATH')
+parser.add_argument("-PATH")
+parser.add_argument("-plotname", default="plot")
+args = parser.parse_args()
 
-    Xs, Ys = values[:,0], values[:,1]
-    maxY = False
-    sorted_list = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxY)
-    pareto_front = [sorted_list[0]]
-
-    #return pareto_front
-    
-    
-    
-    for pair in sorted_list[1:]:
-        if maxY:
-            if pair[1] >= pareto_front[-1][1]:
-                pareto_front.append(pair)
-        else:
-            if pair[1] <= pareto_front[-1][1]:
-                pareto_front.append(pair)
-
-
-    inds = []   
-    for pair in pareto_front:
-        if pair[0] in values[:,0] and pair[1] in values[:,1]:
-            inds.append( int(np.where(values[:,0]==pair[0]) and np.where(values[:,1]==pair[1])[0][0]))
-    
-    inds =np.array(inds)
-    inds  = inds.astype('int')
-    #
-    #print(2345)
-    #pareto_front = np.array(pareto_front)
-
-    return np.array(pareto_front), np.int_(inds)
-
-
-path = "/home/jan/projects/MOLOPT/do_sim/bias/both/9/"
-
-
+path = args.PATH
+plotname=args.plotname
 WEIGHTS = np.array([ (1/1.9), (1/6.8)])
 
 min_func = multi_obj(
@@ -56,52 +24,48 @@ min_func = multi_obj(
 
 ana = analyze_random_walk("{}".format(path)+"QM9_histogram.pkl","{}".format(path)+"QM9_best_candidates.pkl", model=min_func)
 
-
-
-#values = ana.evaluate_histogram()
-
-values = np.load("QM9_histogram_values.npz")["values"]
-ana.values = values
-
-pdb.set_trace()
+values = ana.evaluate_histogram()
 front, inds, mols = ana.compute_pareto_front()
-# compute_pareto_front(values[:,:2])
-#mols = np.array(ana.histogram)
-#mols[inds]
-#'O=CC1=NC2C=CC=C12' in mols[inds.astype(int)]
+best_P1, best_P2, best_loss = np.argsort(front[:,0]),np.argsort(front[:,1]),np.argsort(values[:,2][:len(front)])
 
+print("Best Candidates:")
+[print(m) for m in mols[best_loss]]
+print("Most Stable:")
+[print(m, "{:.2f}".format(P1)+" eV") for m,P1 in zip(mols[best_P1], front[:,0][best_P1])] 
+print("Smallest Gap:")
+[print(m,"{:.2f}".format(P2)+" eV") for m,P2 in zip(mols[best_P2], front[:,1][best_P2])] 
 
-import matplotlib.pyplot as plt
-import matplotlib.tri as tri
+sns.set_context("poster")
+sns.set_style('whitegrid')
+fs = 24
+markersize = 12
+alpha=0.65
+
+plt.rc('font', size=fs)
+plt.rc('axes', titlesize=fs)
+plt.rc('axes', labelsize=fs)           
+plt.rc('xtick', labelsize=fs)          
+plt.rc('ytick', labelsize=fs)          
+plt.rc('legend', fontsize=fs)   
+plt.rc('figure', titlesize=fs) 
 fig,ax1= plt.subplots(figsize=(8,8))
 
+p1  = values[:,0]
+p2  = values[:,1]
+summe = values[:,2]
+xi = np.linspace(min(p1), max(p1), 100)
+yi = np.linspace(min(p2), max(p2), 100)
 
-sub = 100
-p1_acc  = values[:,0][::sub]
-p2_acc  = values[:,1][::sub]
-summe = values[:,2][::sub]
-#summe  = accepted[" dGANDen"].values
-
-
-#All_dG_new = All_dG_new*0.0175
-xi = np.linspace(min(p1_acc), max(p1_acc), 100)
-yi = np.linspace(min(p2_acc), max(p2_acc), 100)
-
-# Perform linear interpolation of the data (x,y)
-# on a grid defined by (xi,yi)
-triang = tri.Triangulation(p1_acc, p2_acc)
+triang = tri.Triangulation(p1, p2)
 interpolator = tri.LinearTriInterpolator(triang,summe)
 Xi, Yi = np.meshgrid(xi, yi)
 zi = interpolator(Xi, Yi)
 
 ax1.contour(xi, yi, zi, levels=18, linewidths=0.5, colors='k')
-#ax1.contourf(xi, yi, zi, levels=14, cmap="RdBu_r")
-sc = ax1.scatter(p1_acc, p2_acc,s =0.5, c=summe)
+sc = ax1.scatter(p1, p2,s =4, c=summe)
 plt.xlabel("$E_{\\rm {at}}/ N^{\\rm tot}$"  + " [eV]", fontsize=21)
 plt.ylabel("$E_{\\rm {gap}}$" + " [eV]", fontsize=21)
-
 clb = plt.colorbar(sc)
-#clb.set_label("Step"+" [eV]") 
 clb.set_label("Loss") 
 
 ax1.spines['right'].set_color('none')
@@ -113,12 +77,10 @@ ax1.yaxis.set_ticks_position('left')
 ax1.xaxis.set_ticks_position('bottom')
 ax1.spines['left'].set_position(('axes', -0.05))
 
-plt.plot(front[:,0],front[:,1],'*', color='red')
-
-
-plt.plot(front[:,0],front[:,1],'r--',linewidth=2)
+plt.plot(front[:,0],front[:,1],'o', color='black')
+plt.plot(front[:,0],front[:,1],'k-',linewidth=2)
 plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-plt.savefig("sum_const.pdf")
+plt.savefig("{}.pdf".format(plotname))
 
 
 
