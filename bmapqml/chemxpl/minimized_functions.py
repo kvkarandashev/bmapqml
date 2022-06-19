@@ -60,6 +60,19 @@ class QM9_properties:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
         return prediction[-1]
 
+
+    def evaluate_trajectory(self, trajectory_points):
+        """
+        Evaluate the function on a list of trajectory points 
+        """
+        
+        import numpy as np
+
+        from joblib import Parallel, delayed
+        #Aparently this is the fastest way to do this:
+        values = Parallel(n_jobs=4)(delayed(self.__call__)(tp_in) for tp_in in trajectory_points)
+        return np.array(values)
+
 class multi_obj:
 
     """

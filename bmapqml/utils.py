@@ -205,7 +205,29 @@ class analyze_random_walk:
 
         return smiles_mol
 
-    def evaluate_histogram(self, save_histogram=False):
+
+    def compute_representations(self):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        X = rdkit_descriptors.get_all_FP(self.histogram, fp_type="both")
+        return X
+
+
+    def comute_PCA(self):
+
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
+        X = self.compute_representations()
+        reducer = PCA(n_components=2)
+        reducer.fit(X)
+        X_2d = reducer.transform(X)
+        scaler = StandardScaler()
+        X_2d = scaler.fit_transform(X_2d)
+        return X_2d
+
+
+
+
+    def evaluate_histogram(self, save_histogram=True):
         import numpy as np
         """
         Compute values of a function evaluated on all unique smiles in the random walk.
@@ -225,43 +247,92 @@ class analyze_random_walk:
         Returns values of points in the pareto front.
         pareto_front as well as the indices
         """
-        
-        try:
-            two_dim = self.values[:,:2]
-        except:
-            self.values = np.load("QM9_histogram_values.npz")["values"]
-            two_dim = self.values[:,:2]
 
-        """    
+            #except:
+            #    self.values = np.load("QM9_histogram_values.npz")["values"]
+            #   two_dim = self.values[:,:2]
+
+        if self.values.shape == (len(self.values),3):
+
+            """
+            Means two properties and the loss are considered in this run,
+            self.values has shape (n,3) |property 1 and 2| and the loss
+            Subselect only the two properties to determine pareto front
+            """
+
+            
+            two_properties = self.values[:,:2]
+
+            Xs, Ys = two_properties[:,0], two_properties[:,1]
+            maxY = False
+            sorted_list = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxY)
+            pareto_front = [sorted_list[0]]
+            
+            for pair in sorted_list[1:]:
+                if maxY:
+                    if pair[1] >= pareto_front[-1][1]:
+                        pareto_front.append(pair)
+                else:
+                    if pair[1] <= pareto_front[-1][1]:
+                        pareto_front.append(pair)
+
+            inds = []   
+            for pair in pareto_front:
+                if pair[0] in two_properties[:,0] and pair[1] in two_properties[:,1]:
+                    inds.append( int(np.where(two_properties[:,0]==pair[0]) and np.where(two_properties[:,1]==pair[1])[0][0]))
+            
+            inds =np.array(inds)
+            inds  = inds.astype('int')
+
+
+            self.pareto_mols = self.histogram[inds]
+            self.pareto_front = np.array(pareto_front)
+            return self.pareto_front, np.int_(inds), self.pareto_mols
+
         else:
-            self.evaluate_histogram(save_histogram=False)
-            two_dim = self.values[:,:2]
-        finally:
-            print("Could not load property values")
+            
+            """
+            Only one property is considered in this run,
+            self.values has shape (n,1) |property 1|
+            """
+
+            inds = np.argsort(self.values)
+            self.pareto_mols = self.histogram[inds]
+            self.pareto_front = np.array(self.values[inds])
+
+            return self.pareto_front, np.int_(inds), self.pareto_mols
+
+
+    def write_report(self, filename, verbose=True):
+
+        """
+        Export molecules on the pareto front to a file.
+        Include two properties that are also included in the 
+        simulation
         """
 
-        Xs, Ys = two_dim[:,0], two_dim[:,1]
-        maxY = False
-        sorted_list = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxY)
-        pareto_front = [sorted_list[0]]
+        import numpy as np
+
+
         
-        for pair in sorted_list[1:]:
-            if maxY:
-                if pair[1] >= pareto_front[-1][1]:
-                    pareto_front.append(pair)
-            else:
-                if pair[1] <= pareto_front[-1][1]:
-                    pareto_front.append(pair)
+        front, _ , mols = self.compute_pareto_front()
 
-        inds = []   
-        for pair in pareto_front:
-            if pair[0] in two_dim[:,0] and pair[1] in two_dim[:,1]:
-                inds.append( int(np.where(two_dim[:,0]==pair[0]) and np.where(two_dim[:,1]==pair[1])[0][0]))
+        best_P1, best_P2, best_loss = np.argsort(front[:,0]),np.argsort(front[:,1]),np.argsort(self.values[:,2][:len(front)])
+        if verbose:
+            print("Best Candidates:")
+            [print(m) for m in self.pareto_mols[best_loss]]
+            print("Most Stable:")
+            [print(m, "{:.2f}".format(P1)+" eV") for m,P1 in zip(mols[best_P1], front[:,0][best_P1])] 
+            print("Smallest Gap:")
+            [print(m,"{:.2f}".format(P2)+" eV") for m,P2 in zip(mols[best_P2], front[:,1][best_P2])]         
+
+        f = open(filename+".dat", "w")
+        f.write("Best Candidates:\n")
+        [f.write(m+"\n") for m in self.pareto_mols[best_loss]]
+        f.write("Most Stable:\n")
+        [f.write(m+" "+"{:.2f}".format(P1)+" eV\n") for m,P1 in zip(mols[best_P1], front[:,0][best_P1])]
+        f.write("Smallest Gap:\n")
+        [f.write(m+" "+"{:.2f}".format(P2)+" eV\n") for m,P2 in zip(mols[best_P2], front[:,1][best_P2])]
+        f.close()        
+
         
-        inds =np.array(inds)
-        inds  = inds.astype('int')
-
-
-        self.pareto_mols = self.histogram[inds]
-
-        return np.array(pareto_front), np.int_(inds), self.pareto_mols
