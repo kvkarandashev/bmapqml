@@ -11,11 +11,10 @@ Example usage:
 python analysis.py -PATH /home/jan/projects/MOLOPT/do_sim/bias/both/8/ -name both_8 -properties atomization_gap
 """
 
-from bmapqml.utils import analyze_random_walk
+from bmapqml.chemxpl.plotting import analyze_random_walk
 import numpy as np
 from bmapqml.chemxpl.minimized_functions import QM9_properties,multi_obj
 import argparse
-import pdb
 
 parser = argparse.ArgumentParser(description='INPUT PATH')
 parser.add_argument("-PATH")
