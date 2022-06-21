@@ -127,6 +127,10 @@ class TrajectoryPoint:
         if num_visits is not None:
             num_visits=copy.deecopy(num_visits)
         self.num_visits=num_visits
+
+        self.first_MC_step_encounter=None
+        self.first_global_MC_step_encounter=None
+
         # Information for keeping detailed balance.
         self.bond_order_change_possibilities=None
         self.nuclear_charge_change_possibilities=None
@@ -300,6 +304,9 @@ class RandomWalk:
             init_egcs=[init_egcs for i in range(self.num_replicas)]
         self.betas=betas
 
+        self.MC_step_counter=0
+        self.global_MC_step_counter=0
+
         if isinstance(self.betas, list):
             assert(len(self.betas)==self.num_replicas)
 
@@ -361,6 +368,7 @@ class RandomWalk:
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
+        self.MC_step_counter+=1
 
         accepted=self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
         if accepted:
@@ -450,6 +458,7 @@ class RandomWalk:
                 if egc.num_heavy_atoms() < final_nhatoms_range[0]:
                     output+=final_nhatoms_range[0]-egc.num_heavy_atoms()
         return output
+
     # TODO do we still need Metropolis_rejection_prob? Does not appear anywhere.
     def tp_pair_order_prob(self, replica_ids, tp_pair=None, Metropolis_rejection_prob=False):
         if tp_pair is None:
@@ -538,6 +547,7 @@ class RandomWalk:
                 accepted=self.accept_reject_move(trial_tps, .0, replica_ids=old_ids)
 
     def global_random_change(self, prob_dict={"simple" : 0.5, "genetic" : 0.25, "tempering" : 0.25}, **other_kwargs):
+        self.global_MC_step_counter+=1
         cur_procedure=random.choices(list(prob_dict), weights=list(prob_dict.values()))[0]
         if cur_procedure=="simple":
             self.MC_step_all(**other_kwargs)
@@ -608,6 +618,10 @@ class RandomWalk:
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
             if self.histogram[tp_index].num_visits is None:
                 self.histogram[tp_index].num_visits=np.zeros((self.num_replicas,), dtype=int)
+                self.histogram[tp_index].first_MC_step_encounter=self.MC_step_counter
+                self.histogram[tp_index].first_global_MC_step_encounter=self.global_MC_step_counter
+
+
             self.histogram[tp_index].num_visits[replica_id]+=1
     def update_saved_candidates(self):
         for tp in self.cur_tps:
