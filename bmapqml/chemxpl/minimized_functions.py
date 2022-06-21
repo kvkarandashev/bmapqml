@@ -1,4 +1,7 @@
 # If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
+from tabnanny import verbose
+
+
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge=max(possible_nuclear_charges)
@@ -37,7 +40,7 @@ class QM9_properties:
     verbose    : If True, prints the SMILE and prediction
     """
 
-    def __init__(self, model_path, verbose=False):
+    def __init__(self, model_path,max=False, verbose=False):
         import pickle
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
@@ -45,8 +48,10 @@ class QM9_properties:
         self.ml_model = pickle.load(open(model_path, "rb"))
         self.verbose  = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+        self.max=max
 
     def __call__(self, trajectory_point_in):
+        import numpy as np
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
         from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
 
@@ -58,7 +63,11 @@ class QM9_properties:
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
-        return prediction[-1]
+
+        if self.max:
+            return np.exp(-prediction)[-1]
+        else:
+            return prediction[-1]
 
 
     def evaluate_trajectory(self, trajectory_points):
@@ -72,6 +81,38 @@ class QM9_properties:
         #Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=4)(delayed(self.__call__)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
+
+
+class find_match():
+
+    """
+    Guide Random walk towards the target the representation corresponding to the target
+    molecule.
+    """
+    def __init__(self, X_target,verbose=False):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+        self.X_target=X_target
+        self.verbose = verbose
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+
+    def __call__(self, trajectory_point_in):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        import numpy as np
+        from numpy.linalg import norm
+
+        # KK: This demonstrates how expensive intermediate data can be saved too.
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+
+        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        d = norm(X_test-self.X_target)
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES, "Prediction: ",d)
+
+            return np.exp(d)
+
 
 class multi_obj:
 
