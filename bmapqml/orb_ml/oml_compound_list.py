@@ -22,18 +22,18 @@
 
 
 from .oml_compound import OML_compound, OML_Slater_pair, ASE2OML_compound
-from ..python_parallelization import embarassingly_parallel
+from ..python_parallelization import embarrassingly_parallel
 import os
 
 class OML_compound_list(list):
-    """ The class was created to allow easy embarassing parallelization of operations with lists of OML_compound objects.
+    """ The class was created to allow easy embarrassing parallelization of operations with lists of OML_compound objects.
     """
     def run_calcs(self, **emb_paral_kwargs):
-        self.embarassingly_parallelize(after_run_calcs, (), **emb_paral_kwargs)
+        self.embarrassingly_parallelize(after_run_calcs, (), **emb_paral_kwargs)
     def generate_orb_reps(self, rep_params, **emb_paral_kwargs):
-        self.embarassingly_parallelize(after_gen_orb_reps, rep_params, **emb_paral_kwargs)
-    def embarassingly_parallelize(self, func_in, other_args, **emb_paral_kwargs):
-        new_vals=embarassingly_parallel(func_in, self, other_args, **emb_paral_kwargs)
+        self.embarrassingly_parallelize(after_gen_orb_reps, rep_params, **emb_paral_kwargs)
+    def embarrassingly_parallelize(self, func_in, other_args, num_procs=None, fixed_num_threads=None):
+        new_vals=embarrassingly_parallel(func_in, self, other_args, num_procs=num_procs, fixed_num_threads=fixed_num_threads)
         for i in range(len(self)):
             self[i]=new_vals[i]
     def mats_savefile2temp_calc_dirs(self):

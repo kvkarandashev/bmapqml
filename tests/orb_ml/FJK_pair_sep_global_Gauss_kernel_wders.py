@@ -30,8 +30,8 @@ oml_compounds_2=OML_Slater_pair_list_from_xyzs(tested_xyzs_2, **Slater_pair_kwar
 orb_rep_params=OML_rep_params(max_angular_momentum=1, orb_atom_rho_comp=0.95)
 
 timestamp("Representation generation.")
-oml_compounds_1.generate_orb_reps(orb_rep_params, disable_openmp=True)
-oml_compounds_2.generate_orb_reps(orb_rep_params, disable_openmp=False)
+oml_compounds_1.generate_orb_reps(orb_rep_params, fixed_num_threads=1)
+oml_compounds_2.generate_orb_reps(orb_rep_params)
 timestamp("Finished.")
 
 timestamp("Standard deviation calculations.")

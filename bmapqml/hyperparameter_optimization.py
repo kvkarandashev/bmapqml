@@ -30,7 +30,7 @@ import math, random, copy
 from .utils import dump2pkl, nullify_ignored
 from .kernels import gaussian_kernel_matrix, gaussian_sym_kernel_matrix, symmetrized_kernel_matrix
 from scipy.optimize import minimize
-from .python_parallelization import embarassingly_parallel
+from .python_parallelization import embarrassingly_parallel
 from .linear_algebra import Cho_multi_factors
 
 
@@ -268,7 +268,7 @@ class GOO_ensemble_subset(Gradient_optimization_obj):
 # This class was introduced to enable multiple cross-validation.
 class GOO_ensemble(Gradient_optimization_obj):
     def __init__(self, all_compounds_kernel_input, all_quantities, train_id_lists, check_id_lists, quants_ignore=None, use_MAE=True,
-                        reduced_hyperparam_func=None, num_procs=None, num_threads=None, kernel_func=None,
+                        reduced_hyperparam_func=None, num_procs=1, fixed_num_threads=None, kernel_func=None,
                         sym_kernel_func=gaussian_sym_kernel_matrix, num_kernel_params=None, quants_ignore_orderable=False, **kernel_additional_args):
 
         self.reduced_hyperparam_func=reduced_hyperparam_func
@@ -283,14 +283,15 @@ class GOO_ensemble(Gradient_optimization_obj):
 
         self.goo_ensemble_subsets=[]
         for train_id_list, check_id_list in zip(train_id_lists, check_id_lists):
-            self.goo_ensemble_subsets.append(GOO_ensemble_subset(train_id_list, check_id_list, all_quantities, quants_ignore=quants_ignore, use_MAE=use_MAE, quants_ignore_orderable=quants_ignore_orderable))
+            self.goo_ensemble_subsets.append(GOO_ensemble_subset(train_id_list, check_id_list, all_quantities,
+                                                quants_ignore=quants_ignore, use_MAE=use_MAE, quants_ignore_orderable=quants_ignore_orderable))
         self.num_subsets=len(self.goo_ensemble_subsets)
 
         self.presaved_parameters=None
 
         self.num_procs=num_procs
 
-        self.num_threads=num_threads
+        self.fixed_num_threads=fixed_num_threads
 
     def error_measure_wders(self, parameters, recalc_global_matrices=True, lambda_der_only=False, negligible_red_param_distance=None):
         if recalc_global_matrices:
@@ -324,10 +325,11 @@ class GOO_ensemble(Gradient_optimization_obj):
         return error_mean, error_mean_ders
 
     def subset_error_measures_wders(self, parameters, lambda_der_only=False):
-        if self.num_procs is None:
+        if (self.num_procs is None) or (self.num_procs == 1):
             return [goo_ensemble_subset.error_measure_wders(parameters, lambda_der_only=lambda_der_only) for goo_ensemble_subset in self.goo_ensemble_subsets]
         else:
-            return embarassingly_parallel(single_subset_error_measure_wders, self.goo_ensemble_subsets, (parameters, lambda_der_only), num_threads=self.num_threads, num_procs=self.num_procs)
+            return embarrassingly_parallel(single_subset_error_measure_wders, self.goo_ensemble_subsets, (parameters, lambda_der_only),
+                                                fixed_num_threads=self.fixed_num_threads, num_procs=self.num_procs)
 
     def recalculate_global_matrices(self, parameters):
         global_kernel_wders=self.sym_kernel_func(self.all_compounds_kernel_input, parameters[1:], with_ders=True, **self.kernel_additional_args)
@@ -348,7 +350,7 @@ def single_subset_error_measure_wders(subset, parameters, lambda_der_only):
     return subset.error_measure_wders(parameters, lambda_der_only=lambda_der_only)
 
 def generate_random_GOO_ensemble(all_compounds_kernel_input, all_quantities, quants_ignore=None, num_kfolds=16, training_set_ratio=0.5, use_MAE=True,
-        reduced_hyperparam_func=None, num_procs=None, num_threads=None, sym_kernel_func=None, **other_kwargs):
+        reduced_hyperparam_func=None, num_procs=1, fixed_num_threads=None, sym_kernel_func=None, **other_kwargs):
     num_points=all_quantities.shape[-1]
     train_point_num=int(num_points*training_set_ratio)
 
@@ -376,7 +378,7 @@ def generate_random_GOO_ensemble(all_compounds_kernel_input, all_quantities, qua
         check_id_lists.append(check_id_list)
 
     return GOO_ensemble(all_compounds_kernel_input, all_quantities, train_id_lists, check_id_lists, quants_ignore=quants_ignore, use_MAE=use_MAE,
-                            reduced_hyperparam_func=reduced_hyperparam_func, num_procs=num_procs, num_threads=num_threads,
+                            reduced_hyperparam_func=reduced_hyperparam_func, num_procs=num_procs, fixed_num_threads=fixed_num_threads,
                             sym_kernel_func=sym_kernel_func, **other_kwargs)
     
 
@@ -629,7 +631,7 @@ list_supported_funcs=["default", "single_rescaling", "single_rescaling_global_ma
 def stochastic_gradient_descend_hyperparam_optimization(kernel_input, quant_arr, quant_ignore_list=None, quants_ignore_orderable=False, init_lambda=1e-3, max_iterations=256,
                                     init_param_guess=None, init_red_param_guess=None, reduced_hyperparam_func=Reduced_hyperparam_func(), max_stagnating_iterations=1,
                                     use_MAE=True, num_kfolds=16, other_opt_goo_ensemble_kwargs={}, randomized_iterator_kwargs={}, iter_dump_name_add=None,
-                                    additional_BFGS_iters=None, iter_dump_name_add_BFGS=None, negligible_red_param_distance=1e-9, num_procs=None, num_threads=None,
+                                    additional_BFGS_iters=None, iter_dump_name_add_BFGS=None, negligible_red_param_distance=1e-9, num_procs=1, fixed_num_threads=None,
                                     sym_kernel_func=gaussian_sym_kernel_matrix, hyperparam_init_guess=None):
 
     if init_red_param_guess is None:
@@ -637,7 +639,7 @@ def stochastic_gradient_descend_hyperparam_optimization(kernel_input, quant_arr,
 
     opt_GOO_ensemble=generate_random_GOO_ensemble(kernel_input, quant_arr, quants_ignore=quant_ignore_list, use_MAE=use_MAE, num_kfolds=num_kfolds,
                                                   reduced_hyperparam_func=reduced_hyperparam_func, **other_opt_goo_ensemble_kwargs, quants_ignore_orderable=quants_ignore_orderable,
-                                                  num_procs=num_procs, num_threads=num_threads, sym_kernel_func=sym_kernel_func)
+                                                  num_procs=num_procs, fixed_num_threads=fixed_num_threads, sym_kernel_func=sym_kernel_func)
 
     randomized_iterator=GOO_randomized_iterator(opt_GOO_ensemble, init_red_param_guess, **randomized_iterator_kwargs)
     num_stagnating_iterations=0
