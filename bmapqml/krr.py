@@ -2,7 +2,6 @@
 Simple sklearn style class for kernel ridge regression (KRR)
 using the BIGMAPQML library.
 """
-import pdb
 
 class KRR():
     
@@ -16,8 +15,6 @@ class KRR():
         self.scale_features = scale_features
         self.scale_labels   = scale_labels
 
-    #X_std = (X - X.min(axis=0)) / (X.max(axis=0) - X.min(axis=0))
-    #X_scaled = X_std * (max - min) + min
 
     def X_MinMaxScaler(self, X):   
 
@@ -81,7 +78,6 @@ class KRR():
             y_train = self.y_MinMaxScaler(y_train)
 
 
-        #pdb.set_trace()
 
         if self.kernel_type == "gaussian":
             self.kernel_func = gaussian_sym_kernel_matrix
