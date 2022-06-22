@@ -1,17 +1,9 @@
-import pickle
 import numpy as np
 from sklearn.model_selection import train_test_split
 import random
-from tqdm import tqdm
-import numpy as np
-import rdkit
-import numpy as np
 import pandas as pd
-from rdkit import Chem  
-import pickle as pickle1
 from rdkit_descriptors import *
-from bmapqml.kernel_class import KRR
-import pdb
+from bmapqml.krr import KRR
 random.seed(1337)
 np.random.seed(1337)
 
@@ -38,7 +30,6 @@ if __name__ == "__main__":
 
     X_train, X_test, y_train, y_test = train_test_split(X,   y, random_state=1337, test_size=0.20, shuffle=True)
     
-    #pdb.set_trace()
     """
     Nullmodel
     """
@@ -57,7 +48,6 @@ if __name__ == "__main__":
         print(n, MAE)
 
         errors.append(MAE)
-       # pdb.set_trace()
 
     reg.save('/store/common/jan/qm9/KRR_{}_{}'.format(n, TARGET_PROPERTY))
     print(errors)
