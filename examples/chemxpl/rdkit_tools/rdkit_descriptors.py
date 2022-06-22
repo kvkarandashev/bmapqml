@@ -126,7 +126,7 @@ def get_single_FP(smi, fp_type):
     return fp_mol
 
 def get_all_FP(SMILES, fp_type):
-
+    from tqdm import tqdm
     """
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
