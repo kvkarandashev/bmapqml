@@ -113,6 +113,77 @@ class find_match():
 
             return np.exp(d)
 
+class sample_local_space():
+
+    """
+    Sample local chemical space of the inital compound
+    with input representation X_init. Radial symmetric
+    LJ12-6 potential is used. Epsilon and sigma parameters
+    can be changed to adjust the potential and how different 
+    the target molecule can be from the initial one.
+    """
+
+    def __init__(self, X_init,verbose=False, epsilon=1., sigma=1.):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit  
+        self.epsilon=epsilon
+        self.sigma=sigma
+        self.X_init=X_init 
+        self.verbose = verbose
+        self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+
+    def lennard_jones_potential(self,d, epsilon, sigma):
+        return 4*epsilon*((sigma/d)**12 - (sigma/d)**6)
+
+    def __call__(self, trajectory_point_in):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        import numpy as np
+        from numpy.linalg import norm
+
+        # KK: This demonstrates how expensive intermediate data can be saved too.
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+
+        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        #pdb.set_trace()
+        d = norm(X_test-self.X_init)
+
+        V = self.lennard_jones_potential(d, self.epsilon, self.sigma)
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES,d, V)
+
+        return V
+
+
+    def evaluate_point(self, trajectory_point_in):
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
+        import numpy as np
+        from numpy.linalg import norm
+
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
+
+        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        d = norm(X_test-self.X_init)
+
+        V = self.lennard_jones_potential(d, self.epsilon, self.sigma)
+
+        return V, d
+
+
+    def evaluate_trajectory(self, trajectory_points):
+        """
+        Evaluate the function on a list of trajectory points 
+        """
+        
+        import numpy as np
+
+        from joblib import Parallel, delayed
+        #Aparently this is the fastest way to do this:
+        values = Parallel(n_jobs=4)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        return np.array(values)
+
+    
 
 class multi_obj:
 
@@ -250,6 +321,8 @@ class Rdkit_properties:
             return np.exp(-value)
         else:
             return value
+
+
 
 
 
