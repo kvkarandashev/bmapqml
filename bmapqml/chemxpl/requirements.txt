@@ -1,0 +1,3 @@
+igraph
+rdkit
+sortedcontainers
