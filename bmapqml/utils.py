@@ -27,7 +27,23 @@ import pickle, subprocess
 from matplotlib.pyplot import fignum_exists
 from .data import NUCLEAR_CHARGE
 import numpy as np
-import pdb
+
+# For resizing numpy arrays:
+def np_resize(np_arr, new_size):
+    new_arr=np_arr
+    for dim_id, new_dim in enumerate(new_size):
+        cur_dim=new_arr.shape[dim_id]
+        if new_dim is None:
+            continue
+        if cur_dim<new_dim:
+            add_arr_dims=list(new_arr.shape)
+            add_arr_dims[dim_id]=new_dim-cur_dim
+            add_arr=np.zeros(tuple(add_arr_dims))
+            new_arr=np.append(new_arr, add_arr, dim_id)
+        if cur_dim>new_dim:
+            new_arr=np.delete(new_arr, slice(new_dim, cur_dim), dim_id)
+    return new_arr
+
 
 def canonical_atomtype(atomtype):
     return atomtype[0].upper()+atomtype[1:].lower()

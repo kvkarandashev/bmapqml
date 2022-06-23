@@ -28,6 +28,10 @@ import numpy as np
 from numba import njit, prange
 from numba.types import bool_
 
+class KernelUnstable(Exception):
+    pass
+
+
 @njit(fastmath=True)
 def all_indices_except(to_include):
     num_left=0
@@ -85,10 +89,6 @@ def numba_linear_dependent_entries(train_kernel, residue_tol_coeff):
                     orthonormalized_vectors[i, j]-=cur_product*orthonormalized_vectors[cur_orth_id, j]
         cur_orth_id+=1
     return all_indices_except(to_include)
-
-class KernelUnstable(Exception):
-    pass
-
 
 # For distance-based cutting off redundant entries from the kernel matrix.
 @njit(fastmath=True, parallel=True)
