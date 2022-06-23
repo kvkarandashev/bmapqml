@@ -116,6 +116,9 @@ def gaussian_sym_kernel_matrix(A, sigma_arr, with_ders=False):
 def laplacian_sym_kernel_matrix(A, sigma_arr, with_ders=False):
     return laplacian_kernel_matrix(A, None, sigma_arr, with_ders=with_ders)
 
+common_kernels={"Gaussian" : gaussian_kernel_matrix, "Laplacian" : laplacian_kernel_matrix}
+
+common_sym_kernels={"Gaussian" : gaussian_sym_kernel_matrix, "Laplacian" : laplacian_sym_kernel_matrix}
 
 class symmetrized_kernel_matrix:
     def __init__(self, kernel_func):

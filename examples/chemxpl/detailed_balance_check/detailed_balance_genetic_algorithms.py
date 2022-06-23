@@ -39,7 +39,7 @@ egc_list=[deepcopy(init_egc) for egc_counter in range(num_egcs)]
 
 num_gen_moves=5
 
-rw=RandomWalk(randomized_change_params=randomized_change_params, conserve_stochiometry=conserve_stochiometry)
+rw=RandomWalk(randomized_change_params=randomized_change_params, conserve_stochiometry=conserve_stochiometry, num_replicas=num_egcs)
 for MC_step in range(MC_step_num):
     # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
     egc_list=rw.change_molecule_list(egc_list, randomized_change_params=randomized_change_params)

@@ -77,6 +77,16 @@ def default_valence(atom_id):
     else:
         return val_list
 
+# List atoms with non-default valences.
+def non_default_valences(hatoms):
+    output=[]
+    for ha_id, ha in enumerate(hatoms):
+        cur_val_id=ha.valence_val_id()
+        if cur_val_id != 0:
+            output.append((ha_id, cur_val_id))
+    return output
+
+
 # Color obj_list in a way that each equal obj1 and obj2 were the same color.
 # Used for defining canonical permutation of a graph.
 def list2colors(obj_list):
@@ -359,12 +369,7 @@ class ChemGraph:
         return False
 
     def non_default_valences(self):
-        output=[]
-        for ha_id, ha in enumerate(self.hatoms):
-            cur_val_id=ha.valence_val_id()
-            if cur_val_id != 0:
-                output.append((ha_id, cur_val_id))
-        return output
+        return non_default_valences(self.hatoms)
 
     #TO-DO a better graph-based way to do it?
     def pairs_equivalent(self, unsorted_tuple1, unsorted_tuple2):
