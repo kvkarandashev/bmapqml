@@ -86,8 +86,21 @@ class KRR():
         else:
             raise ValueError("Kernel type not supported")
 
-        optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(X_train, y_train, init_param_guess=np.array([1.0, 100.0]), max_stagnating_iterations=8,
-                                    randomized_iterator_kwargs={"default_step_magnitude" : 0.05}, sym_kernel_func=self.kernel_func, additional_BFGS_iters=8)
+
+        if len(X_train) < 10000:
+            """
+            these settings are feasible for small trainingset sizes
+            """
+            optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(X_train, y_train, init_param_guess=np.array([1.0, 100.0]), max_stagnating_iterations=8,
+                                        randomized_iterator_kwargs={"default_step_magnitude" : 0.05}, sym_kernel_func=self.kernel_func, additional_BFGS_iters=8)
+        else:
+            """
+            these settings are feasible for large trainingset sizes
+            """
+            optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(X_train, y_train,
+                                init_param_guess=np.array([1.0, 100.0]), max_stagnating_iterations=8,
+                                randomized_iterator_kwargs={"default_step_magnitude" : 0.05}, sym_kernel_func=self.kernel_func)
+
 
         self.sigmas=optimized_hyperparams["sigmas"]
         self.lambda_val=optimized_hyperparams["lambda_val"]

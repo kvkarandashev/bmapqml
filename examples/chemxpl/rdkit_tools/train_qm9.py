@@ -24,7 +24,7 @@ if __name__ == "__main__":
     np.random.shuffle(inds)
     SMILES, y = SMILES[inds], y[inds]
                     
-    N = [20000]
+    N = [12000]
     #[32768] #uses only single core why?
     X = get_all_FP(SMILES, fp_type="both")
 
