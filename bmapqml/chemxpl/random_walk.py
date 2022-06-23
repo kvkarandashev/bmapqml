@@ -127,6 +127,7 @@ class TrajectoryPoint:
         if num_visits is not None:
             num_visits=copy.deecopy(num_visits)
         self.num_visits=num_visits
+        self.visit_step_ids=None
 
         self.first_MC_step_encounter=None
         self.first_global_MC_step_encounter=None
@@ -286,8 +287,9 @@ def random_pair(arr_length):
 # Class that generates a trajectory over chemical space.
 class RandomWalk:
     def __init__(self, init_egcs=None, bias_coeff=None, vbeta_bias_coeff=None, randomized_change_params={}, starting_histogram=None, conserve_stochiometry=False,
-                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, num_replicas=None,
-                    no_exploration=False, no_exploration_smove_adjust=False, restricted_tps=None, min_function_name="MIN_FUNCTION", num_saved_candidates=None):
+                    bound_enforcing_coeff=1.0, keep_histogram=False, betas=None, min_function=None, num_replicas=None, no_exploration=False,
+                    no_exploration_smove_adjust=False, restricted_tps=None, min_function_name="MIN_FUNCTION", num_saved_candidates=None,
+                    keep_full_trajectory=False):
         """
         betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
@@ -303,6 +305,7 @@ class RandomWalk:
                 self.num_replicas=1
             init_egcs=[init_egcs for i in range(self.num_replicas)]
         self.betas=betas
+        self.keep_full_trajectory=keep_full_trajectory
 
         self.MC_step_counter=0
         self.global_MC_step_counter=0
@@ -333,7 +336,9 @@ class RandomWalk:
 
         self.randomized_change_params=randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
+
         self.keep_histogram=keep_histogram
+
         self.change_list=default_change_list
         self.bound_enforcing_coeff=bound_enforcing_coeff
         self.conserve_stochiometry=conserve_stochiometry
@@ -613,16 +618,22 @@ class RandomWalk:
         else:
             tp_index=self.histogram_index_add(tp)
             return self.histogram[tp_index].visit_num(replica_id)*self.bias_coeff
+
     def update_histogram(self, replica_ids):
         for replica_id in replica_ids:
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
             if self.histogram[tp_index].num_visits is None:
-                self.histogram[tp_index].num_visits=np.zeros((self.num_replicas,), dtype=int)
+                self.histogram[tp_index].num_visits=np.empty((self.num_replicas,), dtype=int)
                 self.histogram[tp_index].first_MC_step_encounter=self.MC_step_counter
                 self.histogram[tp_index].first_global_MC_step_encounter=self.global_MC_step_counter
 
-
             self.histogram[tp_index].num_visits[replica_id]+=1
+
+            if self.keep_full_trajectory:
+                if self.histogram[tp_index].visit_step_ids is None:
+                    self.histogram[tp_index].visit_step_ids=[[] for replica_id in range(self.num_replicas)]
+                self.histogram[tp_index].visit_step_ids[replica_id].append(self.global_MC_step_counter)
+
     def update_saved_candidates(self):
         for tp in self.cur_tps:
             if self.min_function_name in tp.calculated_data:
@@ -632,6 +643,21 @@ class RandomWalk:
         self.saved_candidates.sort()
         if len(self.saved_candidates)>self.num_saved_candidates:
             del(self.saved_candidates[self.num_saved_candidates:])
+
+    # Some properties for more convenient trajectory analysis.
+    def ordered_trajectory(self):
+        output=[]
+        for tp_ids in self.ordered_trajectory_ids():
+            output.append([self.histogram[tp_id] for tp_id in tp_ids])
+        return output
+    def ordered_trajectory_ids(self):
+        output=np.zeros((self.global_MC_step_counter, self.num_replicas), dtype=int)
+        for tp_id, tp in enumerate(self.histogram):
+            if tp.visit_step_ids is not None:
+                for replica_id, replica_visits in enumerate(tp.visit_step_ids):
+                    for replica_visit in replica_visits:
+                        output[replica_visit-1, replica_id]=tp_id
+        return output
 
 
 def merge_random_walks(*rw_list):
