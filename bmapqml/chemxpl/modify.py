@@ -1,15 +1,12 @@
 #TODO Perhaps add support for atoms with higher valences being added directly?
 #TODO Ensure resonance structure invariance for genetic algorithms.
 
-from xyz2mol import int_atom
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
-from .valence_treatment import ChemGraph, default_valence, int_atom_checked, sorted_tuple, connection_forbidden,\
-                            split_chemgraph_no_dissociation_check, max_bo, combine_chemgraphs
+from .valence_treatment import ChemGraph, default_valence, int_atom_checked, connection_forbidden, max_bo, sorted_by_membership, non_default_valences
 from copy import deepcopy
 from sortedcontainers import SortedList
 import random, itertools
-from .valence_treatment import sorted_tuple, sorted_by_membership
 from igraph.operators import disjoint_union
 
 
@@ -282,7 +279,14 @@ class FragmentPair:
                 if connection_forbidden(*[new_hatoms[internal_id].ncharge for internal_id in new_bond_tuple], forbidden_bonds):
                     return None, None
 
-        return ChemGraph(hatoms=new_hatoms, graph=new_graph), new_membership_vector
+        init_non_default_valences=non_default_valences(new_hatoms)
+        new_ChemGraph=ChemGraph(hatoms=new_hatoms, graph=new_graph)
+        # Lastly, check that re-initialization does not decrease the bond order.
+        new_non_default_valences=new_ChemGraph.non_default_valences()
+        if new_non_default_valences == init_non_default_valences:
+            return new_ChemGraph, new_membership_vector
+        else:
+            return None, None
 
 def bond_dicts_match(frag_bond_dict1, frag_bond_dict2):
     if len(frag_bond_dict1) != len(frag_bond_dict2):

@@ -334,5 +334,3 @@ def egc_with_coords(egc, coords=None, methods="MMFF"):
     output.additional_data["canon_rdkit_SMILES"]=canon_SMILES
     output.add_canon_rdkit_coords(coords)
     return output
-
-

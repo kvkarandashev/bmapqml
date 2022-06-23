@@ -1,3 +1,6 @@
+# IMPORTANT: Note that for the QM9 total potential energy results what was actually predicted was internal energy at 0K with
+# total potential energy used as baseline in the Delta-ML scheme.
+
 from ..orb_ml.oml_compound import OML_compound
 
 def HOMO_en(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
