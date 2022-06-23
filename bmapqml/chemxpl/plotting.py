@@ -1,6 +1,7 @@
 
 from bmapqml.utils import * 
 
+
 class analyze_random_walk:
 
     """
@@ -8,20 +9,26 @@ class analyze_random_walk:
     Visualize chemical space and convex hull of the walk.
     """
 
-    def __init__(self, histogram, model=None, verbose=False):
+    def __init__(self, histograms, model=None, verbose=False):
         import numpy as np
-        
+        import pdb
         """
         histogram : list of all unique encountered points in the random walk.
         minimize_fct : if desired reevaluate all unique molecules using this function
         """
 
+        #pdb.set_trace()
         import pickle
-        self.tps     = pickle.load(open(histogram, "rb"))
-        self.histogram= np.array(self.convert_to_smiles(pickle.load(open(histogram, "rb"))))
+        all_tps = []
+        for h in histograms:
+
+            all_tps.append(pickle.load(open(h, "rb")))
+
+        self.tps     = np.concatenate(all_tps)
+        self.histogram= np.array(self.convert_to_smiles(self.tps))
         self.model = None or model
         if verbose:
-            print("Number of unique points in the random walk:", len(self.tps))
+            print("Number of unique points in the random walk:", len(self.histogram))
 
 
         """
@@ -74,9 +81,9 @@ class analyze_random_walk:
         reducer = PCA(n_components=2)
         reducer.fit(X)
         X_2d = reducer.transform(X)
-        scaler = StandardScaler()
-        X_2d = scaler.fit_transform(X_2d)
-        return X_2d
+        #scaler = StandardScaler()
+        #X_2d = scaler.fit_transform(X_2d)
+        return X_2d, reducer
 
 
 
@@ -144,6 +151,15 @@ class analyze_random_walk:
             self.pareto_front = np.array(pareto_front)
             return self.pareto_front, np.int_(inds), self.pareto_mols
 
+
+        if self.values.shape == (len(self.values),2):
+            inds = np.argsort(self.values[:,0])
+            self.pareto_mols = self.histogram[inds]
+            self.pareto_front = np.array(self.values[inds])
+
+            return self.pareto_front, np.int_(inds), self.pareto_mols
+
+
         if self.values.shape == (len(self.values),):
 
             """
@@ -194,6 +210,23 @@ class analyze_random_walk:
                 f.write("Smallest Gap:\n")
                 [f.write(m+" "+"{:.2f}".format(P2)+" eV\n") for m,P2 in zip(mols[best_P2], front[:,1][best_P2])]
                 f.close()        
+
+
+            elif self.values.shape == (len(self.values),2):
+                import pdb
+               #
+                front, _ , mols = self.compute_pareto_front()
+                best_loss = np.argsort(front[:,0])
+                if verbose:
+                    print("Best Candidates:")
+                    [print(m,  "{:.2f}".format(P1[1])) for m,P1 in zip(self.pareto_mols[best_loss], front[best_loss])]
+                f = open(filename+".dat", "w")
+                f.write("Best Candidates:\n")
+                #pdb.set_trace()
+            
+                [f.write(m+" " + "{:.2f}".format(P1[1])+"\n") for m,P1 in zip(self.pareto_mols[best_loss], front[best_loss])]
+                f.close()
+
 
             elif self.values.shape == (len(self.values),):
 
@@ -309,14 +342,23 @@ class analyze_random_walk:
         ax2.xaxis.set_ticks_position('bottom')
         ax2.spines['left'].set_position(('axes', -0.05))
 
-
+        from examples.chemxpl.rdkit_tools import rdkit_descriptors
         print("Compute PCA")
-        X_2d = self.compute_PCA()
+        X_2d, reducer = self.compute_PCA()
+        target = "CCCCCCCCC"
+        X_target = rdkit_descriptors.get_all_FP([target], fp_type="both")
+        X_extra = reducer.transform(X_target)
+
         print("Plot PCA")
         if self.values.shape == (len(self.values),3):
-            sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=400,alpha=0.1,marker="o", c=self.values[:,2],edgecolors='none')
+            sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=200,alpha=0.1,marker="o", c=self.values[:,2],edgecolors='none')
+        if self.values.shape == (len(self.values),2):
+            #pdb.set_trace()
+            #self.values[:,0][0]=-20
+            ax2.scatter(x=X_extra[:,0], y=X_extra[:,1],s=200,marker="x",edgecolors='none')
+            sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=200,alpha=0.5,marker="o", c=self.values[:,1],edgecolors='none')
         if self.values.shape == (len(self.values),):
-            sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=400,alpha=0.1,marker="o", c=self.values,edgecolors='none')
+            sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=200,alpha=0.1,marker="o", c=self.values,edgecolors='none')
         ax2.set_xlabel("PC1", fontsize=21)
         ax2.set_ylabel("PC2", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
 
