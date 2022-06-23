@@ -13,8 +13,9 @@ python analysis.py -PATH /home/jan/projects/MOLOPT/do_sim/bias/both/8/ -name bot
 
 from bmapqml.chemxpl.plotting import analyze_random_walk
 import numpy as np
-from bmapqml.chemxpl.minimized_functions import QM9_properties,multi_obj
+from bmapqml.chemxpl.minimized_functions import QM9_properties,multi_obj,sample_local_space
 import argparse
+import pdb
 
 parser = argparse.ArgumentParser(description='INPUT PATH')
 parser.add_argument("-PATH")
@@ -39,14 +40,22 @@ elif args.properties == "gap":
 
 elif args.properties == "atomization":
     min_func = QM9_properties(atomization_model,verbose=False)
+elif args.properties == "sample_local_space":
+    from examples.chemxpl.rdkit_tools import rdkit_descriptors
+    min_func = sample_local_space(rdkit_descriptors.get_all_FP(["CCCCCCCCC"], fp_type="both"), verbose=True,  epsilon=15., sigma=10)
 else:
     raise ValueError("Unknown property")
 
+lhist = [path+"QM9_histogram.pkl"]
+#["{}".format(path)+"hist{}.pkl".format(i) for i in range(1,7)]
+#pdb.set_trace()
 
 # Initialize the analysis object
-ana = analyze_random_walk("{}".format(path)+"QM9_histogram.pkl", model=min_func)
+#ana = analyze_random_walk(["{}".format(path)+"QM9_histogram.pkl"], model=min_func)
+ana = analyze_random_walk(lhist, model=min_func)
 # Re-evalutate the accepted molecules, save values
 ana.evaluate_histogram()
+pdb.set_trace()
 # Compute pareto front
 ana.compute_pareto_front()
 # Write pareto front to file, as well as the pareto front values and molecules
