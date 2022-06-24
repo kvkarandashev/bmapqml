@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
 
     process= True
-    TARGET_PROPERTY = 'atomization'
+    TARGET_PROPERTY = 'gap'
 
     if process:
         df = process_qm9('/store/common/jan/qm9/')
@@ -40,8 +40,8 @@ if __name__ == "__main__":
 
     errors = []
     for n in N:
-        reg = KRR(kernel_type="laplacian", scale_features=True)
-        reg.fit(X_train[:n], y_train[:n])
+        reg = KRR(kernel_type="Laplacian", scale_labels=True)
+        reg.fit(X_train[:n], y_train[:n],optimize_hyperparameters=True)
         y_pred = reg.predict(X_test)
         MAE    = mae(y_test, y_pred)
 
@@ -50,4 +50,4 @@ if __name__ == "__main__":
         errors.append(MAE)
 
     reg.save('/store/common/jan/qm9/KRR_{}_{}'.format(n, TARGET_PROPERTY))
-    print(errors)
+    print("lc",errors)
