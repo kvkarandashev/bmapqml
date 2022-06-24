@@ -2,8 +2,10 @@
 Simple sklearn style class for kernel ridge regression (KRR)
 using the BIGMAPQML library.
 """
+from hashlib import new
 from .utils import OptionUnavailableError
 import numpy as np
+from .training_set_optimization import KernelUnstable
 
 def arr_scale(arr, minval, maxval, lbound=0, ubound=1):
     return lbound+(arr-minval)*(ubound-lbound)/(maxval-minval)
@@ -16,7 +18,7 @@ class KRR():
 
     def __init__(self, kernel_type="Gaussian", scale_features=False, scale_labels=False, kernel_function=None, sym_kernel_function=None,
                     hyperparam_opt_kwargs={"max_stagnating_iterations" : 8, "randomized_iterator_kwargs" : {"default_step_magnitude" : 0.05}},
-                    sigmas=None, lambda_val=None):
+                    sigmas=None, lambda_val=None, updatable=False):
         
         """
         User must provide a kernelfunction
@@ -45,6 +47,14 @@ class KRR():
         if self.sym_kernel_function is None:
             from .kernels import symmetrized_kernel_matrix
             self.sym_kernel_function=symmetrized_kernel_matrix(self.kernel_function)
+
+        self.updatable=updatable
+        if self.updatable:
+            self.K_train=None
+            self.GS_basis=None
+            self.y_train=None
+            self.max_considered_molecules=None
+
 
     def X_MinMaxScaler(self, X):   
 
@@ -119,9 +129,16 @@ class KRR():
         K_train=self.sym_kernel_function(X_train, self.sigmas)
         K_train[np.diag_indices_from(K_train)]+=self.lambda_val
         alphas=scipy_cho_solve(K_train, y_train)
+
+        if self.updatable:
+            self.initialize_updatable_components(K_train, X_train, y_train)
+
+            self.X_train
+
+        else:
+            self.X_train = X_train
+
         del(K_train)
-   
-        self.X_train  = X_train
         self.alphas = alphas
 
     def predict(self, X_test):
@@ -154,3 +171,26 @@ class KRR():
         """
 
         dump2pkl(self, filename)
+
+    #For functionality related to updating alpha coefficients at O(N**2) cost.
+    def update_max_considered_molecules(self, new_max_considered_molecules):
+        self.K_train=np_resize(self.K_train, (new_max_considered_molecules, new_max_considered_molecules))
+        self.GS_train=np_resize(self.GS_train, (new_max_considered_molecules, new_max_considered_molecules))
+        
+        new_K_train=np.zeros((new_max_considered_molecules, new_max_considered_molecules))
+        new_GS_basis=np.zeros((new_max_considered_molecules, new_max_considered_molecules))
+        new_y_train=np.zeros((new_max_considered_molecules,))
+        new_X_train
+        if self.K_train is not None:
+            num_transferred=min(new_max_considered_molecules, self.max_considered_molecules)
+            new_K_train[:num_transferred, :num_transferred]=self.K_train[:num_transferred, :num_transferred]
+            new_GS_basis[:num_transferred, :num_transferred]=self.GS_basis[:num_transferred, :num_transferred]
+            new_y_train[:num_transferred, :num_transferred]=self.y_train[:num_transferred]
+
+        self.K_train=new_K_train
+        self.GS_basis=new_GS_basis
+        self.y_train=new_y_train
+        self.max_considered_molecules=new_max_considered_molecules
+
+    def update(self, new_rep, new_y):
+        pass

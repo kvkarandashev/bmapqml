@@ -8,11 +8,6 @@ from .valence_treatment import sorted_tuple, connection_forbidden
 from .periodic import element_name
 import random, copy
 import numpy as np
-try:
-    from xyz2mol import str_atom
-except ModuleNotFoundError:
-    raise ModuleNotFoundError('Install xyz2mol software in order to use this parser. '
-                      'Visit: https://github.com/jensengroup/xyz2mol')
 
 
 # TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
@@ -339,11 +334,11 @@ class RandomWalk:
 
         self.keep_histogram=keep_histogram
 
-        self.change_list=default_change_list
         self.bound_enforcing_coeff=bound_enforcing_coeff
+
+        # TODO previous implementation deprecated; perhaps re-implement as a ``soft'' constraint?
+        # Or make a special dictionnary of changes that conserve stochiometry.
         self.conserve_stochiometry=conserve_stochiometry
-        if self.conserve_stochiometry is True:
-            self.change_list=stochiometry_conserving_change_list
 
         self.hydrogen_nums=None
 
@@ -492,7 +487,7 @@ class RandomWalk:
     def MC_step(self, replica_id=0, **dummy_kwargs):
         changed_tp=self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
-        new_tp, prob_balance=randomized_change(changed_tp, change_prob_dict=self.change_list, **self.used_randomized_change_params)
+        new_tp, prob_balance=randomized_change(changed_tp, **self.used_randomized_change_params)
         if new_tp is None:
             return False
         accepted=self.accept_reject_move([new_tp], prob_balance, replica_ids=[replica_id])
@@ -623,7 +618,7 @@ class RandomWalk:
         for replica_id in replica_ids:
             tp_index=self.histogram_index_add(self.cur_tps[replica_id])
             if self.histogram[tp_index].num_visits is None:
-                self.histogram[tp_index].num_visits=np.empty((self.num_replicas,), dtype=int)
+                self.histogram[tp_index].num_visits=np.zeros((self.num_replicas,), dtype=int)
                 self.histogram[tp_index].first_MC_step_encounter=self.MC_step_counter
                 self.histogram[tp_index].first_global_MC_step_encounter=self.global_MC_step_counter
 
