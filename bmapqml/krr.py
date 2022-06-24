@@ -15,7 +15,7 @@ def arr_rescale(scaled_arr, minval, maxval, lbound=0, ubound=1):
 
 
 class KRR():
-    
+
     def __init__(self, kernel_type="Gaussian", scale_features=False, scale_labels=False, kernel_function=None, sym_kernel_function=None,
                     hyperparam_opt_kwargs={"max_stagnating_iterations" : 8, "randomized_iterator_kwargs" : {"default_step_magnitude" : 0.05}},
                     sigmas=None, lambda_val=None, updatable=False):
