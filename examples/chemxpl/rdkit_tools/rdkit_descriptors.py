@@ -11,6 +11,7 @@ from rdkit.Chem.Crippen import MolLogP, MolMR
 from rdkit import Chem  
 import numpy as np
 import collections
+from bmapqml.python_parallelization import embarrassingly_parallel
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -125,30 +126,32 @@ def get_single_FP(smi, fp_type):
 
     return fp_mol
 
+# TODO KK@Jan: rewrite all this properly using a dictionnary
+def extended_get_single_FP(smi, fp_type):
+    if fp_type=="MorganFingerprint":
+
+        x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
+
+    if fp_type=="COMPQ":
+
+        x = COMPQ_PLUS(smi)
+
+    if fp_type=="both":
+
+        x1  = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
+        x2  = COMPQ_PLUS(smi)
+        x   = np.concatenate((x1, x2))
+
+    return x
+
+
 def get_all_FP(SMILES, fp_type):
     from tqdm import tqdm
     """
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
 
-    X = []
-    for smi in SMILES:
-        if fp_type=="MorganFingerprint":
-            x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
-            X.append(x)
-        if fp_type=="COMPQ":
-
-            x = COMPQ_PLUS(smi)
-            X.append(x)
-
-        if fp_type=="both":
-
-            x1  = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
-            x2  = COMPQ_PLUS(smi)
-            x   = np.concatenate((x1, x2))
-            X.append(x)
-
-    X = np.array(X)
+    X = np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,)))
 
     return X
 

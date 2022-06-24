@@ -10,9 +10,9 @@ np.random.seed(1337)
 
 if __name__ == "__main__":
 
-    N=[4000, 8000, 16000, 32000]
-    N_hyperparam_opt=4000
-    N_test=16000
+    N=[400, 800, 1600]
+    N_hyperparam_opt=400
+    N_test=400
 
     max_train_size=max(N)
 

@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-conversion_coefficient={None : 1.0, "au_kcal" : 627.50960803}
+conversion_coefficient={None : 1.0, "au_kcal" : 627.50960803, "au_eV" : 27.211399}
 
 NUCLEAR_CHARGE = {
  'H'  :     1, 
