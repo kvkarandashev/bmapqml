@@ -657,6 +657,7 @@ class RandomWalk:
             output.append([self.histogram[tp_id] for tp_id in tp_ids])
         return output
     def ordered_trajectory_ids(self):
+        assert(self.keep_full_trajectory)
         output=np.zeros((self.global_MC_step_counter, self.num_replicas), dtype=int)
         for tp_id, tp in enumerate(self.histogram):
             if tp.visit_step_ids is not None:
