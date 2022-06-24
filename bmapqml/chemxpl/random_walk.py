@@ -291,15 +291,13 @@ class RandomWalk:
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
         """
         self.num_replicas=num_replicas
-        if isinstance(betas, list):
-            self.num_replicas=len(betas)
-        if isinstance(init_egcs, list):
-            self.num_replicas=len(init_egcs)
-        else:
-            if self.num_replicas is None:
-                self.num_replicas=1
-            init_egcs=[init_egcs for i in range(self.num_replicas)]
         self.betas=betas
+
+        if init_egcs is None:
+            self.cur_tps=None
+        else:
+            self.cur_tps=[TrajectoryPoint(egc=init_egc) for init_egc in init_egcs]
+
         self.keep_full_trajectory=keep_full_trajectory
 
         self.MC_step_counter=0
@@ -308,11 +306,11 @@ class RandomWalk:
         if isinstance(self.betas, list):
             assert(len(self.betas)==self.num_replicas)
 
-        self.cur_tps=[TrajectoryPoint(egc=init_egc) for init_egc in init_egcs]
         if starting_histogram is None:
             if keep_histogram:
                 self.histogram=SortedList()
-                self.update_histogram(list(range(self.num_replicas)))
+                if self.cur_tps is not None:
+                    self.update_histogram(list(range(self.num_replicas)))
             else:
                 self.histogram=None
         else:
@@ -628,6 +626,12 @@ class RandomWalk:
                 if self.histogram[tp_index].visit_step_ids is None:
                     self.histogram[tp_index].visit_step_ids=[[] for replica_id in range(self.num_replicas)]
                 self.histogram[tp_index].visit_step_ids[replica_id].append(self.global_MC_step_counter)
+
+    def clear_histogram_visit_data(self):
+        for tp in self.histogram:
+            tp.num_visits=None
+            if self.keep_full_trajectory:
+                tp.visit_step_ids=None
 
     def update_saved_candidates(self):
         for tp in self.cur_tps:

@@ -19,7 +19,7 @@ import numpy as np
 from igraph import Graph
 from ..python_parallelization import default_num_procs
 from ..utils import canonical_atomtype, read_xyz_file
-import os, pickle, copy, tarfile
+import copy, tarfile
 from sortedcontainers import SortedList
 
 default_parallel_backend="multiprocessing"
@@ -229,20 +229,23 @@ def all_egc_from_tar(tarfile_name):
 # All the RDKit-related stuff.
 
 #   For going between rdkit and egc objects.
-def rdkit_to_egc(rdkit_mol):
+def rdkit_to_egc(rdkit_mol, egc_hydrogen_autofill=False):
     nuclear_charges = [atom.GetAtomicNum() for atom in rdkit_mol.GetAtoms()]
     adjacency_matrix=GetAdjacencyMatrix(rdkit_mol)
+
     try:
         coordinates=rdkit_mol.GetConformer().GetPositions()
     except ValueError:
         coordinates=None
-    return ExtGraphCompound(adjacency_matrix=adjacency_matrix, nuclear_charges=nuclear_charges, coordinates=coordinates)
+    return ExtGraphCompound(adjacency_matrix=adjacency_matrix, nuclear_charges=nuclear_charges, coordinates=coordinates, hydrogen_autofill=egc_hydrogen_autofill)
 
 #   For converting SMILES to egc.
-def SMILES_to_egc(smiles_string):
+def SMILES_to_egc(smiles_string, egc_hydrogen_autofill=False):
     mol=Chem.MolFromSmiles(smiles_string)
-    mol=Chem.AddHs(mol, explicitOnly=True)
-    return rdkit_to_egc(mol)
+    # We can fill the hydrogens either at this stage or at EGC creation stage;
+    # introduced when I had problems with rdKIT.
+    mol=Chem.AddHs(mol, explicitOnly=egc_hydrogen_autofill)
+    return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
 
 # TO-DO in later stages combine with graph_to_rdkit function in G2S.
 def egc_to_rdkit(egc):

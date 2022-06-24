@@ -214,6 +214,16 @@ def hatom_state_coords(ha):
 
 num_state_coords={hatom_state_coords : 5}
 
+# Auxiliary functions
+def adj_mat2bond_orders(adj_mat):
+    bos={}
+    for atom1, adj_mat_row in enumerate(adj_mat):
+        for atom2, adj_mat_val in enumerate(adj_mat_row[:atom1]):
+            if adj_mat_val != 0:
+                bos[(atom2, atom1)]=adj_mat_val
+    return bos
+
+
 # TODO perhaps used SortedDict from sortedcontainers more here?
 # TODO revise initialization procedure, does not work if hatoms and bond_orders initialized.
 class ChemGraph:
@@ -235,7 +245,11 @@ class ChemGraph:
 
         if ((self.all_bond_orders is None) and (self.bond_orders is None)):
             if self.graph is None:
-                self.adj_mat2all_bond_orders(adj_mat)
+                bo_input=adj_mat2bond_orders(adj_mat)
+                if hydrogen_autofill:
+                    self.bond_orders=bo_input
+                else:
+                    self.all_bond_orders=bo_input
             else:
                 self.bond_orders={}
                 for e in self.graph.get_edgelist():
@@ -251,13 +265,6 @@ class ChemGraph:
 
         self.changed()
         self.init_resonance_structures()
-
-    def adj_mat2all_bond_orders(self, adj_mat):
-        self.all_bond_orders={}
-        for atom1, adj_mat_row in enumerate(adj_mat):
-            for atom2, adj_mat_val in enumerate(adj_mat_row[:atom1]):
-                if adj_mat_val != 0:
-                    self.all_bond_orders[(atom2, atom1)]=adj_mat_val
 
     def init_graph_natoms(self, nuclear_charges, hydrogen_autofill=False, hydrogen_numbers=None):
         self.hatoms=[]

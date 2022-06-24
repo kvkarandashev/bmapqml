@@ -16,14 +16,14 @@ class ExtGraphCompound(GraphCompound):
         if self.chemgraph is None:
             if ((nuclear_charges is not None) and ((adjacency_matrix is not None) or (bond_orders is not None))):
                 self.chemgraph=ChemGraph(adj_mat=adjacency_matrix, nuclear_charges=nuclear_charges, hydrogen_autofill=hydrogen_autofill, bond_orders=bond_orders)
-        if ((nuclear_charges is None) or hydrogen_autofill):
+        if (nuclear_charges is None) or hydrogen_autofill:
             nuclear_charges=self.chemgraph.full_ncharges()
         # Sometimes rdkit determines bond orders wrong; by default try to correct them.
         self.coordinates=coordinates
         if distances is None:
             if self.coordinates is not None:
                 distances=calculate_distances(self.coordinates)
-        if adjacency_matrix is None:
+        if (adjacency_matrix is None) or hydrogen_autofill:
             adjacency_matrix=self.chemgraph.full_adjmat()
         super().__init__(adjacency_matrix, nuclear_charges, distances=distances)
         # Double check that all bond orders are correct (sometimes molecular graphs are not properly imported).
