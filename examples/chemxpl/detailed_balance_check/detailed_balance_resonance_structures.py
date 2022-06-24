@@ -36,7 +36,8 @@ cur_egc=ExtGraphCompound(chemgraph=init_cg)
 histogram=[]
 histogram_labels=[]
 
-rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params, conserve_stochiometry=conserve_stochiometry, bound_enforcing_coeff=bound_enforcing_coeff)
+rw=RandomWalk(bias_coeff=bias_coeff, randomized_change_params=randomized_change_params, conserve_stochiometry=conserve_stochiometry,
+                bound_enforcing_coeff=bound_enforcing_coeff, num_replicas=1)
 for MC_step in range(num_MC_steps):
     # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
     cur_egc=rw.change_molecule(cur_egc, randomized_change_params=randomized_change_params)

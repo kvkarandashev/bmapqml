@@ -292,6 +292,13 @@ class RandomWalk:
         """
         self.num_replicas=num_replicas
         self.betas=betas
+        if self.num_replicas is None:
+            if self.betas is not None:
+                self.num_replicas=len(self.betas)
+            else:
+                if isinstance(init_egcs, list):
+                    self.num_replicas=len(init_egcs)
+
 
         if init_egcs is None:
             self.cur_tps=None
