@@ -12,6 +12,7 @@ from rdkit import Chem
 import numpy as np
 import collections
 from bmapqml.python_parallelization import embarrassingly_parallel
+import pdb 
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -166,6 +167,11 @@ def atomization_en(EN, ATOMS, normalize=True):
     predictions to be consistent when comparing molecules of different size
     with respect to their bond energies i.e. set to True if the number of atoms 
     changes in during the optimization process
+
+    #ATOMIZATION = EN - (COMP['H']*en_H + COMP['C']*en_C + COMP['N']*en_N +  COMP['O']*en_O +  COMP['F']*en_F)
+    #N^tot = Number of H-atoms x 1 + Number of C-atoms x 4 + Number of N-atoms x 3 + Number of O-atoms x 2 + Number of F-atoms x1
+    #you divide atomization energy by N^tot and you're good
+
     =========================================================================================================
     Ele-    ZPVE         U (0 K)      U (298.15 K)    H (298.15 K)    G (298.15 K)     CV
     ment   Hartree       Hartree        Hartree         Hartree         Hartree        Cal/(Mol Kelvin)
@@ -185,9 +191,6 @@ def atomization_en(EN, ATOMS, normalize=True):
     en_F = -99.718730
     COMP =  collections.Counter(ATOMS)
 
-    #ATOMIZATION = EN - (COMP['H']*en_H + COMP['C']*en_C + COMP['N']*en_N +  COMP['O']*en_O +  COMP['F']*en_F)
-    #N^tot = Number of H-atoms x 1 + Number of C-atoms x 4 + Number of N-atoms x 3 + Number of O-atoms x 2 + Number of F-atoms x1
-    #you divide atomization energy by N^tot and you're good
     if normalize:
         Ntot = (COMP['C']*4 + COMP['N']*3 +  COMP['O']*2 +  COMP['F']*1+COMP['H']*1)
         ATOMIZATION = (EN - (COMP['H']*en_H + COMP['C']*en_C + COMP['N']*en_N +  COMP['O']*en_O +  COMP['F']*en_F))
@@ -197,6 +200,18 @@ def atomization_en(EN, ATOMS, normalize=True):
         ATOMIZATION = (EN - (COMP['H']*en_H + COMP['C']*en_C + COMP['N']*en_N + COMP['O']*en_O + COMP['F']*en_F))
         return ATOMIZATION
   
+
+
+def parse_float(s):
+    
+    try:
+        return float(s)
+    except ValueError:
+        #pdb.set_trace()
+        base, power = s.split('E^')
+        return float(base) * 10**float(power)
+
+
 def read_xyz(path):
     """
     Reads the xyz files in the directory on 'path'
@@ -226,24 +241,25 @@ def read_xyz(path):
 
             # its coordinate
             # Some properties have '*^' indicading exponentiation 
-            try:
-                coordinates.append(
-                    (float(line[1]),
-                     float(line[2]),
-                     float(line[3]))
+            #try:
+            #pdb.set_trace()
+            coordinates.append(
+                    (parse_float(line[1]),
+                     parse_float(line[2]),
+                     parse_float(line[3]))
                     )
-            except:
-                """
-                Fix the exponential notation in the xyz files.
-                CAREFUL! Original QM9 dataset has exponential notation
-                1e^, but the curated file has 1E^. 
-                """
-
-                coordinates.append(
-                    (float(line[1].replace('E^','E' )),
-                     float(line[2].replace('E^','E' )),
-                     float(line[3].replace('E^','E' )))
-                    )
+            #except:
+            #    """
+             #   Fix the exponential notation in the xyz files.
+             #   CAREFUL! Original QM9 dataset has exponential notation
+            #    1e^, but the curated file has 1E^. 
+            #    """
+                #pdb.set_trace()
+            #    coordinates.append(
+            #        (float(line[1].replace('E^','e' )),
+            #         float(line[2].replace('E^','e' )),
+            #         float(line[3].replace('E^','e' )))
+            #        )
                     
     return atoms, coordinates, smile, prop
 
@@ -260,7 +276,7 @@ def process_qm9(directory):
     data = []
     smiles = []
     properties = []
-    for file in tqdm(os.listdir(directory)[:133884]  ): #):
+    for file in tqdm(os.listdir(directory)[:2000]   ):  #[:133884]  ): #):
         path = os.path.join(directory, file)
         atoms, coordinates, smile, prop = read_xyz(path)
         # A tuple with the atoms and its coordinates
@@ -271,7 +287,7 @@ def process_qm9(directory):
         prop += [ATOMIZATION]
         properties.append(prop)  # The molecules properties
 
-    properties_names = ['A', 'B', 'C', 'mu', 'alfa', 'homo', 'lumo', 'gap', 'R²', 'zpve', 'U0', 'U', 'H', 'G', 'Cv', 'atomization']
+    properties_names = ['A', 'B', 'C', 'mu', 'alfa', 'homo', 'lumo', 'gap', 'R_squared', 'zpve', 'U0', 'U', 'H', 'G', 'Cv', 'atomization']
     df = pd.DataFrame(properties, columns = properties_names) #.astype('float32')
     df['smiles'] = smiles
     df.head()
