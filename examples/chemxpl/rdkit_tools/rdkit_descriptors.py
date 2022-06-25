@@ -233,10 +233,16 @@ def read_xyz(path):
                      float(line[3]))
                     )
             except:
+                """
+                Fix the exponential notation in the xyz files.
+                CAREFUL! Original QM9 dataset has exponential notation
+                1e^, but the curated file has 1E^. 
+                """
+
                 coordinates.append(
-                    (float(line[1].replace('*^', 'e')),
-                     float(line[2].replace('*^', 'e')),
-                     float(line[3].replace('*^', 'e')))
+                    (float(line[1].replace('E^','E' )),
+                     float(line[2].replace('E^','E' )),
+                     float(line[3].replace('E^','E' )))
                     )
                     
     return atoms, coordinates, smile, prop
