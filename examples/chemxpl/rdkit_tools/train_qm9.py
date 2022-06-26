@@ -17,17 +17,13 @@ if __name__ == "__main__":
 
     max_train_size=max(N)
 
-    process= True
     TARGET_PROPERTY = 'gap'
     PATH = '/store/common/jan/qm9_removed/qm9/'
-    if process:
-        df = process_qm9(PATH)
-    else:
-        df = pd.read_csv('qm9.csv')
+    qm9_data = process_qm9(PATH)
+
 
     
-    SMILES, y  = df['canon_smiles'].values, np.float_(df[TARGET_PROPERTY].values)*conversion_coefficient["au_eV"]
-
+    SMILES, y  = qm9_data['canon_smiles'].values, np.float_(qm9_data[TARGET_PROPERTY].values)*conversion_coefficient["au_eV"]
     inds = random.sample(range(len(SMILES)), max_train_size+N_test)
 
     SMILES, y = SMILES[inds], y[inds]
@@ -40,9 +36,6 @@ if __name__ == "__main__":
     y_train=y[:max_train_size]
     y_test=y[max_train_size:]
 
-    """
-    Nullmodel
-    """
     reg=KRR(kernel_type="Laplacian", scale_labels=True)
     reg.optimize_hyperparameters(X_train[:N_hyperparam_opt], y_train[:N_hyperparam_opt])
 
