@@ -6,13 +6,14 @@ from bmapqml.krr import KRR
 from bmapqml.utils import dump2pkl
 from bmapqml.data import conversion_coefficient
 from datetime import date
+
 random.seed(1337)
 np.random.seed(1337)
 
 if __name__ == "__main__":
 
-    N=[4000, 8000, 16000, 32000, 64000]
-    N_hyperparam_opt=12000
+    N=[4000, 8000, 16000, 32000, 64000,102000]
+    N_hyperparam_opt=6000
     N_test=16000
 
     max_train_size=max(N)
@@ -27,7 +28,6 @@ if __name__ == "__main__":
     inds = random.sample(range(len(SMILES)), max_train_size+N_test)
 
     SMILES, y = SMILES[inds], y[inds]
-
     X = get_all_FP(SMILES, fp_type="both")
 
     X_train=X[:max_train_size]

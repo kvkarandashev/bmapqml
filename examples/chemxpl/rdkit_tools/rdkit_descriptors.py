@@ -221,6 +221,7 @@ def read_xyz(path):
         n_atoms = int(lines[0])  # the number of atoms
         smile = lines[n_atoms + 3].split()[0]  # smiles string
         prop = lines[1].split()[2:]  # scalar properties
+        mol_id = lines[1].split()[1]
         
         # to retrieve each atmos and its cartesian coordenates
         for atom in lines[2:n_atoms + 2]:
@@ -239,7 +240,7 @@ def read_xyz(path):
                     ])
 
     #atoms  = np.array([NUCLEAR_CHARGE[ele] for ele in atoms])  
-    return atoms, coordinates, smile, prop
+    return mol_id,atoms, coordinates, smile, prop
 
 
 def process_qm9(directory):
@@ -251,22 +252,22 @@ def process_qm9(directory):
 
 
     file = os.listdir(directory)[0]
-
     data = []
     smiles = []
     properties = []
     for file in tqdm(os.listdir(directory)): 
         path = os.path.join(directory, file)
-        atoms, coordinates, smile, prop = read_xyz(path)
+        mol_id, atoms, coordinates, smile, prop = read_xyz(path)
         # A tuple with the atoms and its coordinates
         data.append((atoms, coordinates))
         smiles.append(smile)  # The SMILES representation
 
         ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=True)
         prop += [ATOMIZATION]
+        prop += [mol_id]
         properties.append(prop)  # The molecules properties
 
-    properties_names = ['A', 'B', 'C', 'mu', 'alfa', 'homo', 'lumo', 'gap', 'R_squared', 'zpve', 'U0', 'U', 'H', 'G', 'Cv', 'atomization']
+    properties_names = ['A', 'B', 'C', 'mu', 'alfa', 'homo', 'lumo', 'gap', 'R_squared', 'zpve', 'U0', 'U', 'H', 'G', 'Cv', 'atomization', 'GDB17_ID']
     df = pd.DataFrame(properties, columns = properties_names) #.astype('float32')
     df['smiles'] = smiles
     df.head()
@@ -286,6 +287,86 @@ def process_qm9(directory):
     df['mol'] = df['canon_smiles'].apply(lambda x: Chem.MolFromSmiles(x))
     df.to_csv('qm9.csv', index=False)
     return df
+
+
+def writeXYZ(fileName, elems, positions, comment=''):
+    with open (fileName, 'w') as f:
+        f.write(str(len(elems)) + "\n")
+        if (comment is not None):
+            if ('\n' in comment):
+                f.write(comment)
+            else:
+                f.write(comment + '\n')
+        for x in range (0, len(elems)):
+            f.write(elems[x] + " " + " ".join(str(v) for v in positions[x]) + "\n")
+    f.close()
+
+class NotConvergedMMFFConformer(Exception):
+    pass
+
+def gen_coords(molecule):
+    """
+    Generates the cartesian coordinates of a molecule given
+    its rdkit molecule object. 
+    """
+    
+    molecule = Chem.AddHs(molecule)
+    AllChem.EmbedMolecule(molecule)
+    if AllChem.MMFFHasAllMoleculeParams(molecule):
+        try:
+            converged = AllChem.MMFFOptimizeMolecule(molecule)
+            if converged != 0:
+                raise NotConvergedMMFFConformer
+
+            POSITIONS  =  np.array(molecule.GetConformer().GetPositions())
+            ATOMS      =  np.array([atom.GetSymbol() for atom in molecule.GetAtoms()] )
+            return ATOMS, POSITIONS
+
+        except Exception as e:
+            print(e)
+            return None, None
+    else:
+        msg = "The MMFF parameters are not available for all of the molecule"
+        print(msg)
+
+
+
+def process_qm9_FF():
+    """
+    Generate the cartesian coordinates of the molecules in the QM9 database
+    using a force field (FF). If force field parameters not available, ignore the
+    molecule therefore it will not be included in the dataset. 
+    All the molecular properties are saved in a csv file.
+    """
+
+    df = pd.read_csv('qm9.csv')
+    molecules = df['smiles'].apply(lambda x: Chem.MolFromSmiles(x))
+    
+    properties_names = ['A', 'B', 'C', 'mu', 'alfa', 'homo', 'lumo', 'gap', 'R_squared', 'zpve', 'U0', 'U', 'H', 'G', 'Cv', 'atomization', 'GDB17_ID']
+    properties = []
+
+    df_new = pd.DataFrame(columns = properties_names)
+    ind=0
+    print(df.values)
+    print(df.values.shape)
+    for mol,row in zip(molecules,df.values):
+        try:
+            ATOMS, POSITIONS = gen_coords(mol)
+            if POSITIONS is not None:
+                writeXYZ("/store/common/jan/qm9_removed/MMFF/{}.xyz".format(row[16]),ATOMS,POSITIONS)
+                properties.append(row)
+                ind+=1
+
+            else:
+                pass
+        except Exception as e:
+            print(e)
+        
+    
+    df_new = pd.DataFrame(properties, columns = properties_names) #.astype('float32')
+
+    df_new.to_csv('qm9_FF.csv', index=False)
+    return df_new
 
 
 def mae(prediction, reference):
