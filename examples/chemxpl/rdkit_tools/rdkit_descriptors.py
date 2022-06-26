@@ -12,7 +12,6 @@ from rdkit import Chem
 import numpy as np
 import collections
 from bmapqml.python_parallelization import embarrassingly_parallel
-import pdb 
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -202,16 +201,6 @@ def atomization_en(EN, ATOMS, normalize=True):
   
 
 
-def parse_float(s):
-    
-    try:
-        return float(s)
-    except ValueError:
-        #pdb.set_trace()
-        base, power = s.split('E^')
-        return float(base) * 10**float(power)
-
-
 def read_xyz(path):
     """
     Reads the xyz files in the directory on 'path'
@@ -236,32 +225,22 @@ def read_xyz(path):
         # to retrieve each atmos and its cartesian coordenates
         for atom in lines[2:n_atoms + 2]:
             line = atom.split()
-            # which atom
+            # atomic charge
             atoms.append(line[0])
-
-            # its coordinate
+            # cartesian coordinates
             # Some properties have '*^' indicading exponentiation 
-            #try:
-            #pdb.set_trace()
-            coordinates.append(
-                    (parse_float(line[1]),
-                     parse_float(line[2]),
-                     parse_float(line[3]))
-                    )
-            #except:
-            #    """
-             #   Fix the exponential notation in the xyz files.
-             #   CAREFUL! Original QM9 dataset has exponential notation
-            #    1e^, but the curated file has 1E^. 
-            #    """
-                #pdb.set_trace()
-            #    coordinates.append(
-            #        (float(line[1].replace('E^','e' )),
-            #         float(line[2].replace('E^','e' )),
-            #         float(line[3].replace('E^','e' )))
-            #        )
-                    
+            try:
+                coordinates.append([float(line[1]),float(line[2]),float(line[3])])
+            except:
+                coordinates.append(
+                    [float(line[1].replace('*^', 'e')),
+                     float(line[2].replace('*^', 'e')),
+                     float(line[3].replace('*^', 'e'))
+                    ])
+
+    #atoms  = np.array([NUCLEAR_CHARGE[ele] for ele in atoms])  
     return atoms, coordinates, smile, prop
+
 
 def process_qm9(directory):
     
@@ -276,7 +255,7 @@ def process_qm9(directory):
     data = []
     smiles = []
     properties = []
-    for file in tqdm(os.listdir(directory)[:2000]   ):  #[:133884]  ): #):
+    for file in tqdm(os.listdir(directory)): 
         path = os.path.join(directory, file)
         atoms, coordinates, smile, prop = read_xyz(path)
         # A tuple with the atoms and its coordinates
