@@ -1,37 +1,33 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
 import random
 import pandas as pd
 from rdkit_descriptors import *
 from bmapqml.krr import KRR
+from bmapqml.utils import dump2pkl
 from bmapqml.data import conversion_coefficient
+from datetime import date
+
 random.seed(1337)
 np.random.seed(1337)
 
 if __name__ == "__main__":
 
-    N=[4000, 8000, 16000, 32000]
-    N_hyperparam_opt=4000
+    N=[4000, 8000, 16000, 32000, 64000,102000]
+    N_hyperparam_opt=6000
     N_test=16000
 
     max_train_size=max(N)
 
-    process= True
     TARGET_PROPERTY = 'gap'
+    PATH = '/store/common/jan/qm9_removed/qm9/'
+    qm9_data = process_qm9(PATH)
 
-    if process:
-        df = process_qm9('/store/common/jan/qm9/')
-    else:
-        df = pd.read_csv('qm9.csv')
 
     
-    SMILES, y  = df['canon_smiles'].values, np.float_(df[TARGET_PROPERTY].values)*conversion_coefficient["au_eV"]
-
+    SMILES, y  = qm9_data['canon_smiles'].values, np.float_(qm9_data[TARGET_PROPERTY].values)*conversion_coefficient["au_eV"]
     inds = random.sample(range(len(SMILES)), max_train_size+N_test)
 
     SMILES, y = SMILES[inds], y[inds]
-
-    #[32768] #uses only single core why?
     X = get_all_FP(SMILES, fp_type="both")
 
     X_train=X[:max_train_size]
@@ -40,17 +36,12 @@ if __name__ == "__main__":
     y_train=y[:max_train_size]
     y_test=y[max_train_size:]
 
-    """
-    Nullmodel
-    """
     reg=KRR(kernel_type="Laplacian", scale_labels=True)
     reg.optimize_hyperparameters(X_train[:N_hyperparam_opt], y_train[:N_hyperparam_opt])
 
     null_error = mae(y_test, np.mean(y_train))
     print('Nullmodel error:', null_error)
     lrn_crv      = []
-
-    errors = []
     for n in N:
         reg.fit(X_train[:n], y_train[:n])
         y_pred = reg.predict(X_test)
@@ -58,7 +49,10 @@ if __name__ == "__main__":
 
         print(n, MAE)
 
-        errors.append(MAE)
+        lrn_crv.append(MAE)
 
-    reg.save('/store/common/jan/qm9/KRR_{}_{}'.format(n, TARGET_PROPERTY))
-    print("lc",errors)
+    reg.save('/store/common/jan/qm9_removed/ml/KRR_{}_{}'.format(n, TARGET_PROPERTY))
+    lrn_crv = np.array(lrn_crv)
+    report = {}
+    report["property"],report["nullmodel"], report["lrn_crv"], report["unit"],report["dataset_loc"],report["date"] = TARGET_PROPERTY,null_error,np.vstack((N,lrn_crv)), "eV", PATH, date.today()
+    dump2pkl(report, "/store/common/jan/qm9_removed/ml/report_{}.pkl".format(TARGET_PROPERTY))
