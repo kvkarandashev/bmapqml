@@ -10,20 +10,22 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError('Install xyz2mol software in order to use this parser. '
                       'Visit: https://github.com/jensengroup/xyz2mol')
 
-class NotConvergedMMFFConformer(Exception):
-    pass
-
 from .ext_graph_compound import ExtGraphCompound
 from .modify import replace_heavy_atom, atom_replacement_possibilities
 import numpy as np
 from igraph import Graph
-from ..python_parallelization import default_num_procs
-from ..utils import canonical_atomtype, read_xyz_file
+from ..utils import canonical_atomtype, read_xyz_file, default_num_procs
+from .valence_treatment import ChemGraph
 import copy, tarfile
 from sortedcontainers import SortedList
 
 default_parallel_backend="multiprocessing"
 
+class MMFFInconsistent(Exception):
+    pass
+
+class RdKitFailure(Exception):
+    pass
 
 def xyz_list2mols_extgraph(xyz_file_list, leave_nones=False, xyz_to_add_data=False):
     read_xyzs=[read_xyz_file(xyz_file) for xyz_file in xyz_file_list]
@@ -154,6 +156,14 @@ def xyz2mol_graph(nuclear_charges, charge, coords, get_chirality=False):
         return bond_order_matrix, nuclear_charges, coords, chiral_centers
 
 
+def chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
+    bond_order_matrix, ncharges, coords=xyz2mol_graph(nuclear_charges, charge, coordinates)
+    return ChemGraph(adj_mat=bond_order_matrix, nuclear_charges=ncharges)
+
+def egc_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
+    cg=chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0)
+    return ExtGraphCompound(chemgraph=cg, coordinates=np.array(coordinates))
+
 def xyz2mol_extgraph(filepath, get_chirality=False, read_xyz=None):
     if read_xyz is None:
         read_xyz=read_xyz_file(filepath)
@@ -169,8 +179,7 @@ def xyz2mol_extgraph(filepath, get_chirality=False, read_xyz=None):
     if charge is None:
         charge=0
 
-    bond_order_matrix, ncharges, coords=xyz2mol_graph(nuclear_charges, charge, coordinates)
-    return ExtGraphCompound(adjacency_matrix=bond_order_matrix, nuclear_charges=ncharges, coordinates=np.array(coords))
+    return egc_from_ncharges_coords(nuclear_charges, coordinates, charge=charge)
 
 
 # TO-DO: should be fixed if I get to using xbgf again.
@@ -242,10 +251,21 @@ def rdkit_to_egc(rdkit_mol, egc_hydrogen_autofill=False):
 #   For converting SMILES to egc.
 def SMILES_to_egc(smiles_string, egc_hydrogen_autofill=False):
     mol=Chem.MolFromSmiles(smiles_string)
+    if mol is None:
+        raise RdKitFailure
     # We can fill the hydrogens either at this stage or at EGC creation stage;
     # introduced when I had problems with rdKIT.
     mol=Chem.AddHs(mol, explicitOnly=egc_hydrogen_autofill)
     return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
+
+#   For converting InChI to egc.
+def InChI_to_egc(InChI_string, egc_hydrogen_autofill=False):
+    mol=Chem.inchi.MolFromInchi(InChI_string, removeHs=False)
+    if mol is None:
+        raise RdKitFailure
+    mol=Chem.AddHs(mol, explicitOnly=egc_hydrogen_autofill)
+    return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
+
 
 # TO-DO in later stages combine with graph_to_rdkit function in G2S.
 def egc_to_rdkit(egc):
@@ -322,18 +342,32 @@ def chemgraph_to_canonical_rdkit(cg):
     Chem.SanitizeMol(mol)
     return mol, heavy_atom_index, hydrogen_connection, canon_SMILES
 
+def chemgraph_to_canonical_rdkit_wcoords(cg):
+    mol, heavy_atom_index, hydrogen_connection, canon_SMILES=chemgraph_to_canonical_rdkit(cg)
+    AllChem.EmbedMolecule(mol)
+    converged=AllChem.MMFFOptimizeMolecule(mol)
+    if converged != 0:
+        raise MMFFInconsistent
+    coords=np.array(mol.GetConformer().GetPositions())
+    # Additionally check that the coordinates actually correspond to the molecule.
+
+    coord_based_cg=chemgraph_from_ncharges_coords(cg.full_ncharges, coordinates)
+    if coord_based_cg != cg:
+       raise MMFFInconsistent
+
+    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, coords
+
 def egc_with_coords(egc, coords=None, methods="MMFF"):
     output=copy.deepcopy(egc)
-    cur_rdkit, heavy_atom_index, hydrogen_connection, canon_SMILES=chemgraph_to_canonical_rdkit(egc.chemgraph)
     if coords is None:
-        AllChem.EmbedMolecule(cur_rdkit)
-        converged=AllChem.MMFFOptimizeMolecule(cur_rdkit)
-        if converged != 0:
-            raise NotConvergedMMFFConformer
-        coords=np.array(cur_rdkit.GetConformer().GetPositions())
+        cur_rdkit, heavy_atom_index, hydrogen_connection, canon_SMILES, coords=chemgraph_to_canonical_rdkit_wcoords(egc.chemgraph)
+    else:
+        cur_rdkit, heavy_atom_index, hydrogen_connection, canon_SMILES=chemgraph_to_canonical_rdkit(egc.chemgraph)
 
     output.additional_data["canon_rdkit_heavy_atom_index"]=heavy_atom_index
     output.additional_data["canon_rdkit_hydrogen_connection"]=hydrogen_connection
     output.additional_data["canon_rdkit_SMILES"]=canon_SMILES
     output.add_canon_rdkit_coords(coords)
     return output
+
+

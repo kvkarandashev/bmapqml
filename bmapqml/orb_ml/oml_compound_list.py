@@ -22,7 +22,7 @@
 
 
 from .oml_compound import OML_compound, OML_Slater_pair, ASE2OML_compound
-from ..python_parallelization import embarrassingly_parallel
+from ..utils import embarrassingly_parallel
 import os
 
 class OML_compound_list(list):

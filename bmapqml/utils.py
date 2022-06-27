@@ -22,7 +22,8 @@
 
 
 # Miscellaneous functions and classes used throughout the code.
-import pickle, subprocess
+import pickle, subprocess, os
+from joblib import Parallel, delayed
 
 from matplotlib.pyplot import fignum_exists
 from .data import NUCLEAR_CHARGE
@@ -98,11 +99,8 @@ def read_xyz_file(xyz_input, additional_attributes=["charge"]):
     for add_attr in additional_attributes:
         add_attr_dict={add_attr : None, **add_attr_dict}
 
-    try:
-        lines=[check_byte(l) for l in xyz_input.readlines()]
-    except AttributeError:
-        with open(xyz_input, "r") as input_file:
-            lines=input_file.readlines()
+    lines=checked_input_readlines(xyz_input)
+
     num_atoms=int(lines[0])
     xyz_coordinates=np.zeros((num_atoms, 3))
     nuclear_charges=np.zeros((num_atoms,), dtype=int)
@@ -159,3 +157,113 @@ def execute_string(string):
 def trajectory_point_to_canonical_rdkit(tp_in):
     from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
     return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+
+
+def checked_input_readlines(file_input):
+    try:
+        lines=[check_byte(l) for l in file_input.readlines()]
+    except AttributeError:
+        with open(file_input, "r") as input_file:
+            lines=input_file.readlines()
+    return lines
+
+
+# Routines for running operations over array in child environments.
+# One of the reason for this appearing is fixing thread numbers in child processes.
+class ChildEnvFailed(Exception):
+    pass
+
+num_procs_name="BMAPQML_NUM_PROCS"
+
+num_threads_var_names=["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS", "NUMBA_NUM_THREADS"]
+
+def default_num_procs(num_procs=None):
+    if num_procs is None:
+        try:
+            return int(os.environ[num_procs_name])
+        except LookupError:
+            return 1
+    else:
+        return num_procs
+
+def embarrassingly_parallel_no_thread_fix(func, array, other_args, other_kwargs={}, num_procs=None):
+    if num_procs==1:
+        return [func(element, *other_args, **other_kwargs) for element in array]
+    else:
+        return Parallel(n_jobs=default_num_procs(num_procs), backend="multiprocessing")(delayed(func)(el, *other_args, **other_kwargs) for el in array)
+
+def create_func_exec(dump_filename, tmpdir, fixed_num_threads=None, num_procs=None):
+
+    contents="#!/bin/bash\n"
+    if fixed_num_threads is not None:
+        for num_threads_var_name in num_threads_var_names:
+            contents+="export "+num_threads_var_name+"="+str(fixed_num_threads)+"\n"
+    if num_procs is not None:
+        contents+="export "+num_procs_name+"="+str(num_procs)+"\n"
+    contents+='''
+pyscript='''+tmpdir+'''/tmppyscript.py
+dump_filename='''+dump_filename+'''
+
+cat > $pyscript << EOF
+from bmapqml.utils import loadpkl, dump2pkl, rmdir, embarrassingly_parallel_no_thread_fix
+
+executed=loadpkl("$dump_filename")
+rmdir("$dump_filename")
+
+dump_filename="$dump_filename"
+
+output=embarrassingly_parallel_no_thread_fix(executed["func"], executed["array"], executed["args"])
+dump2pkl(output, dump_filename)
+
+EOF
+
+python $pyscript'''
+    exec_scr="./"+tmpdir+"/tmpscript.sh"
+    output=open(exec_scr, 'w')
+    output.write(contents)
+    output.close()
+    subprocess.run(["chmod", "+x", exec_scr])
+    return exec_scr
+
+
+def create_run_func_exec(func, array, other_args, other_kwargs, num_procs=None, fixed_num_threads=None):
+
+    tmpdir=mktmpdir()
+    dump_filename=tmpdir+"/dump.pkl"
+    dump2pkl({"func" : func, "array" : array, "args" : other_args}, dump_filename)
+    exec_scr=create_func_exec(dump_filename, tmpdir, num_procs=num_procs, fixed_num_threads=fixed_num_threads)
+    subprocess.run([exec_scr, dump_filename])
+    if not os.path.isfile(dump_filename):
+        raise ChildEnvFailed
+    output=loadpkl(dump_filename)
+    rmdir(tmpdir)
+    return output
+
+def embarrassingly_parallel(func, array, other_args, other_kwargs={}, num_procs=None, fixed_num_threads=None):
+    if type(other_args) is not tuple:
+        other_args=(other_args,)
+    if (fixed_num_threads is not None):
+        if num_procs is None:
+            true_num_procs=default_num_procs(num_procs=num_procs)
+        else:
+            true_num_procs=num_procs
+        return create_run_func_exec(func, array, other_args, other_kwargs, num_procs=true_num_procs, fixed_num_threads=fixed_num_threads)
+    else:
+        return embarrassingly_parallel_no_thread_fix(func, array, other_args, other_kwargs=other_kwargs, num_procs=num_procs)
+
+#   Run a function that might send a termination signal rather than raise an exception.
+def safe_array_func_eval(func, array, other_args, other_kwargs={}, num_procs=1, fixed_num_threads=None, failure_placeholder=None):
+    try:
+        return create_run_func_exec(func, array, other_args, other_kwargs, num_procs=num_procs, fixed_num_threads=fixed_num_threads)
+    except ChildEnvFailed:
+        if len(array)==1:
+            return [failure_placeholder]
+        else:
+            divisor=int(len(array)/2)
+            output=[]
+            for l in [array[:divisor], array[divisor:]]:
+                output+=safe_array_func_eval(func, l, other_args, other_kwargs={}, num_procs=num_procs, fixed_num_threads=fixed_num_threads, failure_placeholder=failure_placeholder)
+            return output
+
+
+

@@ -2,6 +2,7 @@
 # total potential energy used as baseline in the Delta-ML scheme.
 
 from ..orb_ml.oml_compound import OML_compound
+from ..utils import checked_input_readlines
 
 def HOMO_en(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
     oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
@@ -78,3 +79,16 @@ class Quantity:
         return quant_properties[self.name][2](xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
     def write_byprod_result(self, val, io_out):
         io_out.write(str(self.qm9_id)+" "+str(val)+"\n")
+
+def read_str_rep(xyz_input, offset):
+    lines=checked_input_readlines(xyz_input)
+    natoms=int(lines[0])
+    str_rep_line_id=natoms+offset
+    return lines[str_rep_line_id].split()[-1]
+
+def read_SMILES(xyz_input):
+    return read_str_rep(xyz_input, 3)
+
+def read_InChI(xyz_input):
+    return read_str_rep(xyz_input, 4)
+

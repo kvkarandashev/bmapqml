@@ -30,7 +30,7 @@ import math, random, copy
 from .utils import dump2pkl, nullify_ignored
 from .kernels import gaussian_kernel_matrix, gaussian_sym_kernel_matrix, symmetrized_kernel_matrix
 from scipy.optimize import minimize
-from .python_parallelization import embarrassingly_parallel
+from .utils import embarrassingly_parallel
 from .linear_algebra import Cho_multi_factors
 
 
