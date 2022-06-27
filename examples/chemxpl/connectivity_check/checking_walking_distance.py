@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../../../")
+sys.path.append("../../../../Graph2Structure")
 from bmapqml.chemxpl.random_walk import RandomWalk, TrajectoryPoint
 from bmapqml.chemxpl.utils import SMILES_to_egc
 import random
