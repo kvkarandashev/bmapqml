@@ -259,7 +259,7 @@ def safe_array_func_eval(func, array, other_args, other_kwargs={}, num_procs=1, 
         if len(array)==1:
             return [failure_placeholder]
         else:
-            divisor=int(len(array)/2)
+            divisor=len(array)//2
             output=[]
             for l in [array[:divisor], array[divisor:]]:
                 output+=safe_array_func_eval(func, l, other_args, other_kwargs={}, num_procs=num_procs, fixed_num_threads=fixed_num_threads, failure_placeholder=failure_placeholder)

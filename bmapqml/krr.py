@@ -82,6 +82,9 @@ class KRR():
         return arr_rescale(y, self.y_minval, self.y_maxval)
 
     def opt_hyperparameter_guess(self, X_train, y_train):
+        """
+        Initial guess of the optimal hyperparameters.
+        """
         if self.sigmas is None:
             sigma_guess=.0
             for i1, vec1 in enumerate(X_train):
@@ -96,6 +99,9 @@ class KRR():
         return np.array([lambda_guess, sigma_guess])
 
     def optimize_hyperparameters(self, X_train, y_train, init_param_guess=None):
+        """
+        Use stochastic gradient descend for hyperparameter optimization.
+        """
         if init_param_guess is None:
             init_param_guess=self.opt_hyperparameter_guess(X_train, y_train)
         from .hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization    
@@ -106,7 +112,22 @@ class KRR():
         print("Optimized parameters:", self.sigmas)
         print("Optimized lambda:", self.lambda_val)
 
-    def fit(self, X_train, y_train, optimize_hyperparameters=False):
+    def calc_train_kernel(self, X_train):
+        """
+        Calculates the symmetric kernel matrix according to the current hyperparameters.
+        X_train: numpy array of representations of the training data.
+        """
+        output=self.sym_kernel_function(X_train, self.sigmas)
+        output[np.diag_indices_from(output)]+=self.lambda_val
+        return output
+    def calc_kernel(self, X1, X2):
+        """
+        Calculates the kernel matrix according to the current hyperparameters.
+        X1, X2: numpy arrays of representations
+        """
+        return self.kernel_function(X1, X2, self.sigmas)
+
+    def fit(self, X_train, y_train, optimize_hyperparameters=False, K_train=None):
         from .linear_algebra import scipy_cho_solve
         """
         Fit kernel model to the training data and perform a hyperparameter search.
@@ -126,8 +147,8 @@ class KRR():
         if optimize_hyperparameters or (self.sigmas is None) or (self.lambda_val is None):
             self.optimize_hyperparameters(X_train, y_train)
 
-        K_train=self.sym_kernel_function(X_train, self.sigmas)
-        K_train[np.diag_indices_from(K_train)]+=self.lambda_val
+        if K_train is None:
+            K_train=self.calc_train_kernel(X_train)
         alphas=scipy_cho_solve(K_train, y_train)
 
         if self.updatable:
@@ -141,7 +162,7 @@ class KRR():
         del(K_train)
         self.alphas = alphas
 
-    def predict(self, X_test):
+    def predict(self, X_test, K_test=None):
 
         """
         Predict the labels of the test data X_test 
@@ -153,7 +174,8 @@ class KRR():
         if self.scale_features:
             X_test = self.X_MinMaxScaler(X_test)
 
-        K_test  =   self.kernel_function(X_test, self.X_train, self.sigmas)
+        if K_test is None:
+            K_test  =  self.calc_kernel(X_test, self.X_train)
         y_pred  =   np.dot(K_test, self.alphas)
 
         if self.scale_features:
@@ -174,23 +196,45 @@ class KRR():
 
     #For functionality related to updating alpha coefficients at O(N**2) cost.
     def update_max_considered_molecules(self, new_max_considered_molecules):
+        from .utils import np_resize
         self.K_train=np_resize(self.K_train, (new_max_considered_molecules, new_max_considered_molecules))
         self.GS_train=np_resize(self.GS_train, (new_max_considered_molecules, new_max_considered_molecules))
-        
-        new_K_train=np.zeros((new_max_considered_molecules, new_max_considered_molecules))
-        new_GS_basis=np.zeros((new_max_considered_molecules, new_max_considered_molecules))
-        new_y_train=np.zeros((new_max_considered_molecules,))
-        new_X_train
-        if self.K_train is not None:
-            num_transferred=min(new_max_considered_molecules, self.max_considered_molecules)
-            new_K_train[:num_transferred, :num_transferred]=self.K_train[:num_transferred, :num_transferred]
-            new_GS_basis[:num_transferred, :num_transferred]=self.GS_basis[:num_transferred, :num_transferred]
-            new_y_train[:num_transferred, :num_transferred]=self.y_train[:num_transferred]
-
-        self.K_train=new_K_train
-        self.GS_basis=new_GS_basis
-        self.y_train=new_y_train
-        self.max_considered_molecules=new_max_considered_molecules
 
     def update(self, new_rep, new_y):
         pass
+
+
+def learning_curve(krr_model, X_train, y_train, X_test, y_test, training_set_sizes, max_subset_num=8):
+    """
+    Generate a MAE learning curve.
+    max_subset_num : maximal number of random subset for a training set size
+    """
+    import random
+
+    K_train=krr_model.calc_train_kernel(X_train)
+    K_test=krr_model.calc_kernel(X_test, X_train)
+    all_ids=list(range(len(X_train)))
+
+    MAEs=[]
+
+    for training_set_size in training_set_sizes:
+        MAEs_line=[]
+        num_subsets=min(max_subset_num, len(X_train)//training_set_size)
+
+        all_subset_ids=np.array(random.sample(all_ids, training_set_size*num_subsets))
+        lb=0
+        ub=training_set_size
+        for subset_counter in range(num_subsets):
+            subset_ids=all_subset_ids[lb:ub]
+            cur_K_test=K_test[:, subset_ids]
+            cur_K_train=K_train[subset_ids][:, subset_ids]
+            cur_y_train=y_train[subset_ids]
+
+            krr_model.fit(None, cur_y_train, K_train=cur_K_train)
+            MAE=np.mean(np.abs(krr_model.predict(None, K_test=cur_K_test)-y_test))
+            MAEs_line.append(MAE)
+
+            lb+=training_set_size
+            ub+=training_set_size
+        MAEs.append(MAEs_line)
+    return MAEs
