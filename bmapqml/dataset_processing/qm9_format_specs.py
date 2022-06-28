@@ -91,7 +91,7 @@ def read_str_rep(xyz_input, offset):
     lines=checked_input_readlines(xyz_input)
     natoms=int(lines[0])
     str_rep_line_id=natoms+offset
-    return lines[str_rep_line_id].split()[-1]
+    return lines[str_rep_line_id].split()[0]
 
 def read_SMILES(xyz_input):
     return read_str_rep(xyz_input, 3)

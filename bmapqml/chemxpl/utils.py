@@ -15,7 +15,7 @@ from .modify import replace_heavy_atom, atom_replacement_possibilities
 import numpy as np
 from igraph import Graph
 from ..utils import canonical_atomtype, read_xyz_file, default_num_procs
-from .valence_treatment import ChemGraph
+from .valence_treatment import ChemGraph, InvalidAdjMat
 import copy, tarfile
 from sortedcontainers import SortedList
 
@@ -157,7 +157,10 @@ def xyz2mol_graph(nuclear_charges, charge, coords, get_chirality=False):
 
 
 def chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
-    bond_order_matrix, ncharges, coords=xyz2mol_graph(nuclear_charges, charge, coordinates)
+    # Convert numpy array to lists as that is the correct input for xyz2mol_graph function.
+    converted_ncharges=[int(ncharge) for ncharge in nuclear_charges]
+    converted_coordinates=[[float(atom_coord) for atom_coord in atom_coords] for atom_coords in coordinates]
+    bond_order_matrix, ncharges, coords=xyz2mol_graph(converted_ncharges, charge, converted_coordinates)
     return ChemGraph(adj_mat=bond_order_matrix, nuclear_charges=ncharges)
 
 def egc_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
@@ -168,9 +171,8 @@ def xyz2mol_extgraph(filepath, get_chirality=False, read_xyz=None):
     if read_xyz is None:
         read_xyz=read_xyz_file(filepath)
 
-    # Convert numpy array to lists as that is the correct input for xyz2mol_graph function.
-    nuclear_charges=[int(ncharge) for ncharge in read_xyz[0]]
-    coordinates=[[float(atom_coord) for atom_coord in atom_coords] for atom_coords in read_xyz[2]]
+    nuclear_charges=read_xyz[0]
+    coordinates=read_xyz[2]
     add_attr_dict=read_xyz[3]
 
     charge=None
@@ -315,6 +317,7 @@ def chemgraph_to_canonical_rdkit(cg):
     inv_canonical_ordering=cg.get_inv_canonical_permutation()
     heavy_atom_index={}
     hydrogen_connection={}
+
     for atom_counter, atom_id in enumerate(inv_canonical_ordering):
         a = Chem.Atom(periodic_table[cg.hatoms[atom_id].ncharge])
         mol_idx=mol.AddAtom(a)
@@ -345,17 +348,23 @@ def chemgraph_to_canonical_rdkit(cg):
 def chemgraph_to_canonical_rdkit_wcoords(cg):
     mol, heavy_atom_index, hydrogen_connection, canon_SMILES=chemgraph_to_canonical_rdkit(cg)
     AllChem.EmbedMolecule(mol)
-    converged=AllChem.MMFFOptimizeMolecule(mol)
+    try:
+        converged=AllChem.MMFFOptimizeMolecule(mol)
+    except ValueError:
+        raise MMFFInconsistent
     if converged != 0:
         raise MMFFInconsistent
-    coords=np.array(mol.GetConformer().GetPositions())
+    rdkit_coords=np.array(mol.GetConformer().GetPositions())
+    rdkit_nuclear_charges=np.array([atom.GetAtomicNum() for atom in mol.GetAtoms()])
     # Additionally check that the coordinates actually correspond to the molecule.
-
-    coord_based_cg=chemgraph_from_ncharges_coords(cg.full_ncharges, coordinates)
+    try:
+        coord_based_cg=chemgraph_from_ncharges_coords(rdkit_nuclear_charges, rdkit_coords)
+    except InvalidAdjMat:
+        raise MMFFInconsistent
     if coord_based_cg != cg:
-       raise MMFFInconsistent
+        raise MMFFInconsistent
 
-    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, coords
+    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, rdkit_coords
 
 def egc_with_coords(egc, coords=None, methods="MMFF"):
     output=copy.deepcopy(egc)
