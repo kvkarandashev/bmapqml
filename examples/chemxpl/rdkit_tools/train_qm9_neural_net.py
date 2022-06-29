@@ -75,6 +75,10 @@ class Net(nn.Module):
             act_fct,
             torch.nn.Linear(self.n_neuo, self.n_neuo),
             act_fct,
+            torch.nn.Linear(self.n_neuo, self.n_neuo),
+            act_fct,
+            torch.nn.Linear(self.n_neuo, self.n_neuo),
+            act_fct,
             torch.nn.Linear(self.n_neuo, 1)
         )
 
@@ -109,7 +113,7 @@ class Net(nn.Module):
 
 
             valid_loss = self.loss(self.ytest, self.forward(self.xtest))
-            if loss < valid_loss*0.001: #valid_loss*0.0001:.
+            if loss < valid_loss*0.0005: #valid_loss*0.0001:.
                 print(loss)
                 break
 
@@ -126,8 +130,7 @@ class Net(nn.Module):
 
 if __name__ == "__main__":
 
-    N= [4000]
-    #[4000, 8000, 16000, 32000, 64000,102000]
+    N= [4000, 8000, 16000, 32000, 64000,102000]
     N_hyperparam_opt=6000
     N_test= 16000
 
@@ -170,46 +173,23 @@ if __name__ == "__main__":
     y_train     = torch.from_numpy(y_train.astype(np.float32))
     y_test      = torch.from_numpy(y_test.astype(np.float32)) 
 
-    model = Net(n_neuro=200,in_dim=X.shape[1], xtest=X_test.cuda(),ytest=y_test.cuda(), num_epochs=500,verbose=True) #, name="./networks/NET_{}".format(n))
+    model = Net(n_neuro=200,in_dim=X.shape[1], xtest=X_test.cuda(),ytest=y_test.cuda(), num_epochs=600,verbose=True, name='/store/common/jan/qm9_removed/ml/NN_{}_{}'.format(max_train_size, TARGET_PROPERTY))
     model.to(torch.device("cuda"))
-    model.fit(X_train.cuda(), y_train.cuda())
-    
-    predictions = sct.inverse_transform(np.array(model.predict(X_test.cuda()).detach().cpu()))
-    MAE = rdkit_descriptors.mae(sct.inverse_transform(y_test), predictions)
-    print("#",len(X_train), MAE)
 
-
-
-
-    # measure the time needed to execute a block of code
-    start = time.time()
-    for i in range(100):
-        model.forward(X_test)
-    end = time.time()
-    print("Time needed: {}".format(end-start))
-
-
-
-
-
-    exit()
-    reg=KRR(kernel_type="Laplacian", scale_labels=True)
-    reg.optimize_hyperparameters(X_train[:N_hyperparam_opt], y_train[:N_hyperparam_opt])
-
-    null_error = mae(y_test, np.mean(y_train))
+    null_error = rdkit_descriptors.mae(y_test, np.mean(y_train))
     print('Nullmodel error:', null_error)
     lrn_crv      = []
     for n in N:
-        reg.fit(X_train[:n], y_train[:n])
-        y_pred = reg.predict(X_test)
-        MAE    = mae(y_test, y_pred)
-
-        print(n, MAE)
+        model.fit(X_train[:n].cuda(), y_train[:n].cuda())
+        
+        y_pred = sct.inverse_transform(np.array(model.predict(X_test.cuda()).detach().cpu()))
+        MAE    = rdkit_descriptors.mae(sct.inverse_transform(y_test), y_pred)        
+        print("lc",n, MAE)
 
         lrn_crv.append(MAE)
 
-    reg.save('/store/common/jan/qm9_removed/ml/KRR_{}_{}'.format(n, TARGET_PROPERTY))
+    model.save()
     lrn_crv = np.array(lrn_crv)
     report = {}
     report["property"],report["nullmodel"], report["lrn_crv"], report["unit"],report["dataset_loc"],report["date"] = TARGET_PROPERTY,null_error,np.vstack((N,lrn_crv)), "debye", PATH, date.today()
-    dump2pkl(report, "/store/common/jan/qm9_removed/ml/report_{}.pkl".format(TARGET_PROPERTY))
+    dump2pkl(report, "/store/common/jan/qm9_removed/ml/NN_report_{}.pkl".format(TARGET_PROPERTY))

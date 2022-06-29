@@ -76,9 +76,6 @@ class QM9_properties:
         Evaluate the function on a list of trajectory points 
         """
         
-        
-
-        from joblib import Parallel, delayed
         #Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=4)(delayed(self.__call__)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
@@ -160,7 +157,6 @@ class sample_local_space():
         It is a combination of an exponential and a one over 6 power
         using the parameters epsilon and sigma and gamma.
         """
-        import numpy as np
 
         return self.epsilon*np.exp(-self.sigma*d) - self.gamma*(1/d**6)
 
@@ -169,7 +165,6 @@ class sample_local_space():
         """
         Returns the exponential potential for a given distance.
         """
-        import numpy as np
 
         return self.epsilon*np.exp(-self.sigma*d)
 
@@ -356,8 +351,6 @@ class Rdkit_properties:
         self.verbose = verbose
 
     def __call__(self, trajectory_point_in):
-        import numpy as np
-        from rdkit import Chem
     
         fct = self.rdkit_property
         rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
