@@ -11,7 +11,7 @@ from rdkit.Chem.Crippen import MolLogP, MolMR
 from rdkit import Chem  
 import numpy as np
 import collections
-from bmapqml.python_parallelization import embarrassingly_parallel
+from bmapqml.utils import embarrassingly_parallel
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
