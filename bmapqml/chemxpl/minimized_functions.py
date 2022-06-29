@@ -1,6 +1,12 @@
 # If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
-
-
+import numpy as np
+from numpy.linalg import norm
+from bmapqml.chemxpl import rdkit_descriptors
+import pickle
+from bmapqml.utils import trajectory_point_to_canonical_rdkit
+from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit 
+from joblib import Parallel, delayed
+        
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge=max(possible_nuclear_charges)
@@ -41,8 +47,6 @@ class QM9_properties:
     """
 
     def __init__(self, model_path,max=False, verbose=False):
-        import pickle
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
 
         self.ml_model = pickle.load(open(model_path, "rb"))
         self.verbose  = verbose
@@ -50,9 +54,7 @@ class QM9_properties:
         self.max=max
 
     def __call__(self, trajectory_point_in):
-        import numpy as np
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
@@ -74,7 +76,7 @@ class QM9_properties:
         Evaluate the function on a list of trajectory points 
         """
         
-        import numpy as np
+        
 
         from joblib import Parallel, delayed
         #Aparently this is the fastest way to do this:
@@ -88,23 +90,21 @@ class find_match():
     Guide Random walk towards the target the representation corresponding to the target
     molecule.
     """
+    
     def __init__(self, X_target,verbose=False):
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
-        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+        
+   
         self.X_target=X_target
         self.verbose = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
     def __call__(self, trajectory_point_in):
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        import numpy as np
-        from numpy.linalg import norm
+
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
         d = norm(X_test-self.X_target)
 
         if self.verbose:
@@ -122,9 +122,7 @@ class sample_local_space():
     """
 
     def __init__(self, X_init,verbose=False,pot_type="harmonic", epsilon=1., sigma=1., gamma=1):
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
-        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit  
+ 
         self.epsilon=epsilon
         self.sigma=sigma
         self.gamma = gamma
@@ -178,14 +176,12 @@ class sample_local_space():
 
     def __call__(self, trajectory_point_in):
 
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        import numpy as np
-        from numpy.linalg import norm
+
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
 
         d = norm(X_test-self.X_init)
         if self.pot_type=="lj":
@@ -207,14 +203,9 @@ class sample_local_space():
         """
         Evaluate the function on a list of trajectory points
         """
-        
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        import numpy as np
-        from numpy.linalg import norm
-
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
         d = norm(X_test-self.X_init)
 
         if self.pot_type=="lj":
@@ -234,9 +225,9 @@ class sample_local_space():
         Evaluate the function on a list of trajectory points 
         """
         
-        import numpy as np
+        
 
-        from joblib import Parallel, delayed
+        
         #Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=24)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
@@ -262,7 +253,8 @@ class multi_obj:
 
 
     def __init__(self, fct_list, fct_weights,max=False, verbose=False):
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+
+
         self.fct_list   = fct_list
         self.fct_weights = fct_weights
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
@@ -270,7 +262,7 @@ class multi_obj:
         self.max = max
 
     def __call__(self,trajectory_point_in):
-        import numpy as np
+        
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
         sum = 0
@@ -281,7 +273,6 @@ class multi_obj:
             values.append(fct.__call__(trajectory_point_in))
 
         values = np.array(values)
-
         sum = np.dot(self.fct_weights, values)
 
 
@@ -301,7 +292,7 @@ class multi_obj:
         Evaluate the function on a single trajectory point 
         """
 
-        import numpy as np
+        
         #from joblib import Parallel, delayed
         #values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
 
@@ -322,10 +313,7 @@ class multi_obj:
         """
         Evaluate the function on a list of trajectory points 
         """
-        
-        import numpy as np
-
-        from joblib import Parallel, delayed
+    
         #Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=4)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
@@ -361,7 +349,7 @@ class Rdkit_properties:
     """
 
     def __init__(self,model_path, rdkit_property, max=True, verbose=True):
-        from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        
         self.rdkit_property=rdkit_property
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
         self.max = max
