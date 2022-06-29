@@ -12,6 +12,8 @@ from rdkit import Chem
 import numpy as np
 import collections
 from bmapqml.utils import embarrassingly_parallel
+from tqdm import tqdm
+from rdkit.Chem import rdMolDescriptors
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -113,7 +115,7 @@ def get_single_FP(smi, fp_type):
     fp_type: type of fingerprint to be computed
     """
 
-    from rdkit.Chem import rdMolDescriptors
+    
     mol = Chem.MolFromSmiles(smi)
 
     if fp_type=="MorganFingerprint":
@@ -146,7 +148,7 @@ def extended_get_single_FP(smi, fp_type):
 
 
 def get_all_FP(SMILES, fp_type):
-    from tqdm import tqdm
+    
     """
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
