@@ -100,12 +100,12 @@ class KRR():
 
     def optimize_hyperparameters(self, X_train, y_train, init_param_guess=None):
         """
-        Use stochastic gradient descend for hyperparameter optimization.
+        Use stochastic gradient descent for hyperparameter optimization.
         """
         if init_param_guess is None:
             init_param_guess=self.opt_hyperparameter_guess(X_train, y_train)
-        from .hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization    
-        optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(X_train, y_train, init_param_guess=init_param_guess,
+        from .hyperparameter_optimization import stochastic_gradient_descent_hyperparam_optimization    
+        optimized_hyperparams=stochastic_gradient_descent_hyperparam_optimization(X_train, y_train, init_param_guess=init_param_guess,
                     **self.hyperparam_opt_kwargs, sym_kernel_func=self.sym_kernel_function)
         self.sigmas=optimized_hyperparams["sigmas"]
         self.lambda_val=optimized_hyperparams["lambda_val"]

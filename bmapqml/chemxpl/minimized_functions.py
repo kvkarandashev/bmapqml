@@ -28,6 +28,7 @@ class OrderSlide:
         return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
+from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
 class QM9_properties:
 
@@ -42,7 +43,6 @@ class QM9_properties:
     def __init__(self, model_path,max=False, verbose=False):
         import pickle
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
         self.ml_model = pickle.load(open(model_path, "rb"))
         self.verbose  = verbose

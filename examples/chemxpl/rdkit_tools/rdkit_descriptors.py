@@ -104,7 +104,7 @@ def ExplicitBitVect_to_NumpyArray(fp_vec):
     return fp2
 
 
-def get_single_FP(smi, fp_type):
+def get_single_FP(smi, fp_type, radius=4, nBits=8192, useFeatures=True):
     
     """
     Computes the fingerprint of a molecule given its SMILES
@@ -119,18 +119,19 @@ def get_single_FP(smi, fp_type):
     if fp_type=="MorganFingerprint":
         fp_mol = rdMolDescriptors.GetMorganFingerprintAsBitVect(
             mol,
-            radius=4,
-            nBits=8192,
-            useFeatures=True,
+            radius=radius,
+            nBits=nBits,
+            useFeatures=useFeatures,
         )
 
     return fp_mol
 
 # TODO KK@Jan: rewrite all this properly using a dictionnary
-def extended_get_single_FP(smi, fp_type):
+def extended_get_single_FP(smi, fp_type, radius=4, nBits=8192, useFeatures=True):
     if fp_type=="MorganFingerprint":
 
-        x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
+        x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint",
+                    radius=radius, nBits=nBits, useFeatures=useFeatures))
 
     if fp_type=="COMPQ":
 
@@ -138,20 +139,21 @@ def extended_get_single_FP(smi, fp_type):
 
     if fp_type=="both":
 
-        x1  = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint"))
+        x1  = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint",
+                        radius=radius, nBits=nBits, useFeatures=useFeatures))
         x2  = COMPQ_PLUS(smi)
         x   = np.concatenate((x1, x2))
 
     return x
 
 
-def get_all_FP(SMILES, fp_type):
+def get_all_FP(SMILES, fp_type, **kwargs):
     from tqdm import tqdm
     """
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
 
-    X = np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,)))
+    X = np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,), other_kwargs=kwargs))
 
     return X
 
