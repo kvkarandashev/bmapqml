@@ -30,7 +30,9 @@ class OrderSlide:
 
 
 class QM9_properties:
-
+    import numpy as np
+    from examples.chemxpl.rdkit_tools import rdkit_descriptors
+    from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
     """
     Interface for QM9 property prediction, uses RdKit features
     that can be extracted only from a molecular graph
@@ -44,15 +46,15 @@ class QM9_properties:
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
 
+
+
         self.ml_model = pickle.load(open(model_path, "rb"))
         self.verbose  = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
         self.max=max
 
     def __call__(self, trajectory_point_in):
-        import numpy as np
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
+
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
@@ -264,6 +266,8 @@ class multi_obj:
 
     def __init__(self, fct_list, fct_weights,max=False, verbose=False):
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
+        import numpy as np
+
         self.fct_list   = fct_list
         self.fct_weights = fct_weights
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
@@ -271,7 +275,7 @@ class multi_obj:
         self.max = max
 
     def __call__(self,trajectory_point_in):
-        import numpy as np
+        
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
         sum = 0
