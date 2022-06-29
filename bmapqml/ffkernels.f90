@@ -104,3 +104,72 @@ double precision:: inv_sigma_param, sigma_der_param
 
 END SUBROUTINE
 
+
+
+
+
+
+
+
+
+
+subroutine flaplacian_kernel(a, na, b, nb, k, sigma)
+
+    implicit none
+
+    double precision, dimension(:,:), intent(in) :: a
+    double precision, dimension(:,:), intent(in) :: b
+
+    integer, intent(in) :: na, nb
+
+    double precision, dimension(:,:), intent(inout) :: k
+    double precision, intent(in) :: sigma
+
+    double precision :: inv_sigma
+
+    integer :: i, j
+
+    inv_sigma = -1.0d0 / sigma
+
+    !$OMP PARALLEL DO COLLAPSE(2)
+    do i = 1, nb
+        do j = 1, na
+            k(j,i) = exp(inv_sigma * sum(abs(a(:,j) - b(:,i))))
+        enddo
+    enddo
+    !$OMP END PARALLEL DO
+
+end subroutine flaplacian_kernel
+
+subroutine flaplacian_kernel_symmetric(x, n, k, sigma)
+
+    implicit none
+
+    double precision, dimension(:,:), intent(in) :: x
+
+    integer, intent(in) :: n
+
+    double precision, dimension(:,:), intent(inout) :: k
+    double precision, intent(in) :: sigma
+
+    double precision :: val
+
+    double precision :: inv_sigma
+    integer :: i, j
+
+    inv_sigma = -1.0d0 / sigma
+
+    k = 1.0d0
+
+    !$OMP PARALLEL DO PRIVATE(val) SCHEDULE(dynamic)
+    do i = 1, n
+        do j = i, n
+            val = exp(inv_sigma * sum(abs(x(:,j) - x(:,i))))
+            k(j,i) = val
+            k(i,j) = val
+        enddo
+    enddo
+    !$OMP END PARALLEL DO
+
+
+end subroutine flaplacian_kernel_symmetric
