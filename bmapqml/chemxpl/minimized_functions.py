@@ -88,6 +88,7 @@ class find_match():
     Guide Random walk towards the target the representation corresponding to the target
     molecule.
     """
+    
     def __init__(self, X_target,verbose=False):
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
@@ -104,7 +105,7 @@ class find_match():
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
         d = norm(X_test-self.X_target)
 
         if self.verbose:
@@ -185,7 +186,7 @@ class sample_local_space():
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
 
         d = norm(X_test-self.X_init)
         if self.pot_type=="lj":
@@ -214,7 +215,7 @@ class sample_local_space():
 
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
         d = norm(X_test-self.X_init)
 
         if self.pot_type=="lj":
@@ -281,7 +282,6 @@ class multi_obj:
             values.append(fct.__call__(trajectory_point_in))
 
         values = np.array(values)
-
         sum = np.dot(self.fct_weights, values)
 
 
