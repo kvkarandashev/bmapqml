@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import pandas as pd
-from rdkit_descriptors import *
+from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.krr import KRR
 from bmapqml.utils import dump2pkl
 from bmapqml.data import conversion_coefficient
@@ -126,7 +126,7 @@ class Net(nn.Module):
 
 if __name__ == "__main__":
 
-    N= [8000]
+    N= [4000]
     #[4000, 8000, 16000, 32000, 64000,102000]
     N_hyperparam_opt=6000
     N_test= 16000
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
     TARGET_PROPERTY = 'mu'
     PATH = '/store/common/jan/qm9_removed/qm9/'
-    qm9_data = process_qm9(PATH, all=True)
+    qm9_data = rdkit_descriptors.process_qm9(PATH, all=True)
 
 
     SMILES, y  = qm9_data['canon_smiles'].values, np.float_(qm9_data[TARGET_PROPERTY].values) #*conversion_coefficient["au_eV"]
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     SMILES, y = SMILES[inds], y[inds]
 
     y = y.reshape(-1,1)
-    X = get_all_FP(SMILES, fp_type="both")
+    X = rdkit_descriptors.get_all_FP(SMILES, fp_type="both")
     print(X.shape)
 
     #exit()
@@ -170,18 +170,23 @@ if __name__ == "__main__":
     y_train     = torch.from_numpy(y_train.astype(np.float32))
     y_test      = torch.from_numpy(y_test.astype(np.float32)) 
 
-    model = Net(n_neuro=200,in_dim=X.shape[1], xtest=X_test.cuda(),ytest=y_test.cuda(), num_epochs=7000,verbose=True) #, name="./networks/NET_{}".format(n))
+    model = Net(n_neuro=200,in_dim=X.shape[1], xtest=X_test.cuda(),ytest=y_test.cuda(), num_epochs=500,verbose=True) #, name="./networks/NET_{}".format(n))
     model.to(torch.device("cuda"))
     model.fit(X_train.cuda(), y_train.cuda())
     
     predictions = sct.inverse_transform(np.array(model.predict(X_test.cuda()).detach().cpu()))
-    MAE = mae(sct.inverse_transform(y_test), predictions)
+    MAE = rdkit_descriptors.mae(sct.inverse_transform(y_test), predictions)
     print("#",len(X_train), MAE)
 
 
 
 
-
+    # measure the time needed to execute a block of code
+    start = time.time()
+    for i in range(100):
+        model.forward(X_test)
+    end = time.time()
+    print("Time needed: {}".format(end-start))
 
 
 
