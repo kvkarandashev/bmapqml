@@ -1,5 +1,4 @@
 # If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
-from tabnanny import verbose
 
 
 class Diatomic_barrier:
@@ -58,14 +57,14 @@ class QM9_properties:
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
+        X_test =  rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
         prediction = self.ml_model.predict(X_test.reshape(1, -1))
 
         if self.verbose:
             print("SMILE:", canon_SMILES, "Prediction: ", prediction[0])
 
         if self.max:
-            return np.exp(-prediction)[-1]
+            return -prediction[-1]
         else:
             return prediction[-1]
 
@@ -114,7 +113,6 @@ class find_match():
             return np.exp(d)
 
 class sample_local_space():
-
     """
     Sample local chemical space of the inital compound
     with input representation X_init. Radial symmetric
@@ -123,20 +121,63 @@ class sample_local_space():
     the target molecule can be from the initial one.
     """
 
-    def __init__(self, X_init,verbose=False, epsilon=1., sigma=1.):
+    def __init__(self, X_init,verbose=False,pot_type="harmonic", epsilon=1., sigma=1., gamma=1):
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit  
         self.epsilon=epsilon
         self.sigma=sigma
+        self.gamma = gamma
         self.X_init=X_init 
+        self.pot_type=pot_type
         self.verbose = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
 
-    def lennard_jones_potential(self,d, epsilon, sigma):
-        return 4*epsilon*((sigma/d)**12 - (sigma/d)**6)
+    def lennard_jones_potential(self,d):
+        """
+        Lennard-Jones potential, d is the distance between the two points
+        in chemical space. The potential is given by:
+        """
+        return 4*self.epsilon*((self.sigma/d)**12 - (self.sigma/d)**6)
+
+
+    def harmonic_potential(self,d):
+        """
+        Flat-bottomed harmonic potential. within the range of 0 to sigma
+        the potential is flat and has value epsilon. Outsite it is quadratic.
+        This avoids the problem of the potential being infinite at zero such that
+        also molecule close to or equal to d = 0 can be sampled
+        """
+
+        if d <= self.sigma:
+            return -self.epsilon #*100
+        else:
+            return (d-self.sigma)**2 - self.epsilon
+
+
+
+    def buckingham_potential(self,d):
+        """
+        Returns the buckingham potential for a given distance.
+        It is a combination of an exponential and a one over 6 power
+        using the parameters epsilon and sigma and gamma.
+        """
+        import numpy as np
+
+        return self.epsilon*np.exp(-self.sigma*d) - self.gamma*(1/d**6)
+
+
+    def exponential_potential(self,d):
+        """
+        Returns the exponential potential for a given distance.
+        """
+        import numpy as np
+
+        return self.epsilon*np.exp(-self.sigma*d)
+
 
     def __call__(self, trajectory_point_in):
+
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
         import numpy as np
         from numpy.linalg import norm
@@ -145,10 +186,16 @@ class sample_local_space():
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
         X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
-        #pdb.set_trace()
-        d = norm(X_test-self.X_init)
 
-        V = self.lennard_jones_potential(d, self.epsilon, self.sigma)
+        d = norm(X_test-self.X_init)
+        if self.pot_type=="lj":
+            V = self.lennard_jones_potential(d)
+        elif self.pot_type=="harmonic":
+            V = self.harmonic_potential(d)
+        elif self.pot_type=="buckingham":
+            V = self.buckingham_potential(d)
+        elif self.pot_type=="exponential":
+            V = self.exponential_potential(d)
 
         if self.verbose:
             print("SMILE:", canon_SMILES,d, V)
@@ -157,6 +204,10 @@ class sample_local_space():
 
 
     def evaluate_point(self, trajectory_point_in):
+        """
+        Evaluate the function on a list of trajectory points
+        """
+        
         from examples.chemxpl.rdkit_tools import rdkit_descriptors
         import numpy as np
         from numpy.linalg import norm
@@ -166,7 +217,14 @@ class sample_local_space():
         X_test = rdkit_descriptors.get_all_FP([canon_SMILES], fp_type="both")
         d = norm(X_test-self.X_init)
 
-        V = self.lennard_jones_potential(d, self.epsilon, self.sigma)
+        if self.pot_type=="lj":
+            V = self.lennard_jones_potential(d)
+        elif self.pot_type=="harmonic":
+            V = self.harmonic_potential(d)
+        elif self.pot_type=="buckingham":
+            V = self.buckingham_potential(d)
+        elif self.pot_type=="exponential":
+            V = self.exponential_potential(d)
 
         return V, d
 
@@ -180,7 +238,7 @@ class sample_local_space():
 
         from joblib import Parallel, delayed
         #Aparently this is the fastest way to do this:
-        values = Parallel(n_jobs=4)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        values = Parallel(n_jobs=24)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
 
     
@@ -203,12 +261,13 @@ class multi_obj:
     """
 
 
-    def __init__(self, fct_list, fct_weights, verbose=False):
+    def __init__(self, fct_list, fct_weights,max=False, verbose=False):
         from bmapqml.utils import trajectory_point_to_canonical_rdkit
         self.fct_list   = fct_list
         self.fct_weights = fct_weights
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
         self.verbose = verbose
+        self.max = max
 
     def __call__(self,trajectory_point_in):
         import numpy as np
@@ -227,7 +286,11 @@ class multi_obj:
 
 
         if self.verbose:
-            print("SMILE:", canon_SMILES, "v1", values[0],"v2", values[1])
+            if self.max:
+                print("SMILE:", canon_SMILES, "v1", -values[0],"v2", -values[1])
+            else:
+                print("SMILE:", canon_SMILES, "v1", values[0],"v2", values[1])
+        
 
         return sum
 

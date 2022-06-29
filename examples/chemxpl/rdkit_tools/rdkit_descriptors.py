@@ -243,7 +243,7 @@ def read_xyz(path):
     return mol_id,atoms, coordinates, smile, prop
 
 
-def process_qm9(directory):
+def process_qm9(directory, all=True):
     
     """
     Reads the xyz files in the directory on 'path' as well as the properties of 
@@ -255,7 +255,13 @@ def process_qm9(directory):
     data = []
     smiles = []
     properties = []
-    for file in tqdm(os.listdir(directory)): 
+
+    if all:
+        nr_molecules = len(os.listdir(directory))
+    else:
+        nr_molecules = 2000
+
+    for file in tqdm(os.listdir(directory)[:nr_molecules]): 
         path = os.path.join(directory, file)
         mol_id, atoms, coordinates, smile, prop = read_xyz(path)
         # A tuple with the atoms and its coordinates
