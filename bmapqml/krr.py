@@ -6,6 +6,7 @@ from hashlib import new
 from .utils import OptionUnavailableError
 import numpy as np
 from .training_set_optimization import KernelUnstable
+from .hyperparameter_optimization import max_Laplace_dist
 
 def arr_scale(arr, minval, maxval, lbound=0, ubound=1):
     return lbound+(arr-minval)*(ubound-lbound)/(maxval-minval)
@@ -18,7 +19,7 @@ class KRR():
 
     def __init__(self, kernel_type="Gaussian", scale_features=False, scale_labels=False, kernel_function=None, sym_kernel_function=None,
                     hyperparam_opt_kwargs={"max_stagnating_iterations" : 8, "randomized_iterator_kwargs" : {"default_step_magnitude" : 0.05}},
-                    sigmas=None, lambda_val=None, updatable=False):
+                    sigmas=None, lambda_val=None, updatable=False, init_sigma_guess_func=max_Laplace_dist, parallelized_model_evaluation=True):
         
         """
         User must provide a kernelfunction
@@ -35,6 +36,12 @@ class KRR():
 
         self.kernel_function=kernel_function
         self.sym_kernel_function=sym_kernel_function
+        self.init_sigma_guess_func=init_sigma_guess_func
+
+        self.parallelized_model_evaluation=parallelized_model_evaluation
+
+        self.alphas=None
+        self.X_train=None
 
         if self.kernel_function is None:
             from .kernels import common_kernels, common_sym_kernels
@@ -86,10 +93,7 @@ class KRR():
         Initial guess of the optimal hyperparameters.
         """
         if self.sigmas is None:
-            sigma_guess=.0
-            for i1, vec1 in enumerate(X_train):
-                for vec2 in X_train[:i1]:
-                    sigma_guess=max(sigma_guess, np.sum(np.abs(vec1-vec2)))
+            sigma_guess=self.init_sigma_guess_func(X_train)
         else:
             sigma_guess=self.sigmas
         if self.lambda_val is None:
@@ -139,7 +143,7 @@ class KRR():
             self.X_minval  = np.min(X_train)
             X_train = self.X_MinMaxScaler(X_train)
 
-        if self.scale_features:
+        if self.scale_labels:
             self.y_maxval  = np.max(y_train)
             self.y_minval  = np.min(y_train)
             y_train = self.y_MinMaxScaler(y_train)
@@ -170,15 +174,18 @@ class KRR():
 
         X_test: numpy array
         """
-
+        
         if self.scale_features:
             X_test = self.X_MinMaxScaler(X_test)
 
         if K_test is None:
-            K_test  =  self.calc_kernel(X_test, self.X_train)
-        y_pred  =   np.dot(K_test, self.alphas)
+            if self.parallelized_model_evaluation:
+                K_test = self.calc_kernel(self.X_train, X_test).T
+            else:
+                K_test = self.calc_kernel(X_test, self.X_train)
+        y_pred = np.dot(K_test, self.alphas)
 
-        if self.scale_features:
+        if self.scale_labels:
             y_pred = self.y_MinMaxScaler_inverse(y_pred)
 
         return y_pred

@@ -25,6 +25,7 @@
 # kernel recalculation) after each step.
 
 import numpy as np
+from numba import njit, prange
 from scipy.linalg import cho_factor, cho_solve
 import math, random, copy
 from .utils import dump2pkl, nullify_ignored
@@ -722,3 +723,29 @@ def one_diag_unity_tensor(dim12, dim3):
         output[mol_id, mol_id, 0]=1.0
     return output
    
+#####
+# For initial guesses of hyperparameters.
+#####
+@njit(fastmath=True)
+def gauss_dist(X1, X2):
+    return np.sum((X1-X2)**2)
+
+@njit(fastmath=True)
+def laplace_dist(X1, X2):
+    return np.sum(np.abs(X1-X2))
+
+@njit(fastmath=True, parallel=True)
+def max_dist(X_arr, dist_func):
+    l=X_arr.shape[0]
+    m=np.zeros((2,))
+    for i in prange(l):
+        for j in range(i):
+            m[1]=dist_func(X_arr[i], X_arr[j])
+            m[0]=np.max(m)
+    return m[0]
+
+def max_Laplace_dist(X_arr):
+    return max_dist(X_arr, laplace_dist)
+
+def max_Gauss_dist(X_arr):
+    return np.sqrt(max_dist(X_arr, gauss_dist))
