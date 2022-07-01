@@ -2,7 +2,7 @@
 # total potential energy used as baseline in the Delta-ML scheme.
 
 from ..orb_ml.oml_compound import OML_compound
-from ..utils import checked_input_readlines
+from ..utils import checked_input_readlines, xyz_file_stochiometry
 
 try:
     from ..chemxpl.utils import SMILES_to_egc, xyz2mol_extgraph, RdKitFailure
@@ -10,22 +10,25 @@ try:
 except:
     pass
 
+atom_energies={ 'H' : -0.500273, 'C' : -37.846772, 'N' : -54.583861, 'O' : -75.064579, 'F' : -99.718730}
+valence_electrons={ 'H' : 1, 'C' : 4, 'N' : 3, 'O' : 2, 'F' : 1}
 
-def HOMO_en(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
-    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
+
+def HOMO_en(xyz_name, **kwargs):
+    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, **kwargs)
     oml_comp.run_calcs()
     return oml_comp.HOMO_en()
     
-def LUMO_en(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
-    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
+def LUMO_en(xyz_name, **kwargs):
+    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, **kwargs)
     oml_comp.run_calcs()
     return oml_comp.LUMO_en()
 
-def HOMO_LUMO_gap(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc='', **other_kwargs):
-    return LUMO_en(xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)-HOMO_en(xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc, **other_kwargs)
+def HOMO_LUMO_gap(xyz_name, **kwargs):
+    return LUMO_en(xyz_name, **kwargs)-HOMO_en(xyz_name, **kwargs)
 
-def potential_energy(xyz_name, calc_type="HF", basis="sto-3g", dft_xc='lda,vwn', dft_nlc=''):
-    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, calc_type=calc_type, basis=basis, dft_xc=dft_xc, dft_nlc=dft_nlc)
+def potential_energy(xyz_name, **kwargs):
+    oml_comp=OML_compound(xyz = xyz_name, mats_savefile = xyz_name, **kwargs)
     oml_comp.run_calcs()
     return oml_comp.e_tot
 
@@ -43,34 +46,63 @@ quant_properties = {'Dipole moment' : (6, 'Debye'),
                 'Heat capacity at 298.15 K': (17, 'cal/(mol K)'),
                 'Highest vibrational frequency': (18, 'cm^-1')}
 
+def standard_extract_xyz(filename, qm9_id, quant_name):
+    file=open(filename, 'r')
+    lines=file.readlines()
+    output=None
+    if quant_name == 'Highest vibrational frequency':
+        first_line_passing=True
+    for l in lines:
+        lsplit=l.split()
+        if quant_name == 'Highest vibrational frequency':
+            if first_line_passing:
+                first_line_passing=False
+                continue
+            try:
+                output=max([float(freq_str) for freq_str in lsplit]) # this will fail for all lines but for the one with molecule number (first line) and frequencies
+                break
+            except:
+                continue
+        else:
+            if lsplit[0] == "gdb":
+                output=float(lsplit[qm9_id-1])
+                break
+    file.close()
+    return output
+
+def atomization_energy(filename, stochiometry=None):
+    if stochiometry is None:
+        stochiometry=xyz_file_stochiometry(filename)
+    baseline_name='Internal energy at 0 K'
+    baseline_qm9_id=quant_properties[baseline_name][0]
+    output=standard_extract_xyz(filename, baseline_qm9_id, baseline_name)
+    for atom_symbol, num_atoms in stochiometry.items():
+        output-=atom_energies[atom_symbol]*num_atoms
+    return output
+
+def normalized_atomization_energy(filename):
+    stochiometry=xyz_file_stochiometry(filename)
+    normalization=0
+    for atom_symbol, num_atoms in stochiometry.items():
+        normalization+=num_atoms*valence_electrons[atom_symbol]
+    return atomization_energy(filename, stochiometry=stochiometry)/normalization
+
+special_extract_functions={'Atomization energy' : atomization_energy, 'Normalized atomization energy' : normalized_atomization_energy}
+
 class Quantity:
     def __init__(self, quant_name):
         self.name=quant_name
-        self.qm9_id=quant_properties[quant_name][0]
-        self.dimensionality=quant_properties[quant_name][1]
+        self.qm9_id=quant_properties[self.name][0]
+        self.dimensionality=quant_properties[self.name][1]
+        if self.name in special_extract_functions:
+            self.special_extract_func=special_extract_functions[self.name]
+        else:
+            self.special_extract_func=None
     def extract_xyz(self, filename):
-        file=open(filename, 'r')
-        lines=file.readlines()
-        output=None
-        if self.name == 'Highest vibrational frequency':
-            first_line_passing=True
-        for l in lines:
-            lsplit=l.split()
-            if self.name == 'Highest vibrational frequency':
-                if first_line_passing:
-                    first_line_passing=False
-                    continue
-                try:
-                    output=max([float(freq_str) for freq_str in lsplit]) # this will fail for all lines but for the one with molecule number (first line) and frequencies
-                    break
-                except:
-                    continue
-            else:
-                if lsplit[0] == "gdb":
-                    output=float(lsplit[self.qm9_id-1])
-                    break
-        file.close()
-        return output
+        if self.special_extract_func is None:
+            return standard_extract_xyz(filename, self.qm9_id, self.name)
+        else:
+            return self.special_extract_func(filename)
     def extract_byprod_result(self, filename):
         file=open(filename, 'r')
         lines=file.readlines()

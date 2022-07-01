@@ -17,6 +17,7 @@ NCPUs=$(cat /etc/slurm-llnl/slurm.conf | tr ' ' '\n' | awk 'BEGIN {FS="="} {if (
 JOB_OMP_NUM_THREADS=$NCPUs
 
 USE_CURRENT_DIR=0
+conda_env=$CONDA_DEFAULT_ENV
 
 while [[ "$1" == --* ]]
 do
@@ -76,7 +77,9 @@ script_path=${scripts[0]}
 
 cd $data_dir
 
-cat > ex_$job_name.sh << EOF
+EXNAME=ex_$job_name.sh
+
+cat > $EXNAME << EOF
 #!/bin/bash
 #SBATCH -J $job_name
 #SBATCH -o $job_name.stdout_%j
@@ -85,16 +88,18 @@ cat > ex_$job_name.sh << EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=$NCPUs
 
-$(mod_load_string)
+source "/home/konst/miniconda3/etc/profile.d/conda.sh"
+conda activate $conda_env
 
-if [ "$conda_env" != "" ]
-then
-    conda activate $conda_env
-fi
+EOF
 
-$update_commands
-export OMP_NUM_THREADS=$JOB_OMP_NUM_THREADS
-export OML_NUM_PROCS=$NCPUs
+for NTHREAD_VAR in "OMP_NUM_THREADS" "OPENBLAS_NUM_THREADS" "MKL_NUM_THREADS" "VECLIB_MAXIMUM_THREADS" "NUMEXPR_NUM_THREADS" "NUMBA_NUM_THREADS"
+do
+    echo "export $NTHREAD_VAR=$JOB_OMP_NUM_THREADS" >> $EXNAME
+done
+
+cat >> $EXNAME << EOF
+export BMAPQML_NUM_PROCS=$NCPUs
 if [ "$USE_CURRENT_DIR" == "0" ]
 then
     cd \$SCRATCH_DIR
@@ -112,4 +117,4 @@ then
 fi
 EOF
 
-sbatch ex_$job_name.sh
+sbatch $EXNAME

@@ -629,11 +629,11 @@ class GOO_randomized_iterator:
 
 list_supported_funcs=["default", "single_rescaling", "single_rescaling_global_mat_prop_coeffs", "ang_mom_classified"]
 
-def stochastic_gradient_descent_hyperparam_optimization(kernel_input, quant_arr, quant_ignore_list=None, quants_ignore_orderable=False, init_lambda=1e-3, max_iterations=256,
+def stochastic_gradient_descent_hyperparam_optimization(kernel_input, quant_arr, quant_ignore_list=None, quants_ignore_orderable=False, max_iterations=256,
                                     init_param_guess=None, init_red_param_guess=None, reduced_hyperparam_func=Reduced_hyperparam_func(), max_stagnating_iterations=1,
                                     use_MAE=True, num_kfolds=16, other_opt_goo_ensemble_kwargs={}, randomized_iterator_kwargs={}, iter_dump_name_add=None,
                                     additional_BFGS_iters=None, iter_dump_name_add_BFGS=None, negligible_red_param_distance=1e-9, num_procs=1, fixed_num_threads=None,
-                                    sym_kernel_func=gaussian_sym_kernel_matrix, hyperparam_init_guess=None):
+                                    sym_kernel_func=gaussian_sym_kernel_matrix):
 
     if init_red_param_guess is None:
         init_red_param_guess=reduced_hyperparam_func.full_params_to_reduced(init_param_guess)

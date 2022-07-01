@@ -82,6 +82,14 @@ def check_byte(byte_or_str):
     else:
         return byte_or_str.decode('utf-8')
 
+#   For processing xyz files.
+def checked_input_readlines(file_input):
+    try:
+        lines=[check_byte(l) for l in file_input.readlines()]
+    except AttributeError:
+        with open(file_input, "r") as input_file:
+            lines=input_file.readlines()
+    return lines
 
 def write_compound_to_xyz_file(compound, xyz_file_name):
     write_xyz_file(compound.coordinates, compound.atomtypes, xyz_file_name)
@@ -122,6 +130,26 @@ def read_xyz_file(xyz_input, additional_attributes=["charge"]):
 
     return nuclear_charges, atomic_symbols, xyz_coordinates, add_attr_dict
 
+def xyz_file_stochiometry(xyz_input, by_atom_symbols=True):
+    """
+    Stochiometry of the xyz input
+    xyz_input : either name of an xyz file or the corresponding _io.TextIOWrapper instance
+    by_atom_symbols : if "True" use atomic symbols as keys, otherwise use nuclear charges.
+    """
+    nuclear_charges, atomic_symbols, xyz_coordinates, add_attr_dict=read_xyz_file(xyz_input, additional_attributes=[])
+    if by_atom_symbols:
+        identifiers=atomic_symbols
+    else:
+        identifiers=nuclear_charges
+    output={}
+    for i in identifiers:
+        if i in output:
+            output[i]=1
+        else:
+            output[i]+=1
+    return output
+
+
 def write2file(string, file_name):
     file_output=open(file_name, 'w')
     print(string, file=file_output)
@@ -157,15 +185,6 @@ def execute_string(string):
 def trajectory_point_to_canonical_rdkit(tp_in):
     from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit   
     return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
-
-
-def checked_input_readlines(file_input):
-    try:
-        lines=[check_byte(l) for l in file_input.readlines()]
-    except AttributeError:
-        with open(file_input, "r") as input_file:
-            lines=input_file.readlines()
-    return lines
 
 
 # Routines for running operations over array in child environments.
