@@ -2,11 +2,13 @@
 
 hooks_dir=$(dirname $0)/../.git/hooks
 
-cat > $hooks_dir/pre-commit << EOF
+precomm_hook=$hooks_dir/pre-commit
+
+cat > $precomm_hook << EOF
 #!/bin/bash
 
 # Check that black is installed.
-if [[ "\$(pip show black)" == WARNING:* ]]
+if [[ "\$(pip show black 2>&1)" == WARNING:* ]]
 then
     echo "Failed to find 'black' package used to format committed Python code."
     echo "Can be installed with 'pip install black'."
@@ -15,7 +17,7 @@ fi
 
 FAIL=0
 
-git status | awk '{if (\$1 == "modified:" || (\$1 == "new" && \$2 == "file:")) {print \$NF}}' | while read f
+while read f
 do
     if [[ \$f == *.py ]]
     then
@@ -26,7 +28,7 @@ do
             FAIL=1
         fi
     fi
-done
+done <<< "\$(git status | awk '{if (\$1 == "modified:" || (\$1 == "new" && \$2 == "file:")) {print \$NF}}')"
 
 if [ "\$FAIL" == "1" ]
 then
@@ -35,3 +37,5 @@ then
 fi
 
 EOF
+
+chmod +x $precomm_hook
