@@ -8,7 +8,7 @@ from bmapqml.fkernels import (
 )
 from bmapqml.hyperparameter_optimization import max_Laplace_dist, max_Gauss_dist
 from bmapqml.dataset_processing.qm9_format_specs import Quantity
-from bmapqml.test_utils import dirs_xyz_list
+from bmapqml.test_utils import dirs_xyz_list, timestamp
 from bmapqml.orb_ml import OML_compound
 from qml.representations import get_slatm_mbtypes, generate_slatm
 import os, random, sys
@@ -31,7 +31,6 @@ else:
 QM9_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 
 seed = 1
-# get_quants_comps
 
 # Replace with path to QM9 directory
 MMFF_QM9_dir = os.environ["DATA"] + "/QM9_filtered/MMFF_xyzs"
@@ -87,14 +86,17 @@ KRR_model = KRR(
     sym_kernel_function=sym_kernel_matrix,
 )
 
+timestamp("Optimizing hyperparameters.")
 KRR_model.optimize_hyperparameters(
     all_training_reps[:hyperparam_opt_num], all_training_quants[:hyperparam_opt_num]
 )
+timestamp("Finished optimizing hyperparameters.")
 
 check_reps, check_comps, check_quants = get_quants_comps(
     mmff_xyz_list[-check_num:], quant
 )
 
+timestamp("Building learning curve.")
 MAEs = learning_curve(
     KRR_model,
     all_training_reps,
@@ -102,7 +104,11 @@ MAEs = learning_curve(
     check_reps,
     check_quants,
     train_nums,
+    model_fit_reusable=True,
 )
+timestamp("Finished building learning curve.")
+
+KRR_model.save("krr_model.pkl")
 
 print("Quantity: ", quant_name, ", Ntrain and MAEs:")
 for train_num, MAE_line in zip(train_nums, MAEs):
@@ -111,3 +117,8 @@ for train_num, MAE_line in zip(train_nums, MAEs):
 print("Compact form of the lc:")
 for train_num, MAE_line in zip(train_nums, MAEs):
     print(train_num, np.mean(MAE_line), np.std(MAE_line))
+
+print(
+    "Double-checked MAE of saved model:",
+    np.mean(np.abs(KRR_model.predict(check_reps) - check_quants)),
+)

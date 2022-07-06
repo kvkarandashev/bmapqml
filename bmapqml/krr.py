@@ -9,11 +9,11 @@ from .training_set_optimization import KernelUnstable
 from .hyperparameter_optimization import max_Laplace_dist
 
 
-def arr_scale(arr, minval, maxval, lbound=0, ubound=1):
+def arr_scale(arr, minval, maxval, lbound=0.0, ubound=1.0):
     return lbound + (arr - minval) * (ubound - lbound) / (maxval - minval)
 
 
-def arr_rescale(scaled_arr, minval, maxval, lbound=0, ubound=1):
+def arr_rescale(scaled_arr, minval, maxval, lbound=0.0, ubound=1.0):
     return minval + (maxval - minval) * (scaled_arr - lbound) / (ubound - lbound)
 
 
@@ -247,11 +247,20 @@ class KRR:
 
 
 def learning_curve(
-    krr_model, X_train, y_train, X_test, y_test, training_set_sizes, max_subset_num=8
+    krr_model,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    training_set_sizes,
+    max_subset_num=8,
+    model_fit_reusable=False,
 ):
     """
     Generate a MAE learning curve.
+    krr_model : KRR class object with pre-initialized hyperparameters
     max_subset_num : maximal number of random subset for a training set size
+    model_fit_reusable : ensure that after the last fitting instance the model is reusable
     """
     import random
 
@@ -276,7 +285,16 @@ def learning_curve(
             cur_K_train = K_train[subset_ids][:, subset_ids]
             cur_y_train = y_train[subset_ids]
 
-            krr_model.fit(None, cur_y_train, K_train=cur_K_train)
+            if (
+                model_fit_reusable
+                and (subset_counter == num_subsets - 1)
+                and (training_set_size is training_set_sizes[-1])
+            ):
+                cur_X_train = X_train[subset_ids]
+            else:
+                # We don't need X_train since we have the kernel.
+                cur_X_train = None
+            krr_model.fit(cur_X_train, cur_y_train, K_train=cur_K_train)
             MAE = np.mean(np.abs(krr_model.predict(None, K_test=cur_K_test) - y_test))
             MAEs_line.append(MAE)
 

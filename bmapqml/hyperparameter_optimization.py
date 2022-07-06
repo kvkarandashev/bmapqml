@@ -137,6 +137,8 @@ class Gradient_optimization_obj:
 
         self.use_MAE = use_MAE
 
+        self.init_kernel_funcs(sym_kernel_func=sym_kernel_func, kernel_func=kernel_func)
+
     def init_kernel_funcs(
         self,
         sym_kernel_func=gaussian_sym_kernel_matrix,
@@ -207,7 +209,7 @@ class Gradient_optimization_obj:
                 )
             )
 
-    def reinitiate_basic_components(self):
+    def reinitiate_cho_decomps(self):
 
         modified_train_kernel = np.copy(self.train_kernel)
         modified_train_kernel[
@@ -222,6 +224,8 @@ class Gradient_optimization_obj:
         except np.linalg.LinAlgError:  # means mod_train_kernel is not invertible
             self.train_cho_decomp = None
         self.train_kern_invertible = self.train_cho_decomp is not None
+
+    def reinitiate_alphas_errors(self):
         if self.train_kern_invertible:
             self.talphas = self.train_cho_decomp.solve_with(self.training_quants).T
             self.predictions = np.matmul(self.check_kernel, self.talphas)
@@ -242,6 +246,12 @@ class Gradient_optimization_obj:
         output = -np.matmul(self.check_kernel, output)
         output += np.matmul(check_der, self.talphas)
         return output
+
+    def drift_response_coeffs(self):
+        output = self.train_cho_decomp.solve_with(
+            np.ones(self.talphas.shape, dtype=float)
+        ).T
+        return -np.matmul(self.check_kernel, output)
 
     def reinitiate_error_measure_ders(self, lambda_der_only=False):
         if self.train_kern_invertible:
@@ -270,7 +280,8 @@ class Gradient_optimization_obj:
     def error_measure(self, parameters):
         self.reinitiate_basic_params(parameters)
         self.recalculate_kernel_matrices()
-        self.reinitiate_basic_components()
+        self.reinitiate_cho_decomps()
+        self.reinitiate_alphas_errors()
         self.reinitiate_error_measures()
         print("# Current parameter vales:", parameters)
         print("# Current MAE:", self.cur_MAE, "MSE:", self.cur_MSE)
@@ -279,10 +290,16 @@ class Gradient_optimization_obj:
         else:
             return self.cur_MSE
 
-    def error_measure_ders(self, parameters, lambda_der_only=False):
+    def error_measure_ders(
+        self,
+        parameters,
+        lambda_der_only=False,
+    ):
+
         self.reinitiate_basic_params(parameters)
         self.recalculate_kernel_mats_ders()
-        self.reinitiate_basic_components()
+        self.reinitiate_cho_decomps()
+        self.reinitiate_alphas_errors()
         self.reinitiate_error_measure_ders(lambda_der_only=lambda_der_only)
 
         print("# Current parameter values:", parameters)
@@ -293,10 +310,14 @@ class Gradient_optimization_obj:
         else:
             return self.cur_MSE_der
 
-    def error_measure_wders(self, parameters, lambda_der_only=False):
-        self.reinitiate_basic_params(parameters)
-        self.recalculate_kernel_mats_ders()
-        self.reinitiate_basic_components()
+    def error_measure_wders(
+        self, parameters, lambda_der_only=False, recalc_cho_decomps=True
+    ):
+        if recalc_cho_decomps:
+            self.reinitiate_basic_params(parameters)
+            self.recalculate_kernel_mats_ders()
+            self.reinitiate_cho_decomps()
+        self.reinitiate_alphas_errors()
         self.reinitiate_error_measure_ders(lambda_der_only=lambda_der_only)
         self.reinitiate_error_measures()
         if self.use_MAE:
@@ -374,7 +395,7 @@ class GOO_ensemble(Gradient_optimization_obj):
         fixed_num_threads=None,
         kernel_func=None,
         sym_kernel_func=gaussian_sym_kernel_matrix,
-        num_kernel_params=None,
+        optimize_drift=False,
         quants_ignore_orderable=False,
         **kernel_additional_args
     ):
@@ -389,13 +410,19 @@ class GOO_ensemble(Gradient_optimization_obj):
 
         self.tot_num_points = all_quantities.shape[-1]
 
+        self.optimize_drift = optimize_drift
+
+        self.all_quantities = np.copy(all_quantities)
+        if self.optimize_drift:
+            self.init_quantities = np.copy(all_quantities)
+
         self.goo_ensemble_subsets = []
         for train_id_list, check_id_list in zip(train_id_lists, check_id_lists):
             self.goo_ensemble_subsets.append(
                 GOO_ensemble_subset(
                     train_id_list,
                     check_id_list,
-                    all_quantities,
+                    self.all_quantities,
                     quants_ignore=quants_ignore,
                     use_MAE=use_MAE,
                     quants_ignore_orderable=quants_ignore_orderable,
@@ -413,6 +440,7 @@ class GOO_ensemble(Gradient_optimization_obj):
         self,
         parameters,
         recalc_global_matrices=True,
+        recalc_cho_decomps=True,
         lambda_der_only=False,
         negligible_red_param_distance=None,
     ):
@@ -433,7 +461,9 @@ class GOO_ensemble(Gradient_optimization_obj):
         error_mean_ders = None
 
         error_erders_list = self.subset_error_measures_wders(
-            parameters, lambda_der_only=lambda_der_only
+            parameters,
+            lambda_der_only=lambda_der_only,
+            recalc_cho_decomps=recalc_cho_decomps,
         )
 
         for cur_error, cur_error_ders in error_erders_list:
@@ -451,11 +481,15 @@ class GOO_ensemble(Gradient_optimization_obj):
         error_mean_ders /= self.num_subsets
         return error_mean, error_mean_ders
 
-    def subset_error_measures_wders(self, parameters, lambda_der_only=False):
+    def subset_error_measures_wders(
+        self, parameters, lambda_der_only=False, recalc_cho_decomps=True
+    ):
         if (self.num_procs is None) or (self.num_procs == 1):
             return [
                 goo_ensemble_subset.error_measure_wders(
-                    parameters, lambda_der_only=lambda_der_only
+                    parameters,
+                    lambda_der_only=lambda_der_only,
+                    recalc_cho_decomps=recalc_cho_decomps,
                 )
                 for goo_ensemble_subset in self.goo_ensemble_subsets
             ]
@@ -463,7 +497,7 @@ class GOO_ensemble(Gradient_optimization_obj):
             return embarrassingly_parallel(
                 single_subset_error_measure_wders,
                 self.goo_ensemble_subsets,
-                (parameters, lambda_der_only),
+                (parameters, lambda_der_only, recalc_cho_decomps),
                 fixed_num_threads=self.fixed_num_threads,
                 num_procs=self.num_procs,
             )
@@ -499,10 +533,20 @@ class GOO_ensemble(Gradient_optimization_obj):
                 global_matrix_ders=self.global_matrix_ders,
             )
 
+    def update_label_drift(self, label_drift):
+        self.all_quantities[:] = self.init_quantities[:]
+        self.all_quantities -= label_drift
+
 
 # Auxiliary function for joblib parallelization.
-def single_subset_error_measure_wders(subset, parameters, lambda_der_only):
-    return subset.error_measure_wders(parameters, lambda_der_only=lambda_der_only)
+def single_subset_error_measure_wders(
+    subset, parameters, lambda_der_only, recalc_cho_decomps
+):
+    return subset.error_measure_wders(
+        parameters,
+        lambda_der_only=lambda_der_only,
+        recalc_cho_decomps=recalc_cho_decomps,
+    )
 
 
 def generate_random_GOO_ensemble(
@@ -608,7 +652,11 @@ class Optimizer_state_generator:
         self.goo_ensemble = goo_ensemble
 
     def __call__(
-        self, red_parameters, recalc_global_matrices=True, lambda_der_only=False
+        self,
+        red_parameters,
+        recalc_global_matrices=True,
+        recalc_cho_decomps=True,
+        lambda_der_only=False,
     ):
         parameters = self.goo_ensemble.reduced_hyperparam_func.reduced_params_to_full(
             red_parameters
@@ -616,6 +664,7 @@ class Optimizer_state_generator:
         error_measure, error_measure_red_ders = self.goo_ensemble.error_measure_wders(
             parameters,
             recalc_global_matrices=recalc_global_matrices,
+            recalc_cho_decomps=recalc_cho_decomps,
             lambda_der_only=lambda_der_only,
         )
         return Optimizer_state(
@@ -641,9 +690,14 @@ class GOO_randomized_iterator:
 
         self.optimizer_state_generator = Optimizer_state_generator(opt_GOO_ensemble)
 
+        self.optimize_drift = self.optimizer_state_generator.goo_ensemble.optimize_drift
+
         self.cur_optimizer_state = self.optimizer_state_generator(
             initial_reduced_parameter_vals
         )
+
+        if self.optimize_drift:
+            self.descend_optimize_drift()
 
         print(
             "Start params:",
@@ -718,6 +772,8 @@ class GOO_randomized_iterator:
             self.cur_optimizer_state = copy.deepcopy(trial_optimizer_state)
             if (not self.keep_init_lambda) and self.bisec_lambda_opt:
                 self.bisection_lambda_optimization()
+            if self.optimize_drift:
+                self.descend_drift_optimization()
             self.noise_levels[:] = 0.0
             if self.lambda_outside_bounds():
                 self.change_lambda_until_normal()
@@ -779,11 +835,16 @@ class GOO_randomized_iterator:
         self.recalc_cur_opt_state(new_red_params, recalc_global_matrices=False)
 
     def recalc_cur_opt_state(
-        self, new_red_params, recalc_global_matrices=True, lambda_der_only=False
+        self,
+        new_red_params,
+        recalc_global_matrices=True,
+        lambda_der_only=False,
+        recalc_cho_decomps=True,
     ):
         self.cur_optimizer_state = self.optimizer_state_generator(
             new_red_params,
             recalc_global_matrices=recalc_global_matrices,
+            recalc_cho_decomps=recalc_cho_decomps,
             lambda_der_only=lambda_der_only,
         )
 
@@ -921,6 +982,54 @@ class GOO_randomized_iterator:
             min(bisection_interval).red_parameters, recalc_global_matrices=False
         )
 
+        def descend_drift_optimization(self, need_decomp_init=True):
+            print("Descend drift optimization starting error measure:")
+            label_diffs = np.empty((0,), dtype=float)
+            response_coeffs = np.empty((0,), dtype=float)
+            # We need to adjust the drift to zero for the analytic formula to be correct.
+            self.optimizer_state_generator.goo_ensemble.update_label_drift(0.0)
+            for goo_subset_id in range(
+                self.optimizer_state_generator.goo_ensemble.num_subsets
+            ):
+                goo_subset = self.optimizer_state_generator.goo_ensemble.subsets[
+                    goo_subset_id
+                ]
+                if need_decomp_init:
+                    goo_subset.reinitiate_cho_decomps()
+                goo_subset.reinitiate_alphas_errors()
+                goo_subset.reinitiate_error_measures()
+
+                label_diffs = np.append(label_diffs, goo_subset.prediction_errors)
+                response_coeffs = np.append(
+                    response_coeffs, goo_subset.drift_response_coeffs()
+                )
+
+            switching_positions = label_diffs / response_coeffs
+            abs_response_coeffs = np.abs(response_coeffs)
+
+            comp_tuples = [
+                (switching_position, abs_response_coeff)
+                for switching_position, abs_response_coeff in zip(
+                    switching_positions, abs_response_coeffs
+                )
+            ]
+
+            comp_tuples.sort(key=lambda x: x[0])
+            cur_der = -np.sum(-abs_response_coeffs)
+            for comp_tuple in comp_tuples:
+                cur_der += 2 * comp_tuple[1]
+                if cur_der > 0:
+                    self.label_drift = comp_tuple[0]
+                    break
+            self.optimizer_state_generator.goo_ensemble.update_label_drift(
+                self.label_drift
+            )
+            self.recalc_cur_opt_state(
+                self.cur_optimizer_state.red_parameters,
+                recalc_global_matrices=False,
+                recalc_cho_decompositions=False,
+            )
+
 
 list_supported_funcs = [
     "default",
@@ -951,6 +1060,7 @@ def stochastic_gradient_descent_hyperparam_optimization(
     num_procs=1,
     fixed_num_threads=None,
     sym_kernel_func=gaussian_sym_kernel_matrix,
+    optimize_drift=False,
 ):
 
     if init_red_param_guess is None:
@@ -969,7 +1079,8 @@ def stochastic_gradient_descent_hyperparam_optimization(
         quants_ignore_orderable=quants_ignore_orderable,
         num_procs=num_procs,
         fixed_num_threads=fixed_num_threads,
-        sym_kernel_func=sym_kernel_func
+        sym_kernel_func=sym_kernel_func,
+        optimize_drift=optimize_drift
     )
 
     randomized_iterator = GOO_randomized_iterator(
@@ -1040,11 +1151,14 @@ def stochastic_gradient_descent_hyperparam_optimization(
                 "lambda_val": finalized_params[0],
                 "error_measure": finalized_result.fun,
             }
-    return {
+    output = {
         "sigmas": cur_opt_state.parameters[1:],
         "lambda_val": cur_opt_state.parameters[0],
         "error_measure": cur_opt_state.error_measure,
     }
+    if optimize_drift:
+        output = {**output, "label_drift": randomized_iterator.label_drift}
+    return output
 
 
 ######
