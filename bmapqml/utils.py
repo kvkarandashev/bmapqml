@@ -214,12 +214,6 @@ def execute_string(string):
     rmdir(script_name)
 
 
-def trajectory_point_to_canonical_rdkit(tp_in):
-    from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit
-
-    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
-
-
 # Routines for running operations over array in child environments.
 # One of the reason for this appearing is fixing thread numbers in child processes.
 class ChildEnvFailed(Exception):

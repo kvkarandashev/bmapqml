@@ -1,10 +1,13 @@
 # If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
 import numpy as np
 from numpy.linalg import norm
-from bmapqml.chemxpl import rdkit_descriptors
 import pickle
-from bmapqml.utils import trajectory_point_to_canonical_rdkit
-from bmapqml.chemxpl.utils import chemgraph_to_canonical_rdkit
+from .utils import (
+    trajectory_point_to_canonical_rdkit,
+    chemgraph_to_canonical_rdkit,
+    coord_info_from_tp,
+)
+from ..utils import read_xyz_file
 from joblib import Parallel, delayed
 
 
@@ -44,6 +47,94 @@ class OrderSlide:
 
 
 from .rdkit_descriptors import extended_get_single_FP
+
+
+class InterfacedModel:
+    def __init__(self, model):
+        self.model = model
+
+    def __call__(self, trajectory_point_in):
+        representation = self.representation_func(trajectory_point_in)
+        return self.model.predict([representation])[0]
+
+
+class MMFF_based_model:
+    """
+    A model acting on TrajectoryPoint object for
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.add_info_dict = {"coord_info": coord_info_from_tp}
+
+    def representation_func(self, trajectory_point_in):
+        coordinates = trajectory_point_in.calc_or_lookup(self.add_info_dict)[
+            "coord_info"
+        ]["coordinates"]
+        nuclear_charges = trajectory_point_in.egc.true_ncharges()
+        return self.coord_representation_func(coordinates, nuclear_charges)
+
+
+class SLATM_MMFF_based_model(MMFF_based_model):
+    """
+    An inheritor to MMFF_based_model that uses SLATM representation.
+    """
+
+    def __init__(self, *args, mbtypes=None, **other_kwargs):
+        from qml.representations import generate_slatm
+
+        super().__init__(*args, **other_kwargs)
+        self.mbtypes = mbtypes
+        self.rep_func = generate_slatm
+
+    def verify_mbtypes(self, xyz_files):
+        from qml.representations import get_slatm_mbtypes
+
+        all_nuclear_charges = []
+        max_natoms = 0
+        for f in xyz_files:
+            (
+                nuclear_charges,
+                _,
+                _,
+                _,
+            ) = read_xyz_file(f)
+            max_natoms = max(len(nuclear_charges), max_natoms)
+            all_nuclear_charges.append(nuclear_charges)
+        np_all_nuclear_charges = np.zeros(
+            (max_natoms, len(all_nuclear_charges)), dtype=int
+        )
+        for mol_id, nuclear_charges in enumerate(all_nuclear_charges):
+            cur_natoms = len(nuclear_charges)
+            np_all_nuclear_charges[mol_id, :cur_natoms] = nuclear_charges[:]
+        self.mbtypes = get_slatm_mbtypes(np_all_nuclear_charges)
+
+    def coord_representations(self, coordinates, nuclear_charges):
+        return self.rep_func(coordinates, nuclear_charges, self.mbtypes)
+
+
+# TODO Perhaps multi_obj should be combined with this.
+class LinearCombination:
+    """
+    Returns a linear combination of several functions acting on a TrajectoryPoint object.
+    functions : functions to be combined
+    function_names : names of the functions, determines the label their values are stored at for TrajectoryPoint object.
+    """
+
+    def __init__(self, functions, coefficients, function_names):
+        self.coefficients = coefficients
+        self.function_names = function_names
+        self.function_dict = {}
+        for func, func_name in zip(functions, function_names):
+            self.function_dict[func_name] = func
+
+    def __call__(self, trajectory_point_in):
+        func_val_dict = trajectory_point_in.calc_or_lookup(self.func_dict)
+        output = 0.0
+        for coeff, func_name in zip(self.coefficients, self.function_names):
+            output += coeff * func_val_dict[func_name]
+        return output
 
 
 class QM9_properties:

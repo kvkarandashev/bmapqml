@@ -15,9 +15,10 @@ from .modify import (
     randomized_cross_coupling,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
+from ..utils import dump2pkl
 from .valence_treatment import sorted_tuple, connection_forbidden
 from .periodic import element_name
-import random, copy
+import random, copy, os
 import numpy as np
 
 
@@ -392,8 +393,15 @@ def random_pair(arr_length):
     return random.sample(range(arr_length), 2)
 
 
-# Class that generates a trajectory over chemical space.
+class SoftExitCalled(Exception):
+    pass
+
+
 class RandomWalk:
+    """
+    Class that generates a trajectory over chemical space.
+    """
+
     def __init__(
         self,
         init_egcs=None,
@@ -413,11 +421,19 @@ class RandomWalk:
         min_function_name="MIN_FUNCTION",
         num_saved_candidates=None,
         keep_full_trajectory=False,
+        restart_file=None,
+        make_restart_frequency=None,
+        soft_exit_check_frequency=None,
     ):
         """
         betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
+        min_function : minimized function
+        min_function_name : name of minimized function (the label used for minimized function value in TrajectoryPoint object's calculated_data)
+        restart_file : name of restart file to which the object is dumped at make_restart
+        make_restart_frequency : if not None object will call make_restart each make_restart_frequency global steps.
+        soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -487,6 +503,12 @@ class RandomWalk:
         self.num_attempted_cross_couplings = 0
         self.num_accepted_cross_couplings = 0
         self.moves_since_changed = np.zeros((self.num_replicas,), dtype=int)
+
+        # Related to making restart files and checking for soft exit.
+        self.restart_file = restart_file
+        self.make_restart_frequency = make_restart_frequency
+        self.soft_exit_check_frequency = soft_exit_check_frequency
+        self.global_steps_since_last = {}
 
     def init_randomized_change_params(self, randomized_change_params=None):
         if randomized_change_params is not None:
@@ -707,6 +729,9 @@ class RandomWalk:
             output.append(self.MC_step(**mc_step_kwargs, replica_id=replica_id))
         return output
 
+    def random_changed_replica_pair(self):
+        return random.sample(range(self.num_replicas), 2)
+
     def genetic_MC_step_all(
         self, num_genetic_tries=1, randomized_change_params=None, **dummy_kwargs
     ):
@@ -714,7 +739,7 @@ class RandomWalk:
             randomized_change_params=randomized_change_params
         )
         for attempted_change_counter in range(num_genetic_tries):
-            changed_replica_ids = random_pair(self.num_replicas)
+            changed_replica_ids = self.random_changed_replica_pair()
             self.genetic_MC_step(changed_replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
@@ -730,7 +755,13 @@ class RandomWalk:
         prob_dict={"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
         **other_kwargs
     ):
+        if self.make_restart_frequency is not None:
+            self.check_make_restart()
+        if self.soft_exit_check_frequency is not None:
+            self.check_soft_exit()
+
         self.global_MC_step_counter += 1
+
         cur_procedure = random.choices(
             list(prob_dict), weights=list(prob_dict.values())
         )[0]
@@ -869,6 +900,29 @@ class RandomWalk:
                     for replica_visit in replica_visits:
                         output[replica_visit - 1, replica_id] = tp_id
         return output
+
+    # Quality-of-life-related.
+    def frequency_checker(self, identifier, frequency):
+        if identifier not in self.global_steps_since_last:
+            self.global_steps_since_last[identifier] = 1
+        output = self.global_steps_since_last[identifier] == frequency
+        if output:
+            self.global_steps_since_last[identifier] = 1
+        else:
+            self.global_steps_since_last[identifier] += 1
+
+    def check_make_restart(self):
+        if self.frequency_checker("make_restart", self.make_restart_frequency):
+            self.make_restart(self.global_MC_step_counter)
+
+    def check_soft_exit(self):
+        if self.frequency_checker("soft_exit", self.soft_exit_check_frequency):
+            if os.path.isfile("EXIT"):
+                self.make_restart(self.global_MC_step_counter)
+                raise SoftExitCalled
+
+    def make_restart(self, identifier=None):
+        dump2pkl({"identifier": identifier, "RandomWalk": self})
 
 
 def merge_random_walks(*rw_list):
