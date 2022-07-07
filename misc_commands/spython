@@ -18,6 +18,7 @@ JOB_OMP_NUM_THREADS=$NCPUs
 
 USE_CURRENT_DIR=0
 conda_env=$CONDA_DEFAULT_ENV
+PIPE_ARGS=0
 
 while [[ "$1" == --* ]]
 do
@@ -37,6 +38,10 @@ do
     then
         JOB_OMP_NUM_THREADS=$(flag_val $1)
     fi
+    if [ "$1" == "--pipe_args" ]
+    then
+        PIPE_ARGS=1
+    fi
     shift
 done
 
@@ -48,7 +53,19 @@ then
 	exit
 fi
 
-job_name=$2
+if [ "$PIPE_ARGS" == "1" ]
+then
+    arg_command="cat"
+else
+    arg_command="echo ${@:2}"
+fi
+
+eval "$arg_command" | while read args
+do
+
+job_name=$(echo $args | cut -d' ' -f1)
+
+other_args=$(echo $args | cut -d' ' -f2-)
 
 if [ "$job_name" == "" ]
 then
@@ -77,6 +94,8 @@ script_path=${scripts[0]}
 
 cd $data_dir
 
+
+
 EXNAME=ex_$job_name.sh
 
 cat > $EXNAME << EOF
@@ -88,7 +107,8 @@ cat > $EXNAME << EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=$NCPUs
 
-source "/home/konst/miniconda3/etc/profile.d/conda.sh"
+
+source "$(grep __conda_setup ~/.bashrc | head -n1 | cut -d"'" -f2)"
 conda activate $conda_env
 
 EOF
@@ -109,7 +129,7 @@ else
     cd $(pwd)/..
 fi
 echo "Started: \$(date)" > \$output_dir/execution_time.txt
-python $script_path ${@:3}
+python $script_path $other_args
 echo "Finished: \$(date)" >> \$output_dir/execution_time.txt
 if [ "$USE_CURRENT_DIR" == "0" ]
 then
@@ -117,4 +137,10 @@ then
 fi
 EOF
 
-sbatch $EXNAME
+SLURM_ID=$(sbatch $DEPSTRING $EXNAME | awk '{print $4}')
+
+DEPSTRING="--dependency=afterok:$SLURM_ID"
+
+cd ..
+
+done
