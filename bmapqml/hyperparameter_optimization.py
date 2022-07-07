@@ -251,7 +251,7 @@ class Gradient_optimization_obj:
         output = self.train_cho_decomp.solve_with(
             np.ones(self.talphas.shape, dtype=float)
         ).T
-        return -np.matmul(self.check_kernel, output)
+        return np.matmul(self.check_kernel, output) - np.ones(self.talphas.shape)
 
     def reinitiate_error_measure_ders(self, lambda_der_only=False):
         if self.train_kern_invertible:
@@ -343,12 +343,7 @@ class GOO_ensemble_subset(Gradient_optimization_obj):
         self.training_indices = training_indices
         self.check_indices = check_indices
 
-        if len(all_quantities.shape) == 1:
-            self.training_quants = all_quantities[self.training_indices]
-            self.check_quants = all_quantities[self.check_indices]
-        else:
-            self.training_quants = all_quantities[self.training_indices, :]
-            self.check_quants = all_quantities[self.check_indices, :]
+        self.init_quants(all_quantities)
 
         if quants_ignore is None:
             self.training_quants_ignore = None
@@ -359,6 +354,14 @@ class GOO_ensemble_subset(Gradient_optimization_obj):
 
         self.use_MAE = use_MAE
         self.quants_ignore_orderable = quants_ignore_orderable
+
+    def init_quants(self, all_quantities):
+        if len(all_quantities.shape) == 1:
+            self.training_quants = all_quantities[self.training_indices]
+            self.check_quants = all_quantities[self.check_indices]
+        else:
+            self.training_quants = all_quantities[self.training_indices, :]
+            self.check_quants = all_quantities[self.check_indices, :]
 
     def recalculate_kernel_matrices(self, global_matrix=None, global_matrix_ders=None):
         if global_matrix is not None:
@@ -536,6 +539,8 @@ class GOO_ensemble(Gradient_optimization_obj):
     def update_label_drift(self, label_drift):
         self.all_quantities[:] = self.init_quantities[:]
         self.all_quantities -= label_drift
+        for subset_id in range(self.num_subsets):
+            self.goo_ensemble_subsets[subset_id].init_quants(self.all_quantities)
 
 
 # Auxiliary function for joblib parallelization.
@@ -697,7 +702,7 @@ class GOO_randomized_iterator:
         )
 
         if self.optimize_drift:
-            self.descend_optimize_drift()
+            self.descend_drift_optimization()
 
         print(
             "Start params:",
@@ -773,7 +778,7 @@ class GOO_randomized_iterator:
             if (not self.keep_init_lambda) and self.bisec_lambda_opt:
                 self.bisection_lambda_optimization()
             if self.optimize_drift:
-                self.descend_drift_optimization()
+                self.descend_drift_optimization(need_init_decomp=False)
             self.noise_levels[:] = 0.0
             if self.lambda_outside_bounds():
                 self.change_lambda_until_normal()
@@ -982,53 +987,63 @@ class GOO_randomized_iterator:
             min(bisection_interval).red_parameters, recalc_global_matrices=False
         )
 
-        def descend_drift_optimization(self, need_decomp_init=True):
-            print("Descend drift optimization starting error measure:")
-            label_diffs = np.empty((0,), dtype=float)
-            response_coeffs = np.empty((0,), dtype=float)
-            # We need to adjust the drift to zero for the analytic formula to be correct.
-            self.optimizer_state_generator.goo_ensemble.update_label_drift(0.0)
-            for goo_subset_id in range(
-                self.optimizer_state_generator.goo_ensemble.num_subsets
-            ):
-                goo_subset = self.optimizer_state_generator.goo_ensemble.subsets[
+    def descend_drift_optimization(self, need_init_decomp=True):
+        print(
+            "Descend drift optimization starting error measure:",
+            self.cur_optimizer_state.error_measure,
+        )
+        label_diffs = np.empty((0,), dtype=float)
+        response_coeffs = np.empty((0,), dtype=float)
+        # We need to adjust the drift to zero for the analytic formula to be correct.
+        self.optimizer_state_generator.goo_ensemble.update_label_drift(0.0)
+        for goo_subset_id in range(
+            self.optimizer_state_generator.goo_ensemble.num_subsets
+        ):
+            goo_subset = (
+                self.optimizer_state_generator.goo_ensemble.goo_ensemble_subsets[
                     goo_subset_id
                 ]
-                if need_decomp_init:
-                    goo_subset.reinitiate_cho_decomps()
-                goo_subset.reinitiate_alphas_errors()
-                goo_subset.reinitiate_error_measures()
-
-                label_diffs = np.append(label_diffs, goo_subset.prediction_errors)
-                response_coeffs = np.append(
-                    response_coeffs, goo_subset.drift_response_coeffs()
-                )
-
-            switching_positions = label_diffs / response_coeffs
-            abs_response_coeffs = np.abs(response_coeffs)
-
-            comp_tuples = [
-                (switching_position, abs_response_coeff)
-                for switching_position, abs_response_coeff in zip(
-                    switching_positions, abs_response_coeffs
-                )
-            ]
-
-            comp_tuples.sort(key=lambda x: x[0])
-            cur_der = -np.sum(-abs_response_coeffs)
-            for comp_tuple in comp_tuples:
-                cur_der += 2 * comp_tuple[1]
-                if cur_der > 0:
-                    self.label_drift = comp_tuple[0]
-                    break
-            self.optimizer_state_generator.goo_ensemble.update_label_drift(
-                self.label_drift
             )
-            self.recalc_cur_opt_state(
-                self.cur_optimizer_state.red_parameters,
-                recalc_global_matrices=False,
-                recalc_cho_decompositions=False,
+            if need_init_decomp:
+                goo_subset.reinitiate_cho_decomps()
+            goo_subset.reinitiate_alphas_errors()
+            goo_subset.reinitiate_error_measures()
+
+            label_diffs = np.append(label_diffs, goo_subset.prediction_errors)
+            response_coeffs = np.append(
+                response_coeffs, goo_subset.drift_response_coeffs()
             )
+
+        switching_positions = label_diffs / response_coeffs
+        abs_response_coeffs = np.abs(response_coeffs)
+
+        comp_tuples = [
+            (switching_position, abs_response_coeff)
+            for switching_position, abs_response_coeff in zip(
+                switching_positions, abs_response_coeffs
+            )
+        ]
+
+        comp_tuples.sort(key=lambda x: x[0])
+        cur_der = -np.sum(-abs_response_coeffs)
+        print("AAA", cur_der, comp_tuples)
+        for comp_tuple in comp_tuples:
+            cur_der += 2 * comp_tuple[1]
+            if cur_der > 0:
+                self.label_drift = comp_tuple[0]
+                break
+
+        self.optimizer_state_generator.goo_ensemble.update_label_drift(self.label_drift)
+        self.recalc_cur_opt_state(
+            self.cur_optimizer_state.red_parameters,
+            recalc_global_matrices=False,
+            recalc_cho_decomps=False,
+        )
+
+        print(
+            "Descend drift optimization final error measure:",
+            self.cur_optimizer_state.error_measure,
+        )
 
 
 list_supported_funcs = [

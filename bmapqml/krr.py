@@ -23,6 +23,9 @@ class KRR:
         kernel_type="Gaussian",
         scale_features=False,
         scale_labels=False,
+        use_label_drift=False,
+        optimize_label_drift=False,
+        label_drift=None,
         kernel_function=None,
         sym_kernel_function=None,
         hyperparam_opt_kwargs={
@@ -43,7 +46,12 @@ class KRR:
         self.kernel_type = kernel_type
         self.scale_features = scale_features
         self.scale_labels = scale_labels
-
+        self.use_label_drift = use_label_drift
+        if self.use_label_drift:
+            self.label_drift = label_drift
+            self.optimize_label_drift = optimize_label_drift
+        else:
+            self.optimize_label_drift = False
         self.hyperparam_opt_kwargs = hyperparam_opt_kwargs
 
         self.sigmas = sigmas
@@ -133,12 +141,16 @@ class KRR:
             y_train,
             init_param_guess=init_param_guess,
             **self.hyperparam_opt_kwargs,
-            sym_kernel_func=self.sym_kernel_function
+            sym_kernel_func=self.sym_kernel_function,
+            optimize_drift=self.optimize_label_drift
         )
         self.sigmas = optimized_hyperparams["sigmas"]
         self.lambda_val = optimized_hyperparams["lambda_val"]
         print("Optimized parameters:", self.sigmas)
         print("Optimized lambda:", self.lambda_val)
+        if self.use_label_drift and self.optimize_label_drift:
+            self.label_drift = optimized_hyperparams["label_drift"]
+            print("Optimized label drift:", self.label_drift)
 
     def calc_train_kernel(self, X_train):
         """
@@ -174,12 +186,22 @@ class KRR:
             self.y_minval = np.min(y_train)
             y_train = self.y_MinMaxScaler(y_train)
 
+        if self.use_label_drift:
+            y_train = np.copy(y_train)
+            if not self.optimize_label_drift:
+                if self.label_drift is None:
+                    self.label_drift = np.mean(y_train)
+                y_train[:] -= self.label_drift
+
         if (
             optimize_hyperparameters
             or (self.sigmas is None)
             or (self.lambda_val is None)
         ):
             self.optimize_hyperparameters(X_train, y_train)
+            if self.use_label_drift:
+                if self.optimize_label_drift:
+                    y_train[:] -= self.label_drift
 
         if K_train is None:
             K_train = self.calc_train_kernel(X_train)
@@ -214,6 +236,9 @@ class KRR:
             else:
                 K_test = self.calc_kernel(X_test, self.X_train)
         y_pred = np.dot(K_test, self.alphas)
+
+        if self.use_label_drift:
+            y_pred += self.label_drift
 
         if self.scale_labels:
             y_pred = self.y_MinMaxScaler_inverse(y_pred)
