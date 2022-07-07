@@ -108,7 +108,7 @@ cat > $EXNAME << EOF
 #SBATCH --cpus-per-task=$NCPUs
 
 
-source "$(grep __conda_setup ~/.bashrc | head -n1 | cut -d"'" -f2)"
+source "$(grep __conda_setup ~/.bashrc | head -n1 | cut -d"'" -f2 | rev | cut -d"/" -f3- | rev)/etc/profile.d/conda.sh"
 conda activate $conda_env
 
 EOF
