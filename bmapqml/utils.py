@@ -25,7 +25,6 @@
 import pickle, subprocess, os
 from joblib import Parallel, delayed
 
-from matplotlib.pyplot import fignum_exists
 from .data import NUCLEAR_CHARGE
 import numpy as np
 
