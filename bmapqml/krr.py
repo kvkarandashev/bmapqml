@@ -245,6 +245,12 @@ class KRR:
 
         return y_pred
 
+    def __call__(self, X_test):
+        """
+        Prediction for a single representation vector.
+        """
+        return self.predict(np.array([X_test]))[0]
+
     def save(self, filename):
 
         from .utils import dump2pkl

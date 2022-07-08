@@ -15,7 +15,7 @@ from .modify import (
     randomized_cross_coupling,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl
+from ..utils import dump2pkl, loadpkl
 from .valence_treatment import sorted_tuple, connection_forbidden
 from .periodic import element_name
 import random, copy, os
@@ -398,10 +398,6 @@ class SoftExitCalled(Exception):
 
 
 class RandomWalk:
-    """
-    Class that generates a trajectory over chemical space.
-    """
-
     def __init__(
         self,
         init_egcs=None,
@@ -426,11 +422,15 @@ class RandomWalk:
         soft_exit_check_frequency=None,
     ):
         """
+        Class that generates a trajectory over chemical space.
         betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
         min_function : minimized function
         min_function_name : name of minimized function (the label used for minimized function value in TrajectoryPoint object's calculated_data)
+        keep_histogram : store information about all considered molecules; mandatory for using biasing potentials
+        num_saved_candidates : if not None determines how many best candidates are kept in the saved_candidates attributes
+        keep_full_trajectory : save not just number of times a trajectory point was visited, but also all steps ids when the step was made
         restart_file : name of restart file to which the object is dumped at make_restart
         make_restart_frequency : if not None object will call make_restart each make_restart_frequency global steps.
         soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
@@ -457,8 +457,10 @@ class RandomWalk:
         if isinstance(self.betas, list):
             assert len(self.betas) == self.num_replicas
 
+        self.keep_histogram = keep_histogram
+
         if starting_histogram is None:
-            if keep_histogram:
+            if self.keep_histogram:
                 self.histogram = SortedList()
                 if self.cur_tps is not None:
                     self.update_histogram(list(range(self.num_replicas)))
@@ -480,8 +482,6 @@ class RandomWalk:
 
         self.randomized_change_params = randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
-
-        self.keep_histogram = keep_histogram
 
         self.bound_enforcing_coeff = bound_enforcing_coeff
 
@@ -645,6 +645,8 @@ class RandomWalk:
         if tp_pair is None:
             tp_pair = [self.cur_tps[replica_id] for replica_id in replica_ids]
         mfunc_vals = [self.eval_min_func(tp) for tp in tp_pair]
+        if None in mfunc_vals:
+            return None
         if self.virtual_beta_present(replica_ids):
             if all([(self.betas[replica_id] is None) for replica_id in replica_ids]):
                 return 0.5
@@ -656,7 +658,7 @@ class RandomWalk:
                     return 0.0
         else:
             delta_pot = -(self.betas[replica_ids[0]] - self.betas[replica_ids[1]]) * (
-                self.eval_min_func(tp_pair[0]) - self.eval_min_func(tp_pair[1])
+                mfunc_vals[0] - mfunc_vals[1]
             )
             if Metropolis_rejection_prob:
                 if delta_pot < 0.0:
@@ -707,6 +709,10 @@ class RandomWalk:
             new_pair_shuffle_prob = self.tp_pair_order_prob(
                 replica_ids, tp_pair=new_pair_tps
             )
+            if (
+                new_pair_shuffle_prob is None
+            ):  # minimization function values for new_pair_tps have None and are thus invalid.
+                return False
             if random.random() > new_pair_shuffle_prob:  # shuffle
                 new_pair_shuffle_prob = 1.0 - new_pair_shuffle_prob
                 new_pair_tps = new_pair_tps[::-1]
@@ -921,8 +927,56 @@ class RandomWalk:
                 self.make_restart(self.global_MC_step_counter)
                 raise SoftExitCalled
 
-    def make_restart(self, identifier=None):
-        dump2pkl({"identifier": identifier, "RandomWalk": self})
+    def make_restart(self, restart_file=None):
+        """
+        Create a file containing all information needed to restart the simulation from the current point.
+        restart_file : name of the file where the dump is created; if None self.restart_file is used
+        """
+        if restart_file is None:
+            restart_file = self.restart_file
+        saved_data = {
+            "cur_tps": self.cur_tps,
+            "MC_step_counter": self.MC_step_counter,
+            "global_MC_step_counter": self.global_MC_step_counter,
+            "num_attempted_cross_couplings": self.num_attempted_cross_couplings,
+            "num_accepted_cross_couplings": self.num_accepted_cross_couplings,
+            "moves_since_changed": self.moves_since_changed,
+            "global_steps_since_last": self.global_steps_since_last,
+            "numpy_rng_state": np.random.get_state(),
+            "random_rng_state": random.getstate(),
+        }
+        if self.keep_histogram:
+            saved_data = {**saved_data, "histogram": self.histogram}
+        if self.num_saved_candidates is not None:
+            saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
+        saved_data
+        dump2pkl(saved_data, restart_file)
+
+    def restart_from(self, restart_file=None):
+        """
+        Recover all data from
+        restart_file : name of the file from which the data is recovered; if None self.restart_file is used
+        """
+        if restart_file is None:
+            restart_file = self.restart_file
+        recovered_data = loadpkl(restart_file)
+        self.cur_tps = recovered_data["cur_tps"]
+        self.MC_step_counter = recovered_data["MC_step_counter"]
+        self.global_MC_step_counter = recovered_data["global_MC_step_counter"]
+        self.num_attempted_cross_couplings = recovered_data[
+            "num_attempted_cross_couplings"
+        ]
+        self.num_accepted_cross_couplings = recovered_data[
+            "num_accepted_cross_couplings"
+        ]
+        self.moves_since_changed = recovered_data["moves_since_changed"]
+        self.global_steps_since_last = recovered_data["global_steps_since_last"]
+        if self.keep_histogram:
+            self.histogram = recovered_data["histogram"]
+        if self.num_saved_candidates is not None:
+            self.saved_candidates = recovered_data["saved_candidates"]
+        np.random.set_state(recovered_data["numpy_rng_state"])
+        random.setstate(recovered_data["random_rng_state"])
 
 
 def merge_random_walks(*rw_list):

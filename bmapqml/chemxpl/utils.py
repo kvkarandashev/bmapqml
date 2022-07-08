@@ -9,7 +9,6 @@ try:
     from xyz2mol import (
         AC2BO,
         xyz2AC,
-        BO2mol,
         chiral_stereo_check,
         AC2mol,
         int_atom,
@@ -490,8 +489,14 @@ def coord_info_from_tp(tp, **kwargs):
     tp : TrajectoryPoint object
     **kwargs : keyword arguments
     """
-    egc_wc = egc_with_coords(tp.egc, **kwargs)
-    return {
-        "coordinates": egc_wc.coordinates,
-        "canon_rdkit_SMILES": egc_wc.additional_data["canon_rdkit_SMILES"],
-    }
+    try:
+        egc_wc = egc_with_coords(tp.egc, **kwargs)
+        return {
+            "coordinates": egc_wc.coordinates,
+            "canon_rdkit_SMILES": egc_wc.additional_data["canon_rdkit_SMILES"],
+        }
+    except MMFFInconsistent:
+        return {
+            "coordinates": None,
+            "canon_rdkit_SMILES": None,
+        }

@@ -6,6 +6,7 @@ from .utils import (
     trajectory_point_to_canonical_rdkit,
     chemgraph_to_canonical_rdkit,
     coord_info_from_tp,
+    MMFFInconsistent,
 )
 from ..utils import read_xyz_file
 from joblib import Parallel, delayed
@@ -49,21 +50,30 @@ class OrderSlide:
 from .rdkit_descriptors import extended_get_single_FP
 
 
+class RepGenFuncProblem(Exception):
+    pass
+
+
 class InterfacedModel:
     def __init__(self, model):
+        """
+        Returns prediction of the KRR model for a TrajectoryPoint object.
+        """
         self.model = model
 
     def __call__(self, trajectory_point_in):
-        representation = self.representation_func(trajectory_point_in)
-        return self.model.predict([representation])[0]
+        try:
+            representation = self.representation_func(trajectory_point_in)
+            return self.model(representation)
+        except RepGenFuncProblem:
+            return None
 
 
-class MMFF_based_model:
-    """
-    A model acting on TrajectoryPoint object for
-    """
-
+class MMFF_based_model(InterfacedModel):
     def __init__(self, *args, **kwargs):
+        """
+        Prediction of a model for TrajectoryPoint object that uses MMFF coordinates as input.
+        """
         super().__init__(*args, **kwargs)
 
         self.add_info_dict = {"coord_info": coord_info_from_tp}
@@ -72,6 +82,8 @@ class MMFF_based_model:
         coordinates = trajectory_point_in.calc_or_lookup(self.add_info_dict)[
             "coord_info"
         ]["coordinates"]
+        if coordinates is None:
+            raise RepGenFuncProblem
         nuclear_charges = trajectory_point_in.egc.true_ncharges()
         return self.coord_representation_func(coordinates, nuclear_charges)
 
@@ -103,26 +115,26 @@ class SLATM_MMFF_based_model(MMFF_based_model):
             max_natoms = max(len(nuclear_charges), max_natoms)
             all_nuclear_charges.append(nuclear_charges)
         np_all_nuclear_charges = np.zeros(
-            (max_natoms, len(all_nuclear_charges)), dtype=int
+            (len(all_nuclear_charges), max_natoms), dtype=int
         )
         for mol_id, nuclear_charges in enumerate(all_nuclear_charges):
             cur_natoms = len(nuclear_charges)
             np_all_nuclear_charges[mol_id, :cur_natoms] = nuclear_charges[:]
         self.mbtypes = get_slatm_mbtypes(np_all_nuclear_charges)
 
-    def coord_representations(self, coordinates, nuclear_charges):
+    def coord_representation_func(self, coordinates, nuclear_charges):
         return self.rep_func(coordinates, nuclear_charges, self.mbtypes)
 
 
 # TODO Perhaps multi_obj should be combined with this.
 class LinearCombination:
-    """
-    Returns a linear combination of several functions acting on a TrajectoryPoint object.
-    functions : functions to be combined
-    function_names : names of the functions, determines the label their values are stored at for TrajectoryPoint object.
-    """
-
     def __init__(self, functions, coefficients, function_names):
+        """
+        Returns a linear combination of several functions acting on a TrajectoryPoint object.
+        functions : functions to be combined
+        coefficients : coefficients with which the functions are combined
+        function_names : names of the functions, determines the label their values are stored at for TrajectoryPoint object.
+        """
         self.coefficients = coefficients
         self.function_names = function_names
         self.function_dict = {}
@@ -130,9 +142,11 @@ class LinearCombination:
             self.function_dict[func_name] = func
 
     def __call__(self, trajectory_point_in):
-        func_val_dict = trajectory_point_in.calc_or_lookup(self.func_dict)
+        func_val_dict = trajectory_point_in.calc_or_lookup(self.function_dict)
         output = 0.0
         for coeff, func_name in zip(self.coefficients, self.function_names):
+            if func_val_dict[func_name] is None:
+                return None
             output += coeff * func_val_dict[func_name]
         return output
 
