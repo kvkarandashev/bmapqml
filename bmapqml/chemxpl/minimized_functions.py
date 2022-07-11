@@ -15,8 +15,11 @@ from joblib import Parallel, delayed
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge = max(possible_nuclear_charges)
+        # Mainly used for testing purposes.
+        self.call_counter = 0
 
     def __call__(self, trajectory_point_in):
+        self.call_counter += 1
         cg = trajectory_point_in.egc.chemgraph
         return self.ncharge_pot(cg) + self.bond_pot(cg)
 

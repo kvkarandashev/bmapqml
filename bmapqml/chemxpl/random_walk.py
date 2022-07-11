@@ -13,6 +13,7 @@ from .modify import (
     change_bond_order,
     change_valence,
     randomized_cross_coupling,
+    egc_valid_wrt_change_params,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl
@@ -393,7 +394,20 @@ def random_pair(arr_length):
     return random.sample(range(arr_length), 2)
 
 
+#   Auxiliary exception classes.
 class SoftExitCalled(Exception):
+    """
+    Exception raised by RandomWalk object if soft exit request is passed.
+    """
+
+    pass
+
+
+class InvalidStartingMolecules(Exception):
+    """
+    Exception raised by RandomWalk object if it is initialized with starting molecules that do not fit the parameters for random change.
+    """
+
     pass
 
 
@@ -444,11 +458,6 @@ class RandomWalk:
                 if isinstance(init_egcs, list):
                     self.num_replicas = len(init_egcs)
 
-        if init_egcs is None:
-            self.cur_tps = None
-        else:
-            self.cur_tps = [TrajectoryPoint(egc=init_egc) for init_egc in init_egcs]
-
         self.keep_full_trajectory = keep_full_trajectory
 
         self.MC_step_counter = 0
@@ -458,16 +467,6 @@ class RandomWalk:
             assert len(self.betas) == self.num_replicas
 
         self.keep_histogram = keep_histogram
-
-        if starting_histogram is None:
-            if self.keep_histogram:
-                self.histogram = SortedList()
-                if self.cur_tps is not None:
-                    self.update_histogram(list(range(self.num_replicas)))
-            else:
-                self.histogram = None
-        else:
-            self.histogram = starting_histogram
 
         self.no_exploration = no_exploration
         if self.no_exploration:
@@ -510,6 +509,17 @@ class RandomWalk:
         self.soft_exit_check_frequency = soft_exit_check_frequency
         self.global_steps_since_last = {}
 
+        # Histogram initialization.
+        if starting_histogram is None:
+            if self.keep_histogram:
+                self.histogram = SortedList()
+            else:
+                self.histogram = None
+        else:
+            self.histogram = starting_histogram
+
+        self.init_cur_tps(init_egcs)
+
     def init_randomized_change_params(self, randomized_change_params=None):
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
@@ -526,6 +536,30 @@ class RandomWalk:
                 self.used_randomized_change_params[
                     "restricted_tps"
                 ] = self.restricted_tps
+
+    def init_cur_tps(self, init_egcs=None):
+        """
+        Set current positions of self's trajectory from init_egcs while checking that the resulting trajectory points are valid.
+        init_egcs : a list of ExtGraphCompound objects to be set as positions; if None the procedure terminates without doing anything.
+        """
+        if init_egcs is None:
+            return
+        self.cur_tps = []
+        for egc in init_egcs:
+            if egc_valid_wrt_change_params(egc, **self.used_randomized_change_params):
+                added_tp = TrajectoryPoint(egc=egc)
+            else:
+                raise InvalidStartingMolecules
+            if self.no_exploration:
+                if added_tp not in self.restricted_tps:
+                    raise InvalidStartingMolecules
+            added_tp = self.hist_checked_tps([added_tp])[0]
+            if self.min_function is not None:
+                # Initialize the minimized function's value in the new trajectory point and check that it is not None
+                cur_min_func_val = self.eval_min_func(added_tp)
+                if cur_min_func_val is None:
+                    raise InvalidStartingMolecules
+            self.cur_tps.append(added_tp)
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
@@ -550,14 +584,9 @@ class RandomWalk:
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
 
         if self.no_exploration:
-            for new_tp in new_tps:
+            for new_tp in new_tps_input:
                 if new_tp not in self.restricted_tps:
                     return False
-        if self.histogram is not None:
-            for new_tp_id in range(len(new_tps)):
-                histogram_new_tp_id = self.histogram_index_add(new_tps[new_tp_id])
-                new_tps[new_tp_id] = self.histogram[histogram_new_tp_id]
-
         new_tot_pot_vals = [
             self.tot_pot(new_tp, replica_id)
             for new_tp, replica_id in zip(new_tps, replica_ids)
@@ -677,8 +706,9 @@ class RandomWalk:
         )
         if new_tp is None:
             return False
+        new_tps = self.hist_checked_tps([new_tp])
         accepted = self.accept_reject_move(
-            [new_tp], prob_balance, replica_ids=[replica_id]
+            new_tps, prob_balance, replica_ids=[replica_id]
         )
         return accepted
 
@@ -704,7 +734,9 @@ class RandomWalk:
                     new_cg_pair = None
         if new_cg_pair is None:
             return False
-        new_pair_tps = [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
+        new_pair_tps = self.hist_checked_tps(
+            [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
+        )
         if self.min_function is not None:
             new_pair_shuffle_prob = self.tp_pair_order_prob(
                 replica_ids, tp_pair=new_pair_tps
@@ -754,7 +786,7 @@ class RandomWalk:
             for attempted_change_counter in range(num_parallel_tempering_tries):
                 old_ids = random_pair(self.num_replicas)
                 trial_tps = [self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]]
-                accepted = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
+                _ = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
 
     def global_random_change(
         self,
@@ -836,22 +868,16 @@ class RandomWalk:
             else:
                 self.histogram.add(tp)
 
-    # Procedures for biasing the potential.
-    def histogram_index_add(self, tp):
-        if tp not in self.histogram:
-            self.histogram.add(tp)
-        return self.histogram.index(tp)
-
     def biasing_potential(self, tp, replica_id):
         if self.bias_coeff is None:
             return 0.0
         else:
-            tp_index = self.histogram_index_add(tp)
+            tp_index = self.histogram.index(tp)
             return self.histogram[tp_index].visit_num(replica_id) * self.bias_coeff
 
     def update_histogram(self, replica_ids):
         for replica_id in replica_ids:
-            tp_index = self.histogram_index_add(self.cur_tps[replica_id])
+            tp_index = self.histogram.index(self.cur_tps[replica_id])
             if self.histogram[tp_index].num_visits is None:
                 self.histogram[tp_index].num_visits = np.zeros(
                     (self.num_replicas,), dtype=int
@@ -871,6 +897,18 @@ class RandomWalk:
                 self.histogram[tp_index].visit_step_ids[replica_id].append(
                     self.global_MC_step_counter
                 )
+
+    def hist_checked_tps(self, tp_list):
+        """
+        Return a version of tp_list where all entries are replaced with references to self.histogram.
+        tp_list : list of TrajectoryPoint objects
+        """
+        if self.histogram is None:
+            return tp_list
+        for tp in tp_list:
+            if tp not in self.histogram:
+                self.histogram.add(tp)
+        return [self.histogram[self.histogram.index(tp)] for tp in tp_list]
 
     def clear_histogram_visit_data(self):
         for tp in self.histogram:
@@ -916,6 +954,7 @@ class RandomWalk:
             self.global_steps_since_last[identifier] = 1
         else:
             self.global_steps_since_last[identifier] += 1
+        return output
 
     def check_make_restart(self):
         if self.frequency_checker("make_restart", self.make_restart_frequency):
