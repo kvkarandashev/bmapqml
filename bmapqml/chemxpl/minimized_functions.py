@@ -73,18 +73,22 @@ class InterfacedModel:
 
 
 class MMFF_based_model(InterfacedModel):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, num_mmff_attempts=10, **kwargs):
         """
         Prediction of a model for TrajectoryPoint object that uses MMFF coordinates as input.
+        num_mmff_attempts : since MMFF might not converge the first time, specify how many attempts should be made to see whether it does converge.
         """
         super().__init__(*args, **kwargs)
 
+        self.num_mmff_attempts = num_mmff_attempts
+
         self.add_info_dict = {"coord_info": coord_info_from_tp}
+        self.kwargs_dict = {"coord_info": {"num_attempts": self.num_mmff_attempts}}
 
     def representation_func(self, trajectory_point_in):
-        coordinates = trajectory_point_in.calc_or_lookup(self.add_info_dict)[
-            "coord_info"
-        ]["coordinates"]
+        coordinates = trajectory_point_in.calc_or_lookup(
+            self.add_info_dict, kwargs_dict=self.kwargs_dict
+        )["coord_info"]["coordinates"]
         if coordinates is None:
             raise RepGenFuncProblem
         nuclear_charges = trajectory_point_in.egc.true_ncharges()

@@ -483,20 +483,24 @@ def egc_with_coords(egc, coords=None, methods="MMFF"):
     return output
 
 
-def coord_info_from_tp(tp, **kwargs):
+def coord_info_from_tp(tp, num_attempts=10, **kwargs):
     """
     Coordinates corresponding to a TrajectoryPoint object
     tp : TrajectoryPoint object
+    num_attempts : number of attempts taken to generate MMFF coordinates (introduced because for QM9 there is a ~10% probability that the coordinate generator won't converge)
     **kwargs : keyword arguments
     """
-    try:
-        egc_wc = egc_with_coords(tp.egc, **kwargs)
-        return {
-            "coordinates": egc_wc.coordinates,
-            "canon_rdkit_SMILES": egc_wc.additional_data["canon_rdkit_SMILES"],
-        }
-    except MMFFInconsistent:
-        return {
-            "coordinates": None,
-            "canon_rdkit_SMILES": None,
-        }
+    output = {
+        "coordinates": None,
+        "canon_rdkit_SMILES": None,
+    }
+    for _ in range(num_attempts):
+        try:
+            egc_wc = egc_with_coords(tp.egc, **kwargs)
+            output["coordinates"] = egc_wc.coordinates
+            output["canon_rdkit_SMILES"] = egc_wc.additional_data["canon_rdkit_SMILES"]
+        except MMFFInconsistent:
+            continue
+        break
+
+    return output
