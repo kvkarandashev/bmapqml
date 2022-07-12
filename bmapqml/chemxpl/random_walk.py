@@ -549,6 +549,7 @@ class RandomWalk:
             if egc_valid_wrt_change_params(egc, **self.used_randomized_change_params):
                 added_tp = TrajectoryPoint(egc=egc)
             else:
+                print("BLA", init_egcs.index(egc))
                 raise InvalidStartingMolecules
             if self.no_exploration:
                 if added_tp not in self.restricted_tps:
@@ -558,6 +559,7 @@ class RandomWalk:
                 # Initialize the minimized function's value in the new trajectory point and check that it is not None
                 cur_min_func_val = self.eval_min_func(added_tp)
                 if cur_min_func_val is None:
+                    print("BLE")
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
 
@@ -857,6 +859,7 @@ class RandomWalk:
 
     # Either evaluate minimized function or look it up.
     def eval_min_func(self, tp):
+        # TODO add options for removing temp data here.
         return tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
 
     # If we want to re-merge two different trajectories.

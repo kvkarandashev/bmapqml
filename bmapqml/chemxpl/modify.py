@@ -11,11 +11,13 @@ from .valence_treatment import (
     max_bo,
     sorted_by_membership,
     non_default_valences,
+    sorted_tuple,
 )
 from copy import deepcopy
-from sortedcontainers import SortedList
 import random, itertools
 from igraph.operators import disjoint_union
+from ..utils import canonical_atomtype
+from ..data import NUCLEAR_CHARGE
 
 
 def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
@@ -612,7 +614,11 @@ def randomized_cross_coupling(
 
 
 def egc_valid_wrt_change_params(
-    egc, nhatoms_range=None, forbidden_bonds=None, **other_kwargs
+    egc,
+    nhatoms_range=None,
+    forbidden_bonds=None,
+    possible_elements=None,
+    **other_kwargs
 ):
     """
     Check that an ExtGraphCompound object is a member of chemical subspace spanned by change params used throughout chemxpl.modify module.
@@ -622,10 +628,20 @@ def egc_valid_wrt_change_params(
     """
     if forbidden_bonds is not None:
         for bond_tuple in egc.chemgraph.bond_orders.keys():
-            if bond_tuple in forbidden_bonds:
+            nc_tuple = sorted_tuple(
+                *[egc.chemgraph.hatoms[i].ncharge for i in bond_tuple]
+            )
+            if nc_tuple in forbidden_bonds:
                 return False
     if nhatoms_range is not None:
         nhas = egc.chemgraph.nhatoms()
-        if (nhas < nhatoms_range[0]) and (nhas > nhatoms_range[1]):
+        if (nhas < nhatoms_range[0]) or (nhas > nhatoms_range[1]):
             return False
+    if possible_elements is not None:
+        possible_elements_nc = [
+            NUCLEAR_CHARGE[canonical_atomtype(pe)] for pe in possible_elements
+        ]
+        for ha in egc.chemgraph.hatoms:
+            if ha.ncharge not in possible_elements_nc:
+                return False
     return True
