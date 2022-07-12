@@ -10,6 +10,7 @@ from .utils import (
 )
 from ..utils import read_xyz_file
 from joblib import Parallel, delayed
+import os, sys
 
 
 class Diatomic_barrier:
@@ -156,6 +157,74 @@ class LinearCombination:
                 return None
             output += coeff * func_val_dict[func_name]
         return output
+
+
+# For quantity estimates with xTB and MMFF coordinates.
+class MMFF_xTB_res_dict:
+    def __init__(self, calc_type="GFN2-xTB", num_mmff_attempts=10):
+        """
+        Calculating xTB result dictionary produced by tblite library from coordinates obtained by MMFF.
+        """
+        from tblite.interface import Calculator
+
+        self.calc_type = calc_type
+        self.calculator_func = Calculator
+
+        self.num_mmff_attempts = num_mmff_attempts
+        self.mmff_coord_info_dict = {"coord_info": coord_info_from_tp}
+        self.mmff_coord_kwargs_dict = {
+            "coord_info": {"num_attempts": self.num_mmff_attempts}
+        }
+
+    def __call__(self, tp):
+        self.num_mmff_attempts = 10
+
+        coordinates = tp.calc_or_lookup(
+            self.mmff_coord_info_dict, kwargs_dict=self.mmff_coord_kwargs_dict
+        )["coord_info"]["coordinates"]
+        calc = self.calculator_func(self.calc_type, tp.egc.true_ncharges(), coordinates)
+
+        # Need to do that because calc.singlepoint is verbose.
+        old_stdout = sys.stdout  # backup current stdout
+        sys.stdout = open(os.devnull, "w")
+
+        res = calc.singlepoint()
+
+        sys.stdout = old_stdout  # reset old stdout
+
+        return res.dict()
+
+
+class MMFF_xTB_quantity:
+    def __init__(self, quant_name=None, **MMFF_xTB_res_dict_kwargs):
+        self.quant_name = quant_name
+        self.res_dict_generator = MMFF_xTB_res_dict(**MMFF_xTB_res_dict_kwargs)
+        self.res_related_dict = {"res_dict": self.res_dict_generator}
+
+    def __call__(self, tp):
+        res_dict = tp.calc_or_lookup(self.res_related_dict)["res_dict"]
+        return self.processed_res_dict(res_dict)
+
+    def processed_res_dict(self, res_dict):
+        return res_dict[self.quant_name]
+
+
+class MMFF_xTB_HOMO_LUMO_gap(MMFF_xTB_quantity):
+    def processed_res_dict(self, res_dict):
+        orb_ens = res_dict["orbital-energies"]
+        for orb_id, (orb_en, orb_occ) in enumerate(
+            zip(orb_ens, res_dict["orbital-occupations"])
+        ):
+            if orb_occ < 0.1:
+                LUMO_en = orb_en
+                HOMO_en = orb_ens[orb_id - 1]
+                return LUMO_en - HOMO_en
+
+
+class MMFF_xTB_dipole(MMFF_xTB_quantity):
+    def processed_res_dict(self, res_dict):
+        dipole_vector = res_dict["dipole"]
+        return np.sqrt(np.sum(dipole_vector**2))
 
 
 class QM9_properties:

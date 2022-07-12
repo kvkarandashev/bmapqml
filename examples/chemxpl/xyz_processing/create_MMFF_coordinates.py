@@ -26,10 +26,11 @@ bad_xyzs = []
 for xyz in xyz_list:
     print(xyz)
     cur_egc = xyz2mol_extgraph(xyz)
-    for _ in range(num_mmff_attempts):
+    for attempt_counter in range(num_mmff_attempts):
         try:
             new_egc = egc_with_coords(cur_egc)
         except MMFFInconsistent:
+            print("Failed attempt ", attempt_counter)
             continue
         break
     if new_egc is None:
