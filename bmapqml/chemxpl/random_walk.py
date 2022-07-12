@@ -434,6 +434,7 @@ class RandomWalk:
         restart_file=None,
         make_restart_frequency=None,
         soft_exit_check_frequency=None,
+        delete_temp_data=None,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -448,6 +449,7 @@ class RandomWalk:
         restart_file : name of restart file to which the object is dumped at make_restart
         make_restart_frequency : if not None object will call make_restart each make_restart_frequency global steps.
         soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
+        delete_temp_data : if not None after each minimized function evaluation for a TrajectoryPoint object self will delete TrajectoryPoint's calculated_data fields with those identifiers.
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -518,6 +520,8 @@ class RandomWalk:
         else:
             self.histogram = starting_histogram
 
+        self.delete_temp_data = delete_temp_data
+
         self.init_cur_tps(init_egcs)
 
     def init_randomized_change_params(self, randomized_change_params=None):
@@ -549,7 +553,6 @@ class RandomWalk:
             if egc_valid_wrt_change_params(egc, **self.used_randomized_change_params):
                 added_tp = TrajectoryPoint(egc=egc)
             else:
-                print("BLA", init_egcs.index(egc))
                 raise InvalidStartingMolecules
             if self.no_exploration:
                 if added_tp not in self.restricted_tps:
@@ -559,7 +562,6 @@ class RandomWalk:
                 # Initialize the minimized function's value in the new trajectory point and check that it is not None
                 cur_min_func_val = self.eval_min_func(added_tp)
                 if cur_min_func_val is None:
-                    print("BLE")
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
 
@@ -778,14 +780,14 @@ class RandomWalk:
         self.init_randomized_change_params(
             randomized_change_params=randomized_change_params
         )
-        for attempted_change_counter in range(num_genetic_tries):
+        for _ in range(num_genetic_tries):
             changed_replica_ids = self.random_changed_replica_pair()
             self.genetic_MC_step(changed_replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
 
         if self.min_function is not None:
-            for attempted_change_counter in range(num_parallel_tempering_tries):
+            for _ in range(num_parallel_tempering_tries):
                 old_ids = random_pair(self.num_replicas)
                 trial_tps = [self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]]
                 _ = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
@@ -859,8 +861,12 @@ class RandomWalk:
 
     # Either evaluate minimized function or look it up.
     def eval_min_func(self, tp):
-        # TODO add options for removing temp data here.
-        return tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
+        output = tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
+        if self.delete_temp_data is not None:
+            for dtd_identifier in self.delete_temp_data:
+                if dtd_identifier in tp.calculated_data[dtd_identifier]:
+                    del tp.calculated_data[dtd_identifier]
+        return output
 
     # If we want to re-merge two different trajectories.
     def combine_with(self, other_rw):
@@ -895,7 +901,7 @@ class RandomWalk:
             if self.keep_full_trajectory:
                 if self.histogram[tp_index].visit_step_ids is None:
                     self.histogram[tp_index].visit_step_ids = [
-                        [] for replica_id in range(self.num_replicas)
+                        [] for _ in range(self.num_replicas)
                     ]
                 self.histogram[tp_index].visit_step_ids[replica_id].append(
                     self.global_MC_step_counter
@@ -961,12 +967,12 @@ class RandomWalk:
 
     def check_make_restart(self):
         if self.frequency_checker("make_restart", self.make_restart_frequency):
-            self.make_restart(self.global_MC_step_counter)
+            self.make_restart()
 
     def check_soft_exit(self):
         if self.frequency_checker("soft_exit", self.soft_exit_check_frequency):
             if os.path.isfile("EXIT"):
-                self.make_restart(self.global_MC_step_counter)
+                self.make_restart()
                 raise SoftExitCalled
 
     def make_restart(self, restart_file=None):
@@ -991,7 +997,6 @@ class RandomWalk:
             saved_data = {**saved_data, "histogram": self.histogram}
         if self.num_saved_candidates is not None:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
-        saved_data
         dump2pkl(saved_data, restart_file)
 
     def restart_from(self, restart_file=None):

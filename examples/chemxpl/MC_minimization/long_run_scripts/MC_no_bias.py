@@ -1,6 +1,6 @@
 # Do MC optimization for several parallel replicas.
 
-from bmapqml.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.random_walk import RandomWalk, InvalidStartingMolecules
 from bmapqml.chemxpl.utils import SMILES_to_egc
 from bmapqml.dataset_processing.qm9_format_specs import read_SMILES
 from bmapqml.test_utils import dirs_xyz_list
@@ -78,9 +78,12 @@ rw = RandomWalk(
     soft_exit_check_frequency=make_restart_frequency,
     restart_file=restart_file_prefix + str(seed) + ".pkl",
     num_saved_candidates=100,
+    delete_temp_data=["coord_info"],
 )
 
-num_attempts = 1
+max_num_attempts = 1000
+num_attempts = 0
+
 while True:
     print("Attempting to initialize:")
     init_egcs = []
@@ -92,9 +95,11 @@ while True:
         init_egcs.append(SMILES_to_egc(SMILES))
     try:
         rw.init_cur_tps(init_egcs=init_egcs)
-    except:
+    except InvalidStartingMolecules:
         num_attempts += 1
         print("Initial set invalid.")
+        if num_attempts == max_num_attempts:
+            quit()
         continue
     break
 

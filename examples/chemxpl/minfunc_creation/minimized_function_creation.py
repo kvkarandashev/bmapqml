@@ -53,7 +53,7 @@ for quant_names, quant_signs in zip(quant_names_list, quant_signs_list):
         SLATM_models.append(SLATM_model)
         coeffs.append(coeff)
 
-    min_functions.append(LinearCombination(SLATM_models, coeffs, quant_name))
+    min_functions.append(LinearCombination(SLATM_models, coeffs, quant_names))
 
 for min_func, keyword in zip(min_functions, min_func_keywords):
     pkl_name = pkl_store_dir + "/minimized_function_" + keyword + ".pkl"

@@ -50,6 +50,11 @@ def canonical_atomtype(atomtype):
 
 
 def dump2pkl(obj, filename):
+    """
+    Dump an object to a pickle file.
+    obj : object to be saved
+    filename : name of the output file
+    """
     output_file = open(filename, "wb")
     pickle.dump(obj, output_file)
     output_file.close()
