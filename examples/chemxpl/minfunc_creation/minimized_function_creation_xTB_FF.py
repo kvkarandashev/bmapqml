@@ -6,7 +6,7 @@ from bmapqml.chemxpl.minimized_functions import (
     FF_xTB_dipole,
     LinearCombination,
 )
-import os
+import os, copy
 from bmapqml.utils import dump2pkl, embarrassingly_parallel
 import numpy as np
 
@@ -31,12 +31,21 @@ xyz_list = dirs_xyz_list(QM9_xyz_dir)
 tps = all_xyzs2tps(xyz_list)
 
 
+def quant_est_wtp(tp, quant_estimate):
+    v = quant_estimate(tp)
+    return [v, tp]
+
+
 def est_stddev_vals(quant_estimate, tp_array):
-    quant_vals = embarrassingly_parallel(quant_estimate, tp_array, ())
+    quant_vals_tps = embarrassingly_parallel(quant_est_wtp, tp_array, (quant_estimate,))
+    quant_vals = []
     final_quant_vals = []
-    for qv in quant_vals:
-        if qv is not None:
-            final_quant_vals.append(qv)
+    for i, val_tp in enumerate(quant_vals_tps):
+        v = val_tp[0]
+        if v is not None:
+            final_quant_vals.append(v)
+        quant_vals.append(v)
+        tp_array[i].calculated_data = copy.deepcopy(val_tp[1].calculated_data)
     final_quant_vals = np.array(final_quant_vals)
     return np.std(final_quant_vals), quant_vals
 
@@ -54,7 +63,7 @@ for ff_type in ff_types:
         quant_estimate_type(**est_kwargs)
         for quant_estimate_type in quant_estimate_types
     ]
-    for tp_id in range(len(xyz_list)):
+    for tp_id in range(len(tps)):
         tps[tp_id].calculated_data = {}
     est_vals = {"xyzs": xyz_list}
     coeffs = []
@@ -63,6 +72,13 @@ for ff_type in ff_types:
     ):
         est_stddev, est_vals[quant_name] = est_stddev_vals(quant_estimate, tps)
         coeffs.append(quant_sign / est_stddev)
+    # Added for testing purposes
+    for tp, xyz, v1, v2 in zip(
+        tps, est_vals["xyzs"], est_vals[quant_names[0]], est_vals[quant_names[1]]
+    ):
+        if (None in [v1, v2]) and (v1 is not v2):
+            print("Failed at:", xyz, v1, v2)
+            print("Calculated data:", tp.calculated_data)
     min_function = LinearCombination(quant_estimates, coeffs, quant_names)
 
     print("Testing function output:", min_function(tps[-1]))

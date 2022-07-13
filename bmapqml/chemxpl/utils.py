@@ -170,7 +170,6 @@ def brute_replace_heavy_wcarbons(egc, target_ncharge=6):
 
 
 def replace_heavy_wcarbons(egc, target_el="C"):
-    target_charge = int_atom(target_el)
     egc_mod = copy.deepcopy(egc)
     repl_pos = atom_replacement_possibilities(egc_mod, target_el)
     while len(repl_pos) > 0:
