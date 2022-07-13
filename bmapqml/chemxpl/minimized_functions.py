@@ -50,6 +50,15 @@ class OrderSlide:
         )
 
 
+class ChargeSum:
+    def __init__(self):
+        self.call_counter = 0
+
+    def __call__(self, trajectory_point_in):
+        self.call_counter += 1
+        return sum(ha.ncharge for ha in trajectory_point_in.egc.chemgraph.hatoms)
+
+
 from .rdkit_descriptors import extended_get_single_FP
 
 

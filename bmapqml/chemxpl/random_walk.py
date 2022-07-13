@@ -864,7 +864,7 @@ class RandomWalk:
         output = tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
         if self.delete_temp_data is not None:
             for dtd_identifier in self.delete_temp_data:
-                if dtd_identifier in tp.calculated_data[dtd_identifier]:
+                if dtd_identifier in tp.calculated_data:
                     del tp.calculated_data[dtd_identifier]
         return output
 

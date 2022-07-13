@@ -64,7 +64,12 @@ xyz_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 
 mmff_xyzs = dirs_xyz_list(os.environ["DATA"] + "/QM9_filtered/MMFF_xyzs")
 
-min_func = loadpkl(min_func_pkl)
+if min_func_pkl == "TRIAL_RUN":
+    from bmapqml.chemxpl.minimized_functions import ChargeSum
+
+    min_func = ChargeSum()
+else:
+    min_func = loadpkl(min_func_pkl)
 
 rw = RandomWalk(
     bias_coeff=bias_coeff,
@@ -108,3 +113,6 @@ for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
 
 rw.make_restart()
+
+if min_func_pkl == "TRIAL_RUN":
+    print("Number of function calls:", min_func.call_counter)
