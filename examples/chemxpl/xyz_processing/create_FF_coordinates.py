@@ -3,18 +3,19 @@ from bmapqml.utils import mkdir
 from bmapqml.chemxpl.utils import (
     xyz2mol_extgraph,
     egc_with_coords,
-    MMFFInconsistent,
+    FFInconsistent,
     write_egc2xyz,
 )
 
-num_mmff_attempts = 10
+num_ff_attempts = 10
 
-if len(sys.argv) == 1:
-    print("Use location of xyz directory as the script's argument.")
+if len(sys.argv) < 3:
+    print("Use location of xyz directory as the script's argument and forcefield type as the second argument.")
     quit()
 else:
     xyz_dir = sys.argv[1]
-    new_dirname = os.getcwd() + "/MMFF_" + os.path.basename(xyz_dir)
+    ff_type = sys.argv[2]
+    new_dirname = os.getcwd() + "/"+ff_type+"_" + os.path.basename(xyz_dir)
 
 xyz_list = glob.glob(xyz_dir + "/*.xyz")
 xyz_list.sort()
@@ -26,13 +27,10 @@ bad_xyzs = []
 for xyz in xyz_list:
     print(xyz)
     cur_egc = xyz2mol_extgraph(xyz)
-    for attempt_counter in range(num_mmff_attempts):
-        try:
-            new_egc = egc_with_coords(cur_egc)
-        except MMFFInconsistent:
-            print("Failed attempt ", attempt_counter)
-            continue
-        break
+    try:
+        new_egc = egc_with_coords(cur_egc, ff_type=ff_type, num_attempts=num_ff_attempts)
+    except FFInconsistent:
+        new_egc=None
     if new_egc is None:
         bad_xyzs.append(xyz)
     else:

@@ -32,10 +32,6 @@ from sortedcontainers import SortedList
 default_parallel_backend = "multiprocessing"
 
 
-class MMFFInconsistent(Exception):
-    pass
-
-
 class RdKitFailure(Exception):
     pass
 
@@ -184,14 +180,17 @@ def replace_heavy_wcarbons(egc, target_el="C"):
 
 
 def xyz2mol_graph(nuclear_charges, charge, coords, get_chirality=False):
-    _adj_matrix, mol = xyz2AC(nuclear_charges, coords, charge)
-    bond_order_matrix, atomic_valence_electrons = AC2BO(
-        _adj_matrix,
-        nuclear_charges,
-        charge,
-        allow_charged_fragments=True,
-        use_graph=True,
-    )
+    try:
+        _adj_matrix, mol = xyz2AC(nuclear_charges, coords, charge)
+        bond_order_matrix, _ = AC2BO(
+            _adj_matrix,
+            nuclear_charges,
+            charge,
+            allow_charged_fragments=True,
+            use_graph=True,
+        )
+    except:
+        raise InvalidAdjMat
     if get_chirality is False:
         return bond_order_matrix, nuclear_charges, coords
     else:
@@ -429,20 +428,48 @@ def trajectory_point_to_canonical_rdkit(tp_in):
     return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
 
 
-def chemgraph_to_canonical_rdkit_wcoords(cg):
+# Different optimizers available for rdkit.
+class FFInconsistent(Exception):
+    pass
+
+
+rdkit_coord_optimizer = {
+    "MMFF": AllChem.MMFFOptimizeMolecule,
+    "UFF": AllChem.UFFOptimizeMolecule,
+}
+
+
+def RDKit_FF_optimize_coords(mol, coord_optimizer, num_attempts=1):
+    AllChem.EmbedMolecule(mol)
+    for _ in range(num_attempts):
+        try:
+            converged = coord_optimizer(mol)
+        except ValueError:
+            raise FFInconsistent
+        if converged == 0:
+            return
+    raise FFInconsistent
+
+
+def chemgraph_to_canonical_rdkit_wcoords(cg, ff_type="MMFF", num_attempts=1):
+    """
+    Creates an rdkit Molecule object whose heavy atoms are canonically ordered.
+    cg : ChemGraph input chemgraph object
+    ff_type : which forcefield to use; currently MMFF and UFF are available
+    num_attempts : how many times the optimization is attempted
+    output : RDKit molecule, indices of the heavy atoms, indices of heavy atoms to which a given hydrogen is connected,
+    SMILES generated from the canonical RDKit molecules, and the RDKit's coordinates
+    """
     (
         mol,
         heavy_atom_index,
         hydrogen_connection,
         canon_SMILES,
     ) = chemgraph_to_canonical_rdkit(cg)
-    AllChem.EmbedMolecule(mol)
-    try:
-        converged = AllChem.MMFFOptimizeMolecule(mol)
-    except ValueError:
-        raise MMFFInconsistent
-    if converged != 0:
-        raise MMFFInconsistent
+
+    RDKit_FF_optimize_coords(
+        mol, rdkit_coord_optimizer[ff_type], num_attempts=num_attempts
+    )
     rdkit_coords = np.array(mol.GetConformer().GetPositions())
     rdkit_nuclear_charges = np.array([atom.GetAtomicNum() for atom in mol.GetAtoms()])
     # Additionally check that the coordinates actually correspond to the molecule.
@@ -451,14 +478,21 @@ def chemgraph_to_canonical_rdkit_wcoords(cg):
             rdkit_nuclear_charges, rdkit_coords
         )
     except InvalidAdjMat:
-        raise MMFFInconsistent
+        raise FFInconsistent
     if coord_based_cg != cg:
-        raise MMFFInconsistent
+        raise FFInconsistent
 
     return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, rdkit_coords
 
 
-def egc_with_coords(egc, coords=None, methods="MMFF"):
+def egc_with_coords(egc, coords=None, ff_type="MMFF", num_attempts=1):
+    """
+    Create a copy of an ExtGraphCompound object with coordinates. If coordinates are set to None they are generated with RDKit.
+    egc : ExtGraphCompound input object
+    coords : None or np.array
+    ff_type : str type of force field used; MMFF and UFF are available
+    num_attempts : int number of
+    """
     output = copy.deepcopy(egc)
     if coords is None:
         (
@@ -467,7 +501,9 @@ def egc_with_coords(egc, coords=None, methods="MMFF"):
             hydrogen_connection,
             canon_SMILES,
             coords,
-        ) = chemgraph_to_canonical_rdkit_wcoords(egc.chemgraph)
+        ) = chemgraph_to_canonical_rdkit_wcoords(
+            egc.chemgraph, ff_type=ff_type, num_attempts=num_attempts
+        )
     else:
         (
             _,
@@ -483,24 +519,22 @@ def egc_with_coords(egc, coords=None, methods="MMFF"):
     return output
 
 
-def coord_info_from_tp(tp, num_attempts=10, **kwargs):
+def coord_info_from_tp(tp, **kwargs):
     """
     Coordinates corresponding to a TrajectoryPoint object
     tp : TrajectoryPoint object
     num_attempts : number of attempts taken to generate MMFF coordinates (introduced because for QM9 there is a ~10% probability that the coordinate generator won't converge)
-    **kwargs : keyword arguments
+    **kwargs : keyword arguments for the egc_with_coords procedure
     """
     output = {
         "coordinates": None,
         "canon_rdkit_SMILES": None,
     }
-    for _ in range(num_attempts):
-        try:
-            egc_wc = egc_with_coords(tp.egc, **kwargs)
-            output["coordinates"] = egc_wc.coordinates
-            output["canon_rdkit_SMILES"] = egc_wc.additional_data["canon_rdkit_SMILES"]
-        except MMFFInconsistent:
-            continue
-        break
+    try:
+        egc_wc = egc_with_coords(tp.egc, **kwargs)
+        output["coordinates"] = egc_wc.coordinates
+        output["canon_rdkit_SMILES"] = egc_wc.additional_data["canon_rdkit_SMILES"]
+    except FFInconsistent:
+        pass
 
     return output
