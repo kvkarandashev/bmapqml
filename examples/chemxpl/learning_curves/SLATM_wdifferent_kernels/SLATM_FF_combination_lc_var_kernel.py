@@ -17,6 +17,7 @@ import numpy as np
 # Choose which kernel to use and which quantity to consider
 quant_name = sys.argv[1].replace("_", " ")
 kernel_type = sys.argv[2]
+ff_type = sys.argv[3]
 
 if kernel_type == "Laplacian":
     kernel_matrix = laplacian_kernel_matrix
@@ -33,7 +34,7 @@ QM9_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 seed = 1
 
 # Replace with path to QM9 directory
-MMFF_QM9_dir = os.environ["DATA"] + "/QM9_filtered/MMFF_xyzs"
+FF_QM9_dir = os.environ["DATA"] + "/QM9_filtered/"+ff_type+"_xyzs"
 
 train_nums = [1000, 2000, 4000, 8000, 16000, 32000, 64000, 100000]
 bigger_train_subset = 100000
@@ -42,25 +43,25 @@ check_num = 10000
 
 size = 29  # maximum number of atoms in a QM9 molecule.
 
-mmff_xyz_list = dirs_xyz_list(MMFF_QM9_dir)
+ff_xyz_list = dirs_xyz_list(FF_QM9_dir)
 random.seed(seed)
-random.shuffle(mmff_xyz_list)
+random.shuffle(ff_xyz_list)
 
 
-def get_quants_comps(mmff_xyz_list, quantity):
+def get_quants_comps(ff_xyz_list, quantity):
     quant_vals = []
-    for mmff_xyz_file in mmff_xyz_list:
-        true_xyz_file = QM9_dir + "/" + os.path.basename(mmff_xyz_file)
+    for ff_xyz_file in ff_xyz_list:
+        true_xyz_file = QM9_dir + "/" + os.path.basename(ff_xyz_file)
         quant_vals.append(quantity.extract_xyz(true_xyz_file))
 
     quant_vals = np.array(quant_vals)
-    comps = [OML_compound(mmff_xyz_file) for mmff_xyz_file in mmff_xyz_list]
+    comps = [OML_compound(ff_xyz_file) for ff_xyz_file in ff_xyz_list]
 
-    ncharges = np.zeros((len(mmff_xyz_list), size), dtype=int)
+    ncharges = np.zeros((len(ff_xyz_list), size), dtype=int)
     comps = []
 
-    for i, mmff_xyz_file in enumerate(mmff_xyz_list):
-        comp = OML_compound(mmff_xyz_file)
+    for i, ff_xyz_file in enumerate(ff_xyz_list):
+        comp = OML_compound(ff_xyz_file)
         ncharges[i, : len(comp.nuclear_charges)] = comp.nuclear_charges[:]
         comps.append(comp)
 
@@ -77,7 +78,7 @@ def get_quants_comps(mmff_xyz_list, quantity):
 
 quant = Quantity(quant_name)
 all_training_reps, all_training_comps, all_training_quants = get_quants_comps(
-    mmff_xyz_list[:bigger_train_subset], quant
+    ff_xyz_list[:bigger_train_subset], quant
 )
 
 KRR_model = KRR(
@@ -93,7 +94,7 @@ KRR_model.optimize_hyperparameters(
 timestamp("Finished optimizing hyperparameters.")
 
 check_reps, check_comps, check_quants = get_quants_comps(
-    mmff_xyz_list[-check_num:], quant
+    ff_xyz_list[-check_num:], quant
 )
 
 timestamp("Building learning curve.")
