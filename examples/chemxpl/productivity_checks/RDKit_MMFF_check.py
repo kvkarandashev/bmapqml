@@ -5,7 +5,7 @@ from bmapqml.orb_ml.tblite_interface import generate_pyscf_mf_mol
 import os, random, sys
 import numpy as np
 from bmapqml.test_utils import timestamp
-from bmapqml.chemxpl.utils import SMILES_to_egc, egc_with_coords, MMFFInconsistent
+from bmapqml.chemxpl.utils import SMILES_to_egc, egc_with_coords, FFInconsistent
 from bmapqml.dataset_processing.qm9_format_specs import read_SMILES
 
 seed = 1
@@ -13,7 +13,7 @@ seed = 1
 MMFF_QM9_dir = os.environ["DATA"] + "/QM9_filtered/MMFF_xyzs"
 QM9_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 test_num = 1000
-num_mmff_attempts = 10
+num_ff_attempts = 10
 
 xyz_list = dirs_xyz_list(MMFF_QM9_dir)
 random.seed(seed)
@@ -36,8 +36,8 @@ for SMILES, test_egc, test_xyz in zip(test_SMILES, test_egcs, true_xyz_list):
     #    print(SMILES, test_egc, test_xyz)
     for _ in range(num_mmff_attempts):
         try:
-            test_egc_wcoords = egc_with_coords(test_egc)
-        except MMFFInconsistent:
+            test_egc_wcoords = egc_with_coords(test_egc, num_attempts=num_ff_attempts)
+        except FFInconsistent:
             #            print("REDOING")
             continue
         break

@@ -1,9 +1,9 @@
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
 from bmapqml.chemxpl.ext_graph_compound import ExtGraphCompound
 from bmapqml.chemxpl.minimized_functions import (
-    MMFF_xTB_res_dict,
-    MMFF_xTB_dipole,
-    MMFF_xTB_HOMO_LUMO_gap,
+    FF_xTB_res_dict,
+    FF_xTB_dipole,
+    FF_xTB_HOMO_LUMO_gap,
 )
 import numpy as np
 
@@ -17,13 +17,18 @@ print(egc)
 
 tp = TrajectoryPoint(egc=egc)
 
-func1 = MMFF_xTB_res_dict()
+func1 = FF_xTB_res_dict(ff_type="MMFF")
 
-func2 = MMFF_xTB_dipole()
+print("Result dictionnary:", func1(tp))
 
-func3 = MMFF_xTB_HOMO_LUMO_gap()
+for ff_type in ["UFF", "MMFF"]:
+    tp.calculated_data = {}
+    print("FF:", ff_type)
+    func2 = FF_xTB_dipole(ff_type=ff_type)
 
-for func in [func1, func2, func3]:
-    print(func(tp))
+    func3 = FF_xTB_HOMO_LUMO_gap(ff_type=ff_type)
 
-print(list(dict(tp.calculated_data)))
+    for func in [func2, func3]:
+        print(func(tp))
+
+print("Saved data:", list(dict(tp.calculated_data)))

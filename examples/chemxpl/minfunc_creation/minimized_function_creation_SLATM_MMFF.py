@@ -2,7 +2,7 @@
 # Move those pickle files to
 from bmapqml.test_utils import dirs_xyz_list
 from bmapqml.chemxpl.minimized_functions import (
-    SLATM_MMFF_based_model,
+    SLATM_FF_based_model,
     LinearCombination,
 )
 import os
@@ -47,7 +47,7 @@ for quant_names, quant_signs in zip(quant_names_list, quant_signs_list):
         )
         coeff = quant_sign / quant_QM9_stddev(quant_name)
 
-        SLATM_model = SLATM_MMFF_based_model(krr_model)
+        SLATM_model = SLATM_FF_based_model(krr_model)
         SLATM_model.verify_mbtypes(mmff_xyz_list)
 
         SLATM_models.append(SLATM_model)

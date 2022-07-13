@@ -6,7 +6,6 @@ from .utils import (
     trajectory_point_to_canonical_rdkit,
     chemgraph_to_canonical_rdkit,
     coord_info_from_tp,
-    MMFFInconsistent,
 )
 from ..utils import read_xyz_file
 from joblib import Parallel, delayed
@@ -73,18 +72,24 @@ class InterfacedModel:
             return None
 
 
-class MMFF_based_model(InterfacedModel):
-    def __init__(self, *args, num_mmff_attempts=10, **kwargs):
+class FF_based_model(InterfacedModel):
+    def __init__(self, *args, num_ff_attempts=1, ff_type="MMFF", **kwargs):
         """
-        Prediction of a model for TrajectoryPoint object that uses MMFF coordinates as input.
-        num_mmff_attempts : since MMFF might not converge the first time, specify how many attempts should be made to see whether it does converge.
+        Prediction of a model for TrajectoryPoint object that uses FF coordinates as input.
+        num_ff_attempts : since FF might not converge the first time, specify how many attempts should be made to see whether it does converge.
         """
         super().__init__(*args, **kwargs)
 
-        self.num_mmff_attempts = num_mmff_attempts
+        self.num_ff_attempts = num_ff_attempts
+        self.ff_type = ff_type
 
         self.add_info_dict = {"coord_info": coord_info_from_tp}
-        self.kwargs_dict = {"coord_info": {"num_attempts": self.num_mmff_attempts}}
+        self.kwargs_dict = {
+            "coord_info": {
+                "num_attempts": self.num_ff_attempts,
+                "ff_type": self.ff_type,
+            }
+        }
 
     def representation_func(self, trajectory_point_in):
         coordinates = trajectory_point_in.calc_or_lookup(
@@ -96,9 +101,9 @@ class MMFF_based_model(InterfacedModel):
         return self.coord_representation_func(coordinates, nuclear_charges)
 
 
-class SLATM_MMFF_based_model(MMFF_based_model):
+class SLATM_FF_based_model(FF_based_model):
     """
-    An inheritor to MMFF_based_model that uses SLATM representation.
+    An inheritor to FF_based_model that uses SLATM representation.
     """
 
     def __init__(self, *args, mbtypes=None, **other_kwargs):
@@ -160,8 +165,8 @@ class LinearCombination:
 
 
 # For quantity estimates with xTB and MMFF coordinates.
-class MMFF_xTB_res_dict:
-    def __init__(self, calc_type="GFN2-xTB", num_mmff_attempts=10):
+class FF_xTB_res_dict:
+    def __init__(self, calc_type="GFN2-xTB", num_ff_attempts=1, ff_type="MMFF"):
         """
         Calculating xTB result dictionary produced by tblite library from coordinates obtained by MMFF.
         """
@@ -170,10 +175,14 @@ class MMFF_xTB_res_dict:
         self.calc_type = calc_type
         self.calculator_func = Calculator
 
-        self.num_mmff_attempts = num_mmff_attempts
+        self.num_ff_attempts = num_ff_attempts
+        self.ff_type = ff_type
         self.mmff_coord_info_dict = {"coord_info": coord_info_from_tp}
         self.mmff_coord_kwargs_dict = {
-            "coord_info": {"num_attempts": self.num_mmff_attempts}
+            "coord_info": {
+                "num_attempts": self.num_ff_attempts,
+                "ff_type": self.ff_type,
+            }
         }
 
     def __call__(self, tp):
@@ -182,6 +191,8 @@ class MMFF_xTB_res_dict:
         coordinates = tp.calc_or_lookup(
             self.mmff_coord_info_dict, kwargs_dict=self.mmff_coord_kwargs_dict
         )["coord_info"]["coordinates"]
+        if coordinates is None:
+            return None
         calc = self.calculator_func(self.calc_type, tp.egc.true_ncharges(), coordinates)
 
         # Need to do that because calc.singlepoint is verbose.
@@ -195,21 +206,24 @@ class MMFF_xTB_res_dict:
         return res.dict()
 
 
-class MMFF_xTB_quantity:
-    def __init__(self, quant_name=None, **MMFF_xTB_res_dict_kwargs):
+class FF_xTB_quantity:
+    def __init__(self, quant_name=None, **FF_xTB_res_dict_kwargs):
         self.quant_name = quant_name
-        self.res_dict_generator = MMFF_xTB_res_dict(**MMFF_xTB_res_dict_kwargs)
+        self.res_dict_generator = FF_xTB_res_dict(**FF_xTB_res_dict_kwargs)
         self.res_related_dict = {"res_dict": self.res_dict_generator}
 
     def __call__(self, tp):
         res_dict = tp.calc_or_lookup(self.res_related_dict)["res_dict"]
-        return self.processed_res_dict(res_dict)
+        if res_dict is None:
+            return None
+        else:
+            return self.processed_res_dict(res_dict)
 
     def processed_res_dict(self, res_dict):
         return res_dict[self.quant_name]
 
 
-class MMFF_xTB_HOMO_LUMO_gap(MMFF_xTB_quantity):
+class FF_xTB_HOMO_LUMO_gap(FF_xTB_quantity):
     def processed_res_dict(self, res_dict):
         orb_ens = res_dict["orbital-energies"]
         for orb_id, (orb_en, orb_occ) in enumerate(
@@ -221,7 +235,7 @@ class MMFF_xTB_HOMO_LUMO_gap(MMFF_xTB_quantity):
                 return LUMO_en - HOMO_en
 
 
-class MMFF_xTB_dipole(MMFF_xTB_quantity):
+class FF_xTB_dipole(FF_xTB_quantity):
     def processed_res_dict(self, res_dict):
         dipole_vector = res_dict["dipole"]
         return np.sqrt(np.sum(dipole_vector**2))
