@@ -36,8 +36,8 @@ for i, unstable_connection_charge1 in enumerate(unstable_connection_charges):
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
 
-make_restart_frequency = 10
-num_MC_steps = 100
+make_restart_frequency = 10000
+num_MC_steps = 10000
 
 bias_coeff = None
 vbeta_bias_coeff = None
@@ -83,7 +83,7 @@ rw = RandomWalk(
     soft_exit_check_frequency=make_restart_frequency,
     restart_file=restart_file_prefix + str(seed) + ".pkl",
     num_saved_candidates=100,
-    delete_temp_data=["coord_info"],
+    delete_temp_data=["coord_info", "res_dict"],
 )
 
 max_num_attempts = 1000
