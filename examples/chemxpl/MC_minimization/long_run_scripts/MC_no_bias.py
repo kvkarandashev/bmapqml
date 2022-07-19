@@ -23,16 +23,14 @@ np.random.seed(seed)
 
 possible_elements = ["C", "N", "O", "F"]
 
-unstable_connection_charges = [7, 8, 9]
-
-# forbidden_bonds = [ (7, 9), (8, 9), (9, 9)]
-forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
+forbidden_bonds = [(7, 9), (8, 9), (9, 9)]
+# forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
 
-make_restart_frequency = 10
-num_MC_steps = 100
+make_restart_frequency = 2000
+num_MC_steps = 500000
 
 bias_coeff = None
 vbeta_bias_coeff = None
