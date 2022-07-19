@@ -219,7 +219,7 @@ class LeruliCoordCalc:
         return output
 
 
-available_FF_xTB_coord_calculation_types = ["RDKit", "Leruli"]
+available_FF_xTB_coord_calculation_types = ["RDKit", "Leruli", "RDKit_wLeruli"]
 
 
 class FF_xTB_res_dict:
@@ -243,10 +243,13 @@ class FF_xTB_res_dict:
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
         self.display_problematic_tps = display_problematic_tps
+        self.coord_calculation_type = coord_calculation_type
 
-        assert coord_calculation_type in available_FF_xTB_coord_calculation_types
-        if coord_calculation_type == "RDKit":
+        assert self.coord_calculation_type in available_FF_xTB_coord_calculation_types
+        if self.coord_calculation_type != "Leruli":
             self.coord_info_from_tp_func = coord_info_from_tp
+            if self.coord_calculation_type == "RDKit_wLeruli":
+                self.coord_info_from_tp_func_check = LeruliCoordCalc()
         else:
             self.coord_info_from_tp_func = LeruliCoordCalc()
 
@@ -268,6 +271,12 @@ class FF_xTB_res_dict:
             self.ff_coord_info_dict, kwargs_dict=self.ff_coord_kwargs_dict
         )["coord_info"]["nuclear_charges"]
 
+        if self.coord_calculation_type == "RDKit_wLeruli":
+            if coordinates is None:
+                coord_info = self.coord_info_from_tp_func_check(tp)
+                coordinates = coord_info["coordinates"]
+                nuclear_charges = coord_info["nuclear_charges"]
+                tp.calculated_data["coord_info"] = coord_info
         if coordinates is None:
             if self.display_problematic_tps:
                 print("PROBLEMATIC_TP:", tp)
