@@ -21,14 +21,23 @@ func1 = FF_xTB_res_dict(ff_type="MMFF")
 
 print("Result dictionnary:", func1(tp))
 
-for ff_type in ["UFF", "MMFF"]:
-    tp.calculated_data = {}
-    print("FF:", ff_type)
-    func2 = FF_xTB_dipole(ff_type=ff_type)
+ff_types = {"RDKit": ["UFF", "MMFF"], "Leruli": [None]}
 
-    func3 = FF_xTB_HOMO_LUMO_gap(ff_type=ff_type)
+for coord_calculation_type in ["RDKit", "Leruli"]:
+    print("Coordinates calculated with:", coord_calculation_type)
 
-    for func in [func2, func3]:
-        print(func(tp))
+    for ff_type in ff_types[coord_calculation_type]:
+        print("FF type:", ff_type)
+        func_init_kwargs = {
+            "ff_type": ff_type,
+            "coord_calculation_type": coord_calculation_type,
+        }
+        tp.calculated_data = {}
+        func2 = FF_xTB_dipole(**func_init_kwargs)
+
+        func3 = FF_xTB_HOMO_LUMO_gap(**func_init_kwargs)
+
+        for func in [func2, func3]:
+            print(func(tp))
 
 print("Saved data:", list(dict(tp.calculated_data)))

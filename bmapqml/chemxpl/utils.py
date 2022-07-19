@@ -387,7 +387,7 @@ rdkit_bond_type = {
 }
 
 
-def chemgraph_to_canonical_rdkit(cg):
+def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
     # create empty editable mol object
     mol = Chem.RWMol()
 
@@ -407,9 +407,12 @@ def chemgraph_to_canonical_rdkit(cg):
 
     canon_SMILES = MolToSmiles(mol)
 
+    if SMILES_only:
+        return canon_SMILES
+
     for atom_id in inv_canonical_ordering:
         mol_idx = heavy_atom_index[atom_id]
-        for hydrogen_counter in range(cg.hatoms[atom_id].nhydrogens):
+        for _ in range(cg.hatoms[atom_id].nhydrogens):
             h = Chem.Atom(1)
             mol_hydrogen_idx = mol.AddAtom(h)
             hydrogen_connection[mol_hydrogen_idx] = atom_id
@@ -525,15 +528,17 @@ def coord_info_from_tp(tp, **kwargs):
     num_attempts : number of attempts taken to generate MMFF coordinates (introduced because for QM9 there is a ~10% probability that the coordinate generator won't converge)
     **kwargs : keyword arguments for the egc_with_coords procedure
     """
-    output = {
-        "coordinates": None,
-        "canon_rdkit_SMILES": None,
-    }
+    output = {"coordinates": None, "canon_rdkit_SMILES": None, "nuclear_charges": None}
     try:
         egc_wc = egc_with_coords(tp.egc, **kwargs)
         output["coordinates"] = egc_wc.coordinates
         output["canon_rdkit_SMILES"] = egc_wc.additional_data["canon_rdkit_SMILES"]
+        output["nuclear_charges"] = egc_wc.true_ncharges()
     except FFInconsistent:
         pass
 
     return output
+
+
+def canonical_SMILES_from_tp(tp):
+    return chemgraph_to_canonical_rdkit(tp.egc.chemgraph, SMILES_only=True)

@@ -25,19 +25,14 @@ possible_elements = ["C", "N", "O", "F"]
 
 unstable_connection_charges = [7, 8, 9]
 
-forbidden_bonds = []
-
-for i, unstable_connection_charge1 in enumerate(unstable_connection_charges):
-    for unstable_connection_charge2 in unstable_connection_charges[i:]:
-        forbidden_bonds.append(
-            (unstable_connection_charge1, unstable_connection_charge2)
-        )
+# forbidden_bonds = [ (7, 9), (8, 9), (9, 9)]
+forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
 
-make_restart_frequency = 10000
-num_MC_steps = 10000
+make_restart_frequency = 10
+num_MC_steps = 100
 
 bias_coeff = None
 vbeta_bias_coeff = None
@@ -84,6 +79,9 @@ rw = RandomWalk(
     restart_file=restart_file_prefix + str(seed) + ".pkl",
     num_saved_candidates=100,
     delete_temp_data=["coord_info", "res_dict"],
+    histogram_dump_file_prefix="histogram_dump_",
+    max_histogram_size=1000000,
+    track_histogram_size=True,
 )
 
 max_num_attempts = 1000
@@ -114,5 +112,5 @@ for MC_step in range(num_MC_steps):
 
 rw.make_restart()
 
-if min_func_pkl == "TRIAL_RUN":
+if hasattr(min_func, "call_counter"):
     print("Number of function calls:", min_func.call_counter)

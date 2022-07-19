@@ -124,25 +124,30 @@ def write_xyz_file(coordinates, elements, xyz_file_name):
 
 
 def read_xyz_file(xyz_input, additional_attributes=["charge"]):
-    atomic_symbols = []
+
+    lines = checked_input_readlines(xyz_input)
+
+    return read_xyz_lines(lines)
+
+
+def read_xyz_lines(xyz_lines, additional_attributes=["charge"]):
     add_attr_dict = {}
     for add_attr in additional_attributes:
         add_attr_dict = {add_attr: None, **add_attr_dict}
 
-    lines = checked_input_readlines(xyz_input)
-
-    num_atoms = int(lines[0])
+    num_atoms = int(xyz_lines[0])
     xyz_coordinates = np.zeros((num_atoms, 3))
     nuclear_charges = np.zeros((num_atoms,), dtype=int)
+    atomic_symbols = []
 
-    lsplit = lines[1].split()
+    lsplit = xyz_lines[1].split()
     for l in lsplit:
         for add_attr in additional_attributes:
             add_attr_eq = add_attr + "="
             if add_attr_eq == l[: len(add_attr_eq)]:
                 add_attr_dict[add_attr] = int(l.split("=")[1])
 
-    for atom_id, atom_line in enumerate(lines[2 : num_atoms + 2]):
+    for atom_id, atom_line in enumerate(xyz_lines[2 : num_atoms + 2]):
         lsplit = atom_line.split()
         atomic_symbol = lsplit[0]
         atomic_symbols.append(atomic_symbol)

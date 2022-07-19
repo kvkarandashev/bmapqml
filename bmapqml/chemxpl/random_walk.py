@@ -435,6 +435,9 @@ class RandomWalk:
         make_restart_frequency=None,
         soft_exit_check_frequency=None,
         delete_temp_data=None,
+        max_histogram_size=None,
+        histogram_dump_file_prefix="",
+        track_histogram_size=False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -450,6 +453,9 @@ class RandomWalk:
         make_restart_frequency : if not None object will call make_restart each make_restart_frequency global steps.
         soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
         delete_temp_data : if not None after each minimized function evaluation for a TrajectoryPoint object self will delete TrajectoryPoint's calculated_data fields with those identifiers.
+        max_histogram_size : if not None sets the maximal size for the histogram that, when exceeded, triggers dumping the histogram
+        histogram_dump_file_prefix : sets the prefix from which the name of the pickle file where histogram is dumped if its maximal size is exceeded
+        track_histogram_size : print current size of the histogram after each global MC step
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -510,6 +516,10 @@ class RandomWalk:
         self.make_restart_frequency = make_restart_frequency
         self.soft_exit_check_frequency = soft_exit_check_frequency
         self.global_steps_since_last = {}
+
+        self.max_histogram_size = max_histogram_size
+        self.histogram_dump_file_prefix = histogram_dump_file_prefix
+        self.track_histogram_size = track_histogram_size
 
         # Histogram initialization.
         if starting_histogram is None:
@@ -578,10 +588,13 @@ class RandomWalk:
             for replica_id in replica_ids:
                 self.moves_since_changed[replica_id] += 1
 
-        if self.keep_histogram:
-            self.update_histogram(replica_ids)
         if self.num_saved_candidates is not None:
             self.update_saved_candidates()
+        if self.keep_histogram:
+            self.update_histogram(replica_ids)
+            if self.max_histogram_size is not None:
+                if len(self.histogram) > self.max_histogram_size:
+                    self.histogram2pkl()
 
         return accepted
 
@@ -792,6 +805,13 @@ class RandomWalk:
                 trial_tps = [self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]]
                 _ = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
 
+    def global_change_dict(self):
+        return {
+            "simple": self.MC_step_all,
+            "genetic": self.genetic_MC_step_all,
+            "tempering": self.parallel_tempering,
+        }
+
     def global_random_change(
         self,
         prob_dict={"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
@@ -807,16 +827,19 @@ class RandomWalk:
         cur_procedure = random.choices(
             list(prob_dict), weights=list(prob_dict.values())
         )[0]
-        if cur_procedure == "simple":
-            self.MC_step_all(**other_kwargs)
-            return
-        if cur_procedure == "genetic":
-            self.genetic_MC_step_all(**other_kwargs)
-            return
-        if cur_procedure == "tempering":
-            self.parallel_tempering(**other_kwargs)
-            return
-        raise Exception("Unknown option picked.")
+
+        global_change_dict = self.global_change_dict()
+        if cur_procedure in global_change_dict:
+            global_change_dict[cur_procedure](**other_kwargs)
+        else:
+            raise Exception("Unknown option picked.")
+        if self.keep_histogram and self.track_histogram_size:
+            print(
+                "HIST SIZE:",
+                self.global_MC_step_counter,
+                cur_procedure,
+                len(self.histogram),
+            )
 
     # For convenient interfacing with other scripts.
     def convert_to_current_egcs(self, mol_in_list, mol_format=None):
@@ -1024,6 +1047,29 @@ class RandomWalk:
             self.saved_candidates = recovered_data["saved_candidates"]
         np.random.set_state(recovered_data["numpy_rng_state"])
         random.setstate(recovered_data["random_rng_state"])
+
+    def histogram2pkl(self):
+        """
+        Dump a histogram to a dump file with a yet unoccupied name.
+        """
+        dump_id = 1
+        dump_name = self.histogram_pkl_dump(dump_id)
+        while os.path.isfile(dump_name):
+            dump_id += 1
+            dump_name = self.histogram_pkl_dump(dump_id)
+        dump2pkl(self.histogram, dump_name)
+        self.cur_tps = copy.deepcopy(self.cur_tps)
+        if self.num_saved_candidates is not None:
+            self.saved_candidates = recovered_data["saved_candidates"]
+        self.histogram.clear()
+        self.cur_tps = self.hist_checked_tps(self.cur_tps)
+
+    def histogram_pkl_dump(self, dump_id):
+        """
+        Returns name of the histogram dump file for a given dump_id.
+        dump_id : int id of the dump
+        """
+        return self.histogram_dump_file_prefix + str(dump_id) + ".pkl"
 
 
 def merge_random_walks(*rw_list):

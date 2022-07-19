@@ -4,10 +4,11 @@ from numpy.linalg import norm
 import pickle
 from .utils import (
     trajectory_point_to_canonical_rdkit,
-    chemgraph_to_canonical_rdkit,
+    canonical_SMILES_from_tp,
     coord_info_from_tp,
+    chemgraph_from_ncharges_coords,
 )
-from ..utils import read_xyz_file
+from ..utils import read_xyz_file, read_xyz_lines
 from joblib import Parallel, delayed
 import os, sys
 
@@ -162,8 +163,10 @@ class LinearCombination:
         self.function_dict = {}
         for func, func_name in zip(functions, function_names):
             self.function_dict[func_name] = func
+        self.call_counter = 0
 
     def __call__(self, trajectory_point_in):
+        self.call_counter += 1
         func_val_dict = trajectory_point_in.calc_or_lookup(self.function_dict)
         output = 0.0
         for coeff, func_name in zip(self.coefficients, self.function_names):
@@ -174,20 +177,57 @@ class LinearCombination:
 
 
 # For quantity estimates with xTB and MMFF coordinates.
+class LeruliCoordCalc:
+    def __init__(self):
+        from leruli import graph_to_geometry
+
+        self.canon_SMILES_dict = {"canon_SMILES": canonical_SMILES_from_tp}
+        self.coord_func = graph_to_geometry
+
+    def __call__(self, tp, **other_kwargs):
+        # Create the canonical SMILES string
+        canon_SMILES = tp.calc_or_lookup(self.canon_SMILES_dict)["canon_SMILES"]
+        coord_info_str = self.coord_func(canon_SMILES, "XYZ")["geometry"]
+        nuclear_charges, _, coordinates, _ = read_xyz_lines(coord_info_str.split("\n"))
+        # Additionally check that the resulting coordinates actually correspond to the initial chemical graph.
+        output = {"coordinates": None, "nuclear_charges": None}
+        cg_from_coords = chemgraph_from_ncharges_coords(nuclear_charges, coordinates)
+        if cg_from_coords == tp.egc.chemgraph:
+            output["coordinates"] = coordinates
+            output["nuclear_charges"] = nuclear_charges
+        return output
+
+
+available_FF_xTB_coord_calculation_types = ["RDKit", "Leruli"]
+
+
 class FF_xTB_res_dict:
-    def __init__(self, calc_type="GFN2-xTB", num_ff_attempts=1, ff_type="MMFF"):
+    def __init__(
+        self,
+        calc_type="GFN2-xTB",
+        num_ff_attempts=1,
+        ff_type="MMFF",
+        coord_calculation_type="RDKit",
+    ):
         """
-        Calculating xTB result dictionary produced by tblite library from coordinates obtained by MMFF.
+        Calculating xTB result dictionnary produced by tblite library from coordinates obtained by RDKit.
         """
         from tblite.interface import Calculator
 
         self.calc_type = calc_type
         self.calculator_func = Calculator
+        self.call_counter = 0
 
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
-        self.mmff_coord_info_dict = {"coord_info": coord_info_from_tp}
-        self.mmff_coord_kwargs_dict = {
+        assert coord_calculation_type in available_FF_xTB_coord_calculation_types
+        if coord_calculation_type == "RDKit":
+            self.coord_info_from_tp_func = coord_info_from_tp
+        else:
+            self.coord_info_from_tp_func = LeruliCoordCalc()
+
+        self.ff_coord_info_dict = {"coord_info": self.coord_info_from_tp_func}
+        self.ff_coord_kwargs_dict = {
             "coord_info": {
                 "num_attempts": self.num_ff_attempts,
                 "ff_type": self.ff_type,
@@ -195,14 +235,18 @@ class FF_xTB_res_dict:
         }
 
     def __call__(self, tp):
-        self.num_mmff_attempts = 10
+        self.call_counter += 1
 
         coordinates = tp.calc_or_lookup(
-            self.mmff_coord_info_dict, kwargs_dict=self.mmff_coord_kwargs_dict
+            self.ff_coord_info_dict, kwargs_dict=self.ff_coord_kwargs_dict
         )["coord_info"]["coordinates"]
+        nuclear_charges = tp.calc_or_lookup(
+            self.ff_coord_info_dict, kwargs_dict=self.ff_coord_kwargs_dict
+        )["coord_info"]["nuclear_charges"]
+
         if coordinates is None:
             return None
-        calc = self.calculator_func(self.calc_type, tp.egc.true_ncharges(), coordinates)
+        calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
 
         # Need to do that because calc.singlepoint is verbose.
         old_stdout = sys.stdout  # backup current stdout
@@ -220,8 +264,10 @@ class FF_xTB_quantity:
         self.quant_name = quant_name
         self.res_dict_generator = FF_xTB_res_dict(**FF_xTB_res_dict_kwargs)
         self.res_related_dict = {"res_dict": self.res_dict_generator}
+        self.call_counter = 0
 
     def __call__(self, tp):
+        self.call_counter += 1
         res_dict = tp.calc_or_lookup(self.res_related_dict)["res_dict"]
         if res_dict is None:
             return None
