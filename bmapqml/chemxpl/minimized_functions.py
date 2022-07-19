@@ -7,10 +7,11 @@ from .utils import (
     canonical_SMILES_from_tp,
     coord_info_from_tp,
     chemgraph_from_ncharges_coords,
+    InvalidAdjMat,
 )
 from ..utils import read_xyz_file, read_xyz_lines
 from joblib import Parallel, delayed
-import os, sys
+import os, sys, time
 
 
 class Diatomic_barrier:
@@ -178,23 +179,43 @@ class LinearCombination:
 
 # For quantity estimates with xTB and MMFF coordinates.
 class LeruliCoordCalc:
-    def __init__(self):
+    def __init__(self, time_check=1.0e-2):
         from leruli import graph_to_geometry
+        from leruli.internal import LeruliInternalError
 
         self.canon_SMILES_dict = {"canon_SMILES": canonical_SMILES_from_tp}
         self.coord_func = graph_to_geometry
+        self.time_check = time_check
+        self.time_check_exception = LeruliInternalError
 
     def __call__(self, tp, **other_kwargs):
+        output = {"coordinates": None, "nuclear_charges": None}
         # Create the canonical SMILES string
         canon_SMILES = tp.calc_or_lookup(self.canon_SMILES_dict)["canon_SMILES"]
-        coord_info_str = self.coord_func(canon_SMILES, "XYZ")["geometry"]
+        coord_info_dict = None
+        #        while coord_info_dict is None:
+        try:
+            coord_info_dict = self.coord_func(canon_SMILES, "XYZ")
+            if coord_info_dict is None:
+                print("#PROBLEMATIC_SMILES (None returned):", canon_SMILES)
+        #                    break
+        except self.time_check_exception:
+            print("#PROBLEMATIC_SMILES (internal error):", canon_SMILES)
+        #                time.sleep(self.time_check)
+        if coord_info_dict is None:
+            return output
+        coord_info_str = coord_info_dict["geometry"]
         nuclear_charges, _, coordinates, _ = read_xyz_lines(coord_info_str.split("\n"))
         # Additionally check that the resulting coordinates actually correspond to the initial chemical graph.
-        output = {"coordinates": None, "nuclear_charges": None}
-        cg_from_coords = chemgraph_from_ncharges_coords(nuclear_charges, coordinates)
-        if cg_from_coords == tp.egc.chemgraph:
-            output["coordinates"] = coordinates
-            output["nuclear_charges"] = nuclear_charges
+        try:
+            cg_from_coords = chemgraph_from_ncharges_coords(
+                nuclear_charges, coordinates
+            )
+            if cg_from_coords == tp.egc.chemgraph:
+                output["coordinates"] = coordinates
+                output["nuclear_charges"] = nuclear_charges
+        except InvalidAdjMat:
+            pass
         return output
 
 
@@ -208,6 +229,7 @@ class FF_xTB_res_dict:
         num_ff_attempts=1,
         ff_type="MMFF",
         coord_calculation_type="RDKit",
+        display_problematic_tps=False,
     ):
         """
         Calculating xTB result dictionnary produced by tblite library from coordinates obtained by RDKit.
@@ -220,6 +242,8 @@ class FF_xTB_res_dict:
 
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
+        self.display_problematic_tps = display_problematic_tps
+
         assert coord_calculation_type in available_FF_xTB_coord_calculation_types
         if coord_calculation_type == "RDKit":
             self.coord_info_from_tp_func = coord_info_from_tp
@@ -245,6 +269,8 @@ class FF_xTB_res_dict:
         )["coord_info"]["nuclear_charges"]
 
         if coordinates is None:
+            if self.display_problematic_tps:
+                print("PROBLEMATIC_TP:", tp)
             return None
         calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
 
