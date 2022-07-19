@@ -229,7 +229,8 @@ class FF_xTB_res_dict:
         num_ff_attempts=1,
         ff_type="MMFF",
         coord_calculation_type="RDKit",
-        display_problematic_tps=False,
+        display_problematic_coord_tps=False,
+        display_problematic_xTB_tps=False,
     ):
         """
         Calculating xTB result dictionnary produced by tblite library from coordinates obtained by RDKit.
@@ -242,7 +243,8 @@ class FF_xTB_res_dict:
 
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
-        self.display_problematic_tps = display_problematic_tps
+        self.display_problematic_coord_tps = display_problematic_coord_tps
+        self.display_problematic_xTB_tps = display_problematic_xTB_tps
         self.coord_calculation_type = coord_calculation_type
 
         assert self.coord_calculation_type in available_FF_xTB_coord_calculation_types
@@ -278,10 +280,15 @@ class FF_xTB_res_dict:
                 nuclear_charges = coord_info["nuclear_charges"]
                 tp.calculated_data["coord_info"] = coord_info
         if coordinates is None:
-            if self.display_problematic_tps:
-                print("PROBLEMATIC_TP:", tp)
+            if self.display_problematic_coord_tps:
+                print("PROBLEMATIC_COORD_TP:", tp)
             return None
-        calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
+        try:
+            calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
+        except:
+            if self.display_problematic_xTB_tps:
+                print("PROBLEMATIC_xTB_TP:", tp)
+            return None
 
         # Need to do that because calc.singlepoint is verbose.
         old_stdout = sys.stdout  # backup current stdout

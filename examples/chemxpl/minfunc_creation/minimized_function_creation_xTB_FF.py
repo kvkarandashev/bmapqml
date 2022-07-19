@@ -58,7 +58,11 @@ quant_names = ["Dipole", "HOMO_LUMO_gap"]
 ff_types = ["MMFF", "UFF"]
 
 for ff_type in ff_types:
-    est_kwargs = {"num_ff_attempts": num_ff_attempts, "ff_type": ff_type}
+    est_kwargs = {
+        "num_ff_attempts": num_ff_attempts,
+        "ff_type": ff_type,
+        "display_problematic_xTB_tps": True,
+    }
     quant_estimates = [
         quant_estimate_type(**est_kwargs)
         for quant_estimate_type in quant_estimate_types
