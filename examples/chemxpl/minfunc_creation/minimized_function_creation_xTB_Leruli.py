@@ -6,7 +6,7 @@ from bmapqml.chemxpl.minimized_functions import (
     FF_xTB_dipole,
     LinearCombination,
 )
-import os, copy
+import os, copy, random
 from bmapqml.utils import dump2pkl, embarrassingly_parallel
 import numpy as np
 
@@ -24,7 +24,11 @@ QM9_xyz_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 
 pkl_store_dir = "/store/common/konst/chemxpl_related"
 
+random.seed(1)
+
 xyz_list = dirs_xyz_list(QM9_xyz_dir)  # [:500]
+
+random.shuffle(xyz_list)
 
 tps = all_xyzs2tps(xyz_list)
 

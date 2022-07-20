@@ -283,22 +283,24 @@ class FF_xTB_res_dict:
             if self.display_problematic_coord_tps:
                 print("PROBLEMATIC_COORD_TP:", tp)
             return None
-        try:
-            calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
-        except:
-            if self.display_problematic_xTB_tps:
-                print("PROBLEMATIC_xTB_TP:", tp)
-            return None
+        calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
 
-        # Need to do that because calc.singlepoint is verbose.
+        # TODO: ask tblite devs about non-verbose mode?
         old_stdout = sys.stdout  # backup current stdout
         sys.stdout = open(os.devnull, "w")
 
-        res = calc.singlepoint()
+        try:
+            res = calc.singlepoint()
+            output = res.dict()
+        except:
+            if self.display_problematic_xTB_tps:
+                sys.stdout = old_stdout  # reset old stdout
+                print("PROBLEMATIC_xTB_TP:", tp)
+            output = None
 
         sys.stdout = old_stdout  # reset old stdout
 
-        return res.dict()
+        return output
 
 
 class FF_xTB_quantity:
