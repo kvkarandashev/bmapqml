@@ -19,7 +19,8 @@ from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl
 from .valence_treatment import sorted_tuple, connection_forbidden
 from .periodic import element_name
-import random, copy, os
+import random, os
+from copy import deepcopy
 import numpy as np
 
 
@@ -309,6 +310,28 @@ class TrajectoryPoint:
         else:
             return self.num_visits[replica_id]
 
+    def copy_extra_data_to(self, other_tp):
+        for quant_name in self.calculated_data:
+            if quant_name not in other_tp.calculated_data:
+                other_tp.calculated_data[quant_name] = self.calculated_data[quant_name]
+        if self.bond_order_change_possibilities is not None:
+            if other_tp.bond_order_change_possibilities is None:
+                other_tp.bond_order_change_possibilities = deepcopy(
+                    self.bond_order_change_possibilities
+                )
+                other_tp.chain_addition_possibilities = deepcopy(
+                    self.chain_addition_possibilities
+                )
+                other_tp.nuclear_charge_change_possibilities = deepcopy(
+                    self.nuclear_charge_change_possibilities
+                )
+                other_tp.atom_removal_possibilities = deepcopy(
+                    self.atom_removal_possibilities
+                )
+                other_tp.valence_change_possibilities = deepcopy(
+                    self.valence_change_possibilities
+                )
+
     def __lt__(self, tp2):
         return self.egc < tp2.egc
 
@@ -417,11 +440,13 @@ class RandomWalk:
         init_egcs=None,
         bias_coeff=None,
         vbeta_bias_coeff=None,
+        bias_pot_all_replicas=True,
         randomized_change_params={},
         starting_histogram=None,
         conserve_stochiometry=False,
         bound_enforcing_coeff=1.0,
         keep_histogram=False,
+        histogram_save_rejected=True,
         betas=None,
         min_function=None,
         num_replicas=None,
@@ -444,9 +469,11 @@ class RandomWalk:
         betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
+        bias_pot_all_replicas : whether the biasing potential is calculated from sum of visits of all replicas rather than the replica considered
         min_function : minimized function
         min_function_name : name of minimized function (the label used for minimized function value in TrajectoryPoint object's calculated_data)
         keep_histogram : store information about all considered molecules; mandatory for using biasing potentials
+        histogram_save_rejected : if True then both accepted and rejected chemical graphs are saved into the histogram
         num_saved_candidates : if not None determines how many best candidates are kept in the saved_candidates attributes
         keep_full_trajectory : save not just number of times a trajectory point was visited, but also all steps ids when the step was made
         restart_file : name of restart file to which the object is dumped at make_restart
@@ -475,6 +502,7 @@ class RandomWalk:
             assert len(self.betas) == self.num_replicas
 
         self.keep_histogram = keep_histogram
+        self.histogram_save_rejected = histogram_save_rejected
 
         self.no_exploration = no_exploration
         if self.no_exploration:
@@ -486,6 +514,7 @@ class RandomWalk:
 
         self.bias_coeff = bias_coeff
         self.vbeta_bias_coeff = vbeta_bias_coeff
+        self.bias_pot_all_replicas = bias_pot_all_replicas
 
         self.randomized_change_params = randomized_change_params
         self.init_randomized_change_params(randomized_change_params)
@@ -541,9 +570,7 @@ class RandomWalk:
                 self.randomized_change_params["forbidden_bonds"] = tidy_forbidden_bonds(
                     self.randomized_change_params["forbidden_bonds"]
                 )
-        self.used_randomized_change_params = copy.deepcopy(
-            self.randomized_change_params
-        )
+        self.used_randomized_change_params = deepcopy(self.randomized_change_params)
 
         if self.no_exploration:
             if self.no_exploration_smove_adjust:
@@ -574,6 +601,9 @@ class RandomWalk:
                 if cur_min_func_val is None:
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
+            if self.keep_histogram:
+                if added_tp not in self.histogram:
+                    self.histogram.add(deepcopy(added_tp))
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
@@ -585,8 +615,15 @@ class RandomWalk:
                 self.cur_tps[replica_id] = new_tp
                 self.moves_since_changed[replica_id] = 0
         else:
-            for replica_id in replica_ids:
+            for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.moves_since_changed[replica_id] += 1
+                if self.keep_histogram and self.histogram_save_rejected:
+                    tp_in_histogram = new_tp in self.histogram
+                    if tp_in_histogram:
+                        tp_index = self.histogram.index(new_tp)
+                        new_tp.copy_extra_data_to(self.histogram[tp_index])
+                    else:
+                        self.histogram.add(new_tp)
 
         if self.num_saved_candidates is not None:
             self.update_saved_candidates()
@@ -601,7 +638,7 @@ class RandomWalk:
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
 
         if self.no_exploration:
-            for new_tp in new_tps_input:
+            for new_tp in new_tps:
                 if new_tp not in self.restricted_tps:
                     return False
         new_tot_pot_vals = [
@@ -639,7 +676,10 @@ class RandomWalk:
         return any([self.virtual_beta_id(beta_id) for beta_id in beta_ids])
 
     def virtual_beta_id(self, beta_id):
-        return self.betas[beta_id] is None
+        if self.betas is None:
+            return False
+        else:
+            return self.betas[beta_id] is None
 
     def tot_pot(self, tp, replica_id, init_bias=0.0):
         """
@@ -653,12 +693,7 @@ class RandomWalk:
             if self.betas[replica_id] is not None:
                 min_func_val *= self.betas[replica_id]
             tot_pot += min_func_val
-        if (self.betas is not None) and self.virtual_beta_id(replica_id):
-            if self.vbeta_bias_coeff is not None:
-                tot_pot += self.vbeta_bias_coeff * tp.visit_num(replica_id)
-        else:
-            if self.bias_coeff is not None:
-                tot_pot += self.biasing_potential(tp, replica_id)
+        tot_pot += self.biasing_potential(tp, replica_id)
         if self.bound_enforcing_coeff is not None:
             tot_pot += self.bound_enforcing_pot(tp, replica_id)
         return tot_pot
@@ -802,7 +837,10 @@ class RandomWalk:
         if self.min_function is not None:
             for _ in range(num_parallel_tempering_tries):
                 old_ids = random_pair(self.num_replicas)
-                trial_tps = [self.cur_tps[old_ids[1]], self.cur_tps[old_ids[0]]]
+                trial_tps = [
+                    deepcopy(self.cur_tps[old_ids[1]]),
+                    deepcopy(self.cur_tps[old_ids[0]]),
+                ]
                 _ = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
 
     def global_change_dict(self):
@@ -865,7 +903,7 @@ class RandomWalk:
     ):
         self.convert_to_current_egcs(mol_in_list, mol_format=mol_format)
         self.init_randomized_change_params(randomized_change_params=None)
-        moves_accepted = self.MC_step_all()
+        _ = self.MC_step_all()
         return self.converted_current_egcs(mol_format=mol_format)
 
     def parallel_tempering_molecule_list(
@@ -901,32 +939,50 @@ class RandomWalk:
                 self.histogram.add(tp)
 
     def biasing_potential(self, tp, replica_id):
-        if self.bias_coeff is None:
+        if self.virtual_beta_id(replica_id):
+            bias_coeff = self.vbeta_bias_coeff
+        else:
+            bias_coeff = self.bias_coeff
+
+        if (bias_coeff is None) or (tp.num_visits is None):
             return 0.0
         else:
             tp_index = self.histogram.index(tp)
-            return self.histogram[tp_index].visit_num(replica_id) * self.bias_coeff
+            if self.bias_pot_all_replicas:
+                cur_visit_num = float(np.sum(self.histogram[tp_index].num_visits))
+            else:
+                cur_visit_num = self.histogram[tp_index].num_visits[replica_id]
+            return cur_visit_num * bias_coeff
 
     def update_histogram(self, replica_ids):
         for replica_id in replica_ids:
-            tp_index = self.histogram.index(self.cur_tps[replica_id])
-            if self.histogram[tp_index].num_visits is None:
-                self.histogram[tp_index].num_visits = np.zeros(
+            cur_tp = self.cur_tps[replica_id]
+            tp_in_hist = cur_tp in self.histogram
+            if not tp_in_hist:
+                self.histogram.add(deepcopy(cur_tp))
+            cur_tp_index = self.histogram.index(cur_tp)
+            if tp_in_hist:
+                cur_tp.copy_extra_data_to(self.histogram[cur_tp_index])
+
+            if self.histogram[cur_tp_index].num_visits is None:
+                self.histogram[cur_tp_index].num_visits = np.zeros(
                     (self.num_replicas,), dtype=int
                 )
-                self.histogram[tp_index].first_MC_step_encounter = self.MC_step_counter
                 self.histogram[
-                    tp_index
+                    cur_tp_index
+                ].first_MC_step_encounter = self.MC_step_counter
+                self.histogram[
+                    cur_tp_index
                 ].first_global_MC_step_encounter = self.global_MC_step_counter
 
-            self.histogram[tp_index].num_visits[replica_id] += 1
+            self.histogram[cur_tp_index].num_visits[replica_id] += 1
 
             if self.keep_full_trajectory:
-                if self.histogram[tp_index].visit_step_ids is None:
-                    self.histogram[tp_index].visit_step_ids = [
+                if self.histogram[cur_tp_index].visit_step_ids is None:
+                    self.histogram[cur_tp_index].visit_step_ids = [
                         [] for _ in range(self.num_replicas)
                     ]
-                self.histogram[tp_index].visit_step_ids[replica_id].append(
+                self.histogram[cur_tp_index].visit_step_ids[replica_id].append(
                     self.global_MC_step_counter
                 )
 
@@ -937,10 +993,13 @@ class RandomWalk:
         """
         if self.histogram is None:
             return tp_list
+        output = []
         for tp in tp_list:
-            if tp not in self.histogram:
-                self.histogram.add(tp)
-        return [self.histogram[self.histogram.index(tp)] for tp in tp_list]
+            if tp in self.histogram:
+                output.append(deepcopy(self.histogram[self.histogram.index(tp)]))
+            else:
+                output.append(tp)
+        return output
 
     def clear_histogram_visit_data(self):
         for tp in self.histogram:
@@ -1058,9 +1117,9 @@ class RandomWalk:
             dump_id += 1
             dump_name = self.histogram_pkl_dump(dump_id)
         dump2pkl(self.histogram, dump_name)
-        self.cur_tps = copy.deepcopy(self.cur_tps)
+        self.cur_tps = deepcopy(self.cur_tps)
         if self.num_saved_candidates is not None:
-            self.saved_candidates = recovered_data["saved_candidates"]
+            self.saved_candidates = deepcopy(self.saved_candidates)
         self.histogram.clear()
         self.cur_tps = self.hist_checked_tps(self.cur_tps)
 

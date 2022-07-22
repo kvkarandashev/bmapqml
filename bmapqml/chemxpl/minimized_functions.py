@@ -11,7 +11,7 @@ from .utils import (
 )
 from ..utils import read_xyz_file, read_xyz_lines
 from joblib import Parallel, delayed
-import os, sys, time
+import os, sys
 
 
 class Diatomic_barrier:
@@ -236,10 +236,13 @@ class FF_xTB_res_dict:
         Calculating xTB result dictionnary produced by tblite library from coordinates obtained by RDKit.
         """
         from tblite.interface import Calculator
+        from ..data import conversion_coefficient
 
         self.calc_type = calc_type
         self.calculator_func = Calculator
         self.call_counter = 0
+
+        self.coord_conversion_coefficient = conversion_coefficient["Angstrom_Bohr"]
 
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
@@ -281,9 +284,13 @@ class FF_xTB_res_dict:
                 tp.calculated_data["coord_info"] = coord_info
         if coordinates is None:
             if self.display_problematic_coord_tps:
-                print("PROBLEMATIC_COORD_TP:", tp)
+                print("#PROBLEMATIC_COORD_TP:", tp)
             return None
-        calc = self.calculator_func(self.calc_type, nuclear_charges, coordinates)
+        calc = self.calculator_func(
+            self.calc_type,
+            nuclear_charges,
+            coordinates * self.coord_conversion_coefficient,
+        )
 
         # TODO: ask tblite devs about non-verbose mode?
         old_stdout = sys.stdout  # backup current stdout
@@ -295,7 +302,7 @@ class FF_xTB_res_dict:
         except:
             if self.display_problematic_xTB_tps:
                 sys.stdout = old_stdout  # reset old stdout
-                print("PROBLEMATIC_xTB_TP:", tp)
+                print("#PROBLEMATIC_xTB_TP:", tp)
             output = None
 
         sys.stdout = old_stdout  # reset old stdout

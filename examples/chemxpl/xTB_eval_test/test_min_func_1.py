@@ -7,11 +7,13 @@ from bmapqml.chemxpl.minimized_functions import (
 )
 import numpy as np
 
-nuclear_charges = np.array([9, 9])
+nuclear_charges = np.array([6])
 
-adj_mat = np.array([[0, 1], [1, 0]])
+adj_mat = np.array([[0]])
 
-egc = ExtGraphCompound(nuclear_charges=nuclear_charges, adjacency_matrix=adj_mat)
+egc = ExtGraphCompound(
+    nuclear_charges=nuclear_charges, adjacency_matrix=adj_mat, hydrogen_autofill=True
+)
 
 print(egc)
 

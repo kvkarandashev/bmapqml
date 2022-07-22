@@ -441,8 +441,14 @@ rdkit_coord_optimizer = {
 }
 
 
-def RDKit_FF_optimize_coords(mol, coord_optimizer, num_attempts=1):
-    AllChem.EmbedMolecule(mol)
+def RDKit_FF_optimize_coords(
+    mol, coord_optimizer, num_attempts=1, corresponding_cg=None
+):
+    try:
+        AllChem.EmbedMolecule(mol)
+    except:
+        print("#PROBLEMATIC_EMBED_MOLECULE:", corresponding_cg)
+        raise FFInconsistent
     for _ in range(num_attempts):
         try:
             converged = coord_optimizer(mol)
@@ -470,7 +476,10 @@ def chemgraph_to_canonical_rdkit_wcoords(cg, ff_type="MMFF", num_attempts=1):
     ) = chemgraph_to_canonical_rdkit(cg)
 
     RDKit_FF_optimize_coords(
-        mol, rdkit_coord_optimizer[ff_type], num_attempts=num_attempts
+        mol,
+        rdkit_coord_optimizer[ff_type],
+        num_attempts=num_attempts,
+        corresponding_cg=cg,
     )
     rdkit_coords = np.array(mol.GetConformer().GetPositions())
     rdkit_nuclear_charges = np.array([atom.GetAtomicNum() for atom in mol.GetAtoms()])
