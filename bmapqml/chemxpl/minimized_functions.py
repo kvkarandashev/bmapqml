@@ -12,7 +12,7 @@ from .utils import (
 from ..utils import read_xyz_file, read_xyz_lines
 from joblib import Parallel, delayed
 import os, sys
-
+from bmapqml.chemxpl import rdkit_descriptors
 
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
@@ -61,7 +61,7 @@ class ChargeSum:
         return sum(ha.ncharge for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
-from .rdkit_descriptors import extended_get_single_FP
+
 
 
 class RepGenFuncProblem(Exception):
@@ -470,6 +470,7 @@ class sample_local_space:
 
         """ 
         Returns the size of the largest ring in the molecule.
+        If ring too large (>7) reject that move and return large energy
         """
 
         m = Chem.MolFromSmiles(SMILES)
@@ -543,8 +544,6 @@ class sample_local_space:
         """
 
         return self.epsilon * np.exp(-self.sigma * d)
-
-
 
 
     def __call__(self, trajectory_point_in):

@@ -1,6 +1,7 @@
 
 from bmapqml.utils import * 
 from bmapqml.chemxpl import rdkit_descriptors
+from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
 from sklearn.decomposition import PCA
 import pickle
 import matplotlib.pyplot as plt
@@ -8,6 +9,8 @@ import matplotlib.tri as tri
 import numpy as np
 import pdb
 from rdkit import RDLogger  
+
+#/bmapqml/chemxpl/utils.py
 lg = RDLogger.logger()
 
 lg.setLevel(RDLogger.CRITICAL)   
@@ -21,19 +24,20 @@ class analyze_random_walk:
     Visualize chemical space and convex hull of the walk.
     """
 
-    def __init__(self, histograms,target, trajectory=None,fp_type=None, model=None, verbose=False, name=None, dmin=2 ):
+    def __init__(self, histograms,target, trajectory=None,fp_type=None, model=None, verbose=False, name=None, dmin=None, thickness=None):
         """
         histogram : list of all unique encountered points in the random walk.
         minimize_fct : if desired reevaluate all unique molecules using this function
         """
 
-        self.name = name
-        self.histogram = histograms
+        self.name = name or None
+        self.histogram = histograms or None
         self.target = target
         self.model = None or model
         self.trajectory = None or trajectory
         self.fp_type = fp_type
-        self.dmin = dmin
+        self.dmin = dmin or None
+        self.thickness = thickness or None
         print(self.fp_type)
         #pdb.set_trace()
 
@@ -139,10 +143,10 @@ class analyze_random_walk:
         #for ind,x in enumerate(X):
         #   self.distances[ind] = np.linalg.norm(x-X_target)
 
-        lower_lim , upper_lim = self.dmin-0.25, self.dmin
+        lower_lim , upper_lim = self.dmin-self.thickness, self.dmin
         #shell_vol = self.volume_of_nsphere(4096, upper_lim) - self.volume_of_nsphere(4096, lower_lim)
         in_interval = ((self.distances >= lower_lim) & (self.distances <=  upper_lim))
-        print("Number of points in the interval:",self.dmin, len(self.distances[in_interval]))
+        print("Number of points in the interval:", "[{},{}]".format(lower_lim, upper_lim)  , len(self.distances[in_interval]))
         print(self.tps_smiles[in_interval])
         np.savez_compressed("histogram_{}".format(self.name), tps_smiles=self.tps_smiles,distances=self.distances,values=self.values) 
         exit()
