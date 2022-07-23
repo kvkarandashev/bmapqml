@@ -12,7 +12,7 @@ from bmapqml.orb_ml import OML_compound_list_from_xyzs
 from bmapqml.orb_ml.representations import OML_rep_params
 from bmapqml.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
 from bmapqml.orb_ml.kernels import oml_ensemble_avs_stddevs
-from bmapqml.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
+from bmapqml.hyperparameter_optimization import stochastic_gradient_descent_hyperparam_optimization
 from bmapqml.orb_ml.hyperparameter_optimization import Ang_mom_classified_rhf
 
 quant_name='MP2/cc-pVTZ'
@@ -48,7 +48,7 @@ rep_avs, rep_stddevs=oml_ensemble_avs_stddevs(training_comps)
 
 reduced_hyperparam_func=Ang_mom_classified_rhf(use_Gauss=True, rep_params=oml_representation_parameters, stddevs=rep_stddevs)
 
-optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(training_comps, training_quants, max_stagnating_iterations=8, num_kfolds=128,
+optimized_hyperparams=stochastic_gradient_descent_hyperparam_optimization(training_comps, training_quants, max_stagnating_iterations=8, num_kfolds=128,
                                     reduced_hyperparam_func=reduced_hyperparam_func, randomized_iterator_kwargs={"default_step_magnitude" : 0.25},
                                     init_red_param_guess=np.zeros((reduced_hyperparam_func.num_reduced_params,)), sym_kernel_func=gauss_sep_orb_sym_kernel)
 

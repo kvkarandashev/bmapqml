@@ -1,6 +1,6 @@
 # An example of using stochatic gradient descent to optimize sigma value for Coulomb Matrix with Gaussian kernel.
 
-from bmapqml.hyperparameter_optimization import stochastic_gradient_descend_hyperparam_optimization
+from bmapqml.hyperparameter_optimization import stochastic_gradient_descent_hyperparam_optimization
 from bmapqml.kernels import gaussian_sym_kernel_matrix, gaussian_kernel_matrix
 from bmapqml.dataset_processing.qm9_format_specs import Quantity
 from bmapqml.test_utils import dirs_xyz_list
@@ -37,7 +37,7 @@ def get_quants_comps(xyz_list, quantity):
 quant=Quantity(quant_name)
 training_reps, training_comps, training_quants=get_quants_comps(xyz_list[:train_num], quant)
 
-optimized_hyperparams=stochastic_gradient_descend_hyperparam_optimization(training_reps, training_quants, init_param_guess=np.array([1.0, 100.0]), max_stagnating_iterations=8,
+optimized_hyperparams=stochastic_gradient_descent_hyperparam_optimization(training_reps, training_quants, init_param_guess=np.array([1.0, 100.0]), max_stagnating_iterations=8,
                                     randomized_iterator_kwargs={"default_step_magnitude" : 0.05}, sym_kernel_func=gaussian_sym_kernel_matrix, additional_BFGS_iters=8)
 
 sigmas=optimized_hyperparams["sigmas"]

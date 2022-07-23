@@ -4,7 +4,7 @@ from bmapqml.dataset_processing.qm9_format_specs import Quantity
 from bmapqml.test_utils import dirs_xyz_list
 from bmapqml.orb_ml import OML_compound
 from qml.representations import generate_coulomb_matrix
-from bmapqml.fkernels import gaussian_kernel_matrix, gaussian_sym_kernel_matrix
+from bmapqml.fkernels import laplacian_kernel_matrix, laplacian_sym_kernel_matrix
 import os, random
 import numpy as np
 
@@ -37,7 +37,7 @@ def get_quants_comps(xyz_list, quantity):
 quant=Quantity(quant_name)
 all_training_reps, all_training_comps, all_training_quants=get_quants_comps(xyz_list[:bigger_train_subset], quant)
 
-KRR_model=KRR(kernel_function=gaussian_kernel_matrix, sym_kernel_function=gaussian_sym_kernel_matrix)
+KRR_model=KRR(kernel_function=laplacian_kernel_matrix, sym_kernel_function=laplacian_sym_kernel_matrix)
 
 KRR_model.optimize_hyperparameters(all_training_reps[:hyperparam_opt_num], all_training_quants[:hyperparam_opt_num])
 

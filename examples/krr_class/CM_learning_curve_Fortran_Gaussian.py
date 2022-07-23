@@ -4,6 +4,7 @@ from bmapqml.dataset_processing.qm9_format_specs import Quantity
 from bmapqml.test_utils import dirs_xyz_list
 from bmapqml.orb_ml import OML_compound
 from qml.representations import generate_coulomb_matrix
+from bmapqml.fkernels import gaussian_kernel_matrix, gaussian_sym_kernel_matrix
 import os, random
 import numpy as np
 
@@ -46,6 +47,8 @@ all_training_reps, all_training_comps, all_training_quants = get_quants_comps(
 )
 
 KRR_model = KRR(
+    kernel_function=gaussian_kernel_matrix,
+    sym_kernel_function=gaussian_sym_kernel_matrix,
     hyperparam_opt_kwargs={
         "max_stagnating_iterations": 1,
         "randomized_iterator_kwargs": {"default_step_magnitude": 0.05},

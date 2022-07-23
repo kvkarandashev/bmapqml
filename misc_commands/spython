@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# KK: I keep this script as a proper shell command and use "spython" instead of "python"
+# if I want to submit a script to SLURM but feel too lazy to extensively modify it.
+# It creates a folder for the data where it copies the python script,
+# then creates a BATCH script that runs the copied python script in a scratch
+# folder and copies the results into the data folder.
+# 1st argument - python script name.
+# 2nd argument - how the SLURM job is named.
+# Arguments starting from third (if present) - arguments for the python script.
+
+function flag_val(){
+    echo $1 | cut -d'=' -f2
+}
+
+NCPUs=$(cat /etc/slurm-llnl/slurm.conf | tr ' ' '\n' | awk 'BEGIN {FS="="} {if ($1=="CPUs") print $2}')
+JOB_OMP_NUM_THREADS=$NCPUs
+
+USE_CURRENT_DIR=0
+conda_env=$CONDA_DEFAULT_ENV
+PIPE_ARGS=0
+
+while [[ "$1" == --* ]]
+do
+    if [[ "$1" == --CPUs=* ]]
+    then
+        NCPUs=$(flag_val $1)
+    fi
+    if [ "$1" == "--use-current_dir" ]
+    then
+        USE_CURRENT_DIR=1
+    fi
+    if [[ "$1" == --conda_env=* ]]
+    then
+        conda_env=$(flag_val $1)
+    fi
+    if [[ "$1" == --OMP_NUM_THREADS=* ]]
+    then
+        JOB_OMP_NUM_THREADS=$(flag_val $1)
+    fi
+    if [ "$1" == "--pipe_args" ]
+    then
+        PIPE_ARGS=1
+    fi
+    shift
+done
+
+py_script=$1
+
+if [ "$py_script" == "" ]
+then
+	echo "Python script name should be the first argument."
+	exit
+fi
+
+if [ "$PIPE_ARGS" == "1" ]
+then
+    arg_command="cat"
+else
+    arg_command="echo ${@:2}"
+fi
+
+eval "$arg_command" | while read args
+do
+
+job_name=$(echo $args | cut -d' ' -f1)
+
+other_args=$(echo $args | cut -d' ' -f2-)
+
+if [ "$job_name" == "" ]
+then
+	echo "Name of the job should be the second argument."
+	exit
+fi
+
+data_dir=$(pwd)/data_$job_name
+
+if [ -d $data_dir ]
+then
+	echo "Job has already been done."
+	exit
+fi
+mkdir $data_dir
+
+cp $py_script $data_dir
+scripts=($(ls $data_dir/*.py | tr '\n' ' '))
+
+if [ ${#scripts[@]} != 1 ]
+then
+	echo "Something is wrong."
+	exit
+fi
+script_path=${scripts[0]}
+
+cd $data_dir
+
+
+
+EXNAME=ex_$job_name.sh
+
+cat > $EXNAME << EOF
+#!/bin/bash
+#SBATCH -J $job_name
+#SBATCH -o $job_name.stdout_%j
+#SBATCH -e $job_name.stderr_%j
+#SBATCH --nodelist=$(hostname)
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=$NCPUs
+
+
+source "$(grep __conda_setup ~/.bashrc | head -n1 | cut -d"'" -f2 | rev | cut -d"/" -f3- | rev)/etc/profile.d/conda.sh"
+conda activate $conda_env
+
+EOF
+
+for NTHREAD_VAR in "OMP_NUM_THREADS" "OPENBLAS_NUM_THREADS" "MKL_NUM_THREADS" "VECLIB_MAXIMUM_THREADS" "NUMEXPR_NUM_THREADS" "NUMBA_NUM_THREADS"
+do
+    echo "export $NTHREAD_VAR=$JOB_OMP_NUM_THREADS" >> $EXNAME
+done
+
+cat >> $EXNAME << EOF
+export BMAPQML_NUM_PROCS=$NCPUs
+if [ "$USE_CURRENT_DIR" == "0" ]
+then
+    cd \$SCRATCH_DIR
+    output_dir="."
+else
+    output_dir=$(pwd)
+    cd $(pwd)/..
+fi
+echo "Started: \$(date)" > \$output_dir/execution_time.txt
+python $script_path $other_args
+echo "Finished: \$(date)" >> \$output_dir/execution_time.txt
+if [ "$USE_CURRENT_DIR" == "0" ]
+then
+    cp -r * $data_dir
+fi
+EOF
+
+SLURM_ID=$(sbatch $DEPSTRING $EXNAME | awk '{print $4}')
+
+DEPSTRING="--dependency=afterok:$SLURM_ID"
+
+cd ..
+
+done

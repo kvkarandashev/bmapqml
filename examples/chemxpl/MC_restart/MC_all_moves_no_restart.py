@@ -1,4 +1,4 @@
-# Do MC optimization for several parallel replicas.
+# Does same as MC_all_moves_no_restart.py, but restarting mid-simulation.
 
 from bmapqml.chemxpl.valence_treatment import ChemGraph
 from bmapqml.chemxpl.random_walk import RandomWalk
@@ -6,8 +6,10 @@ import random, math
 from bmapqml.chemxpl import ExtGraphCompound
 from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
 from copy import deepcopy
+import numpy as np
 
 random.seed(1)
+np.random.seed(1)
 
 possible_elements = ["Cl", "F"]
 
@@ -49,7 +51,12 @@ negcs = len(betas)
 
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for i in range(negcs)]
 
+histogram = [[] for i in range(negcs)]
+histogram_labels = [[] for i in range(negcs)]
+
 min_func = Diatomic_barrier([9, 17])
+
+restart_file = "restart.pkl"
 
 rw = RandomWalk(
     bias_coeff=bias_coeff,
@@ -58,23 +65,14 @@ rw = RandomWalk(
     betas=betas,
     min_function=min_func,
     init_egcs=init_egcs,
+    restart_file=restart_file,
     keep_histogram=True,
-    keep_full_trajectory=True,
 )
+other_rw = deepcopy(rw)
 
-for MC_step in range(num_MC_steps):
-    # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
+for MC_step in range(num_MC_steps * 2):
     rw.global_random_change(**global_change_params)
-    print(MC_step, rw.cur_tps, min_func.call_counter)
 
-print("Histogram:")
 for tp in rw.histogram:
-    print(tp)
+    print(tp.egc)
     print(tp.num_visits)
-
-traj = rw.ordered_trajectory()
-print("Trajectory points:")
-for traj_step, tps in enumerate(traj):
-    print(traj_step, tps)
-
-print("How many times the minimized function was calculated:", min_func.call_counter)

@@ -20,33 +20,30 @@
 ! OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ! SOFTWARE.
 
-PURE SUBROUTINE fgaussian_kernel_matrix_element(A_vec, B_vec, inv_sigma_param, sigma_der_param,&
+! For Gaussian kernel.
+PURE SUBROUTINE fgaussian_kernel_matrix_element(A_vec, B_vec, sigma_params,&
                     num_features, num_kern_comps, kernel_element)
 implicit none
 integer, intent(in):: num_features, num_kern_comps
-double precision, intent(in):: inv_sigma_param, sigma_der_param
+double precision, intent(in), dimension(num_kern_comps):: sigma_params
 double precision, intent(inout), dimension(num_kern_comps):: kernel_element
 double precision, intent(in), dimension(num_features):: A_vec, B_vec
 double precision:: sqdist
 
     sqdist=sum((A_vec-B_vec)**2)
-    kernel_element(1)=exp(-sqdist*inv_sigma_param)
-    if (num_kern_comps /= 1) then
-        kernel_element(2)=kernel_element(1)*sqdist*sigma_der_param
-    endif
+    kernel_element(1)=exp(-sqdist*sigma_params(1))
+    if (num_kern_comps /= 1) kernel_element(2)=kernel_element(1)*sqdist*sigma_params(2)
 
 END SUBROUTINE
 
-SUBROUTINE fgaussian_related_parameters(sigma, inv_sigma_param, sigma_der_param, num_kern_comps)
+SUBROUTINE fgaussian_related_parameters(sigma, sigma_params, num_kern_comps)
 implicit none
 double precision, intent(in):: sigma
 integer, intent(in):: num_kern_comps
-double precision, intent(inout):: inv_sigma_param, sigma_der_param
+double precision, intent(inout), dimension(num_kern_comps):: sigma_params
 
-    inv_sigma_param=.5/sigma**2
-    if (num_kern_comps /= 1) then
-        sigma_der_param=sigma**(-3)
-    endif
+    sigma_params(1)=.5/sigma**2
+    if (num_kern_comps /= 1) sigma_params(2)=sigma**(-3)
 
 END SUBROUTINE
 
@@ -57,14 +54,14 @@ integer, intent(in):: num_A, num_B, num_features, num_kern_comps
 double precision, intent(in):: sigma
 double precision, dimension(:, :, :), intent(inout):: kernel_matrix
 integer:: i_A, i_B
-double precision:: inv_sigma_param, sigma_der_param
+double precision, dimension(num_kern_comps):: sigma_params
 
-call fgaussian_related_parameters(sigma, inv_sigma_param, sigma_der_param, num_kern_comps)
+call fgaussian_related_parameters(sigma, sigma_params, num_kern_comps)
 
 !$OMP PARALLEL DO
     do i_A=1, num_A
         do i_B=1, num_B
-            call fgaussian_kernel_matrix_element(A(:, i_A), B(:, i_B), inv_sigma_param, sigma_der_param,&
+            call fgaussian_kernel_matrix_element(A(:, i_A), B(:, i_B), sigma_params,&
                     num_features, num_kern_comps, kernel_matrix(:, i_B, i_A))
         enddo
     enddo
@@ -80,14 +77,14 @@ double precision, intent(in):: sigma
 integer, intent(in):: num_A, num_features, num_kern_comps
 double precision, dimension(:, :, :), intent(inout):: kernel_matrix
 integer:: i_A1, i_A2
-double precision:: inv_sigma_param, sigma_der_param
+double precision, dimension(num_kern_comps):: sigma_params
 
-    call fgaussian_related_parameters(sigma, inv_sigma_param, sigma_der_param, num_kern_comps)
+    call fgaussian_related_parameters(sigma, sigma_params, num_kern_comps)
 
 !$OMP PARALLEL DO SCHEDULE(DYNAMIC)
     do i_A1=1, num_A
         do i_A2=1, i_A1
-            call fgaussian_kernel_matrix_element(A(:, i_A1), A(:, i_A2), inv_sigma_param, sigma_der_param,&
+            call fgaussian_kernel_matrix_element(A(:, i_A1), A(:, i_A2), sigma_params,&
                     num_features, num_kern_comps, kernel_matrix(:, i_A2, i_A1))
         enddo
     enddo
@@ -104,72 +101,85 @@ double precision:: inv_sigma_param, sigma_der_param
 
 END SUBROUTINE
 
+! For Laplacian kernel
 
+PURE SUBROUTINE flaplacian_kernel_matrix_element(A_vec, B_vec, sigma_params,&
+                    num_features, num_kern_comps, kernel_element)
+implicit none
+integer, intent(in):: num_features, num_kern_comps
+double precision, intent(in), dimension(num_kern_comps):: sigma_params
+double precision, intent(inout), dimension(num_kern_comps):: kernel_element
+double precision, intent(in), dimension(num_features):: A_vec, B_vec
+double precision:: abs_dist
 
+    abs_dist=sum(abs(A_vec-B_vec))
+    kernel_element(1)=exp(-abs_dist*sigma_params(1))
+    if (num_kern_comps /= 1) kernel_element(2)=kernel_element(1)*abs_dist*sigma_params(2)
 
+END SUBROUTINE
 
+SUBROUTINE flaplacian_related_parameters(sigma, sigma_params, num_kern_comps)
+implicit none
+double precision, intent(in):: sigma
+integer, intent(in):: num_kern_comps
+double precision, intent(inout), dimension(num_kern_comps):: sigma_params
 
+    sigma_params(1)=sigma**(-1)
+    if (num_kern_comps /= 1) sigma_params(2)=sigma**(-2)
 
+END SUBROUTINE
 
+SUBROUTINE flaplacian_kernel_matrix(A, B, sigma, num_kern_comps, num_A, num_B, num_features, kernel_matrix)
+implicit none
+double precision, dimension(:, :), intent(in):: A, B
+integer, intent(in):: num_A, num_B, num_features, num_kern_comps
+double precision, intent(in):: sigma
+double precision, dimension(:, :, :), intent(inout):: kernel_matrix
+integer:: i_A, i_B
+double precision, dimension(num_kern_comps):: sigma_params
 
+call flaplacian_related_parameters(sigma, sigma_params, num_kern_comps)
 
-subroutine flaplacian_kernel(a, na, b, nb, k, sigma)
-
-    implicit none
-
-    double precision, dimension(:,:), intent(in) :: a
-    double precision, dimension(:,:), intent(in) :: b
-
-    integer, intent(in) :: na, nb
-
-    double precision, dimension(:,:), intent(inout) :: k
-    double precision, intent(in) :: sigma
-
-    double precision :: inv_sigma
-
-    integer :: i, j
-
-    inv_sigma = -1.0d0 / sigma
-
-    !$OMP PARALLEL DO COLLAPSE(2)
-    do i = 1, nb
-        do j = 1, na
-            k(j,i) = exp(inv_sigma * sum(abs(a(:,j) - b(:,i))))
+!$OMP PARALLEL DO
+    do i_A=1, num_A
+        do i_B=1, num_B
+            call flaplacian_kernel_matrix_element(A(:, i_A), B(:, i_B), sigma_params,&
+                    num_features, num_kern_comps, kernel_matrix(:, i_B, i_A))
         enddo
     enddo
-    !$OMP END PARALLEL DO
+!$OMP END PARALLEL DO
 
-end subroutine flaplacian_kernel
+END SUBROUTINE
 
-subroutine flaplacian_kernel_symmetric(x, n, k, sigma)
 
-    implicit none
+SUBROUTINE flaplacian_sym_kernel_matrix(A, sigma, num_kern_comps, num_A, num_features, kernel_matrix)
+implicit none
+double precision, dimension(:, :), intent(in):: A
+double precision, intent(in):: sigma
+integer, intent(in):: num_A, num_features, num_kern_comps
+double precision, dimension(:, :, :), intent(inout):: kernel_matrix
+integer:: i_A1, i_A2
+double precision, dimension(num_kern_comps):: sigma_params
 
-    double precision, dimension(:,:), intent(in) :: x
+    call flaplacian_related_parameters(sigma, sigma_params, num_kern_comps)
 
-    integer, intent(in) :: n
-
-    double precision, dimension(:,:), intent(inout) :: k
-    double precision, intent(in) :: sigma
-
-    double precision :: val
-
-    double precision :: inv_sigma
-    integer :: i, j
-
-    inv_sigma = -1.0d0 / sigma
-
-    k = 1.0d0
-
-    !$OMP PARALLEL DO PRIVATE(val) SCHEDULE(dynamic)
-    do i = 1, n
-        do j = i, n
-            val = exp(inv_sigma * sum(abs(x(:,j) - x(:,i))))
-            k(j,i) = val
-            k(i,j) = val
+!$OMP PARALLEL DO SCHEDULE(DYNAMIC)
+    do i_A1=1, num_A
+        do i_A2=1, i_A1
+            call flaplacian_kernel_matrix_element(A(:, i_A1), A(:, i_A2), sigma_params,&
+                    num_features, num_kern_comps, kernel_matrix(:, i_A2, i_A1))
         enddo
     enddo
-    !$OMP END PARALLEL DO
+!$OMP END PARALLEL DO
+
+!$OMP PARALLEL DO SCHEDULE(DYNAMIC)
+    do i_A1=1, num_A
+        do i_A2=1, i_A1
+            kernel_matrix(:, i_A1, i_A2)=kernel_matrix(:, i_A2, i_A1)
+        enddo
+    enddo
+!$OMP END PARALLEL DO
 
 
-end subroutine flaplacian_kernel_symmetric
+END SUBROUTINE
+
