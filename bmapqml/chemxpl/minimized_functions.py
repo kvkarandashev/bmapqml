@@ -34,8 +34,6 @@ class OrderSlide:
         return sum(self.order_dict[ha.ncharge] for ha in trajectory_point_in.egc.chemgraph.hatoms)
 
 
-from examples.chemxpl.rdkit_tools import rdkit_descriptors
-
 class QM9_properties:
 
     """
@@ -118,15 +116,56 @@ class sample_local_space():
     the target molecule can be from the initial one.
     """
 
-    def __init__(self, X_init,verbose=False,pot_type="harmonic", epsilon=1., sigma=1., gamma=1):
- 
+    def __init__(self, X_init,verbose=False,check_ring=False ,pot_type="harmonic",fp_type=None, epsilon=1., sigma=1., gamma=1):
+        
+        self.fp_type=None or fp_type
         self.epsilon=epsilon
+        self.check_ring = None or check_ring
         self.sigma=sigma
         self.gamma = gamma
         self.X_init=X_init 
         self.pot_type=pot_type
         self.verbose = verbose
         self.canonical_rdkit_output={"canonical_rdkit" : trajectory_point_to_canonical_rdkit}
+
+
+        self.potential = None
+        if self.pot_type=="lj":
+            self.potential = self.lennard_jones_potential
+        elif self.pot_type=="harmonic":
+            self.potential = self.harmonic_potential
+        elif self.pot_type=="buckingham":
+            self.potential = self.buckingham_potential
+        elif self.pot_type=="exponential":
+            self.potential = self.exponential_potential
+        elif self.pot_type=="sharp_parabola":
+            self.potential = self.sharp_parabola_potential
+        elif self.pot_type=="flat_parabola":
+            self.potential = self.flat_parabola_potential
+
+    def get_largest_ring_size(self, SMILES):
+        from rdkit import Chem
+        import numpy as np
+
+        """ 
+        Returns the size of the largest ring in the molecule.
+        """
+
+        m = Chem.MolFromSmiles(SMILES)
+        ri = m.GetRingInfo()
+        all_rings = []
+        for ring in ri.AtomRings():
+            ringAts = set(ring)
+            all_rings.append(np.array(list(ringAts)))
+            
+        all_rings = np.array(all_rings)
+        max_size = max(map(len, all_rings))
+
+        if max_size < 7:
+            return 0
+        else:
+            return 1e10
+
 
     def lennard_jones_potential(self,d):
         """
@@ -145,10 +184,28 @@ class sample_local_space():
         """
 
         if d <= self.sigma:
-            return -self.epsilon #*100
+            return -self.epsilon
         else:
             return (d-self.sigma)**2 - self.epsilon
 
+
+    def sharp_parabola_potential(self,d):
+        """
+        Sharp parabola potential. The potential is given by:
+        """
+        return 20*(d-self.sigma)**2 - self.epsilon
+
+    def flat_parabola_potential(self,d):
+        """
+        Flat parabola potential. The potential is given by:
+        """
+
+        if d < self.gamma:
+            return (d-self.gamma)**2 - self.epsilon
+        if self.gamma <= d <= self.sigma:
+            return -self.epsilon
+        if d > self.sigma:
+            return (d-self.sigma)**2 - self.epsilon
 
 
     def buckingham_potential(self,d):
@@ -169,6 +226,9 @@ class sample_local_space():
         return self.epsilon*np.exp(-self.sigma*d)
 
 
+
+
+
     def __call__(self, trajectory_point_in):
 
 
@@ -176,17 +236,18 @@ class sample_local_space():
         # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,self.fp_type)
 
         d = norm(X_test-self.X_init)
-        if self.pot_type=="lj":
-            V = self.lennard_jones_potential(d)
-        elif self.pot_type=="harmonic":
-            V = self.harmonic_potential(d)
-        elif self.pot_type=="buckingham":
-            V = self.buckingham_potential(d)
-        elif self.pot_type=="exponential":
-            V = self.exponential_potential(d)
+        V = self.potential(d)
+
+        if self.check_ring:
+            try:
+                ring_error = self.get_largest_ring_size(canon_SMILES)
+            except:
+                ring_error = 0
+                
+            V +=  ring_error
 
         if self.verbose:
             print("SMILE:", canon_SMILES,d, V)
@@ -200,31 +261,25 @@ class sample_local_space():
         """
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(self.canonical_rdkit_output)["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,"both" )
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,self.fp_type)
         d = norm(X_test-self.X_init)
-
-        if self.pot_type=="lj":
-            V = self.lennard_jones_potential(d)
-        elif self.pot_type=="harmonic":
-            V = self.harmonic_potential(d)
-        elif self.pot_type=="buckingham":
-            V = self.buckingham_potential(d)
-        elif self.pot_type=="exponential":
-            V = self.exponential_potential(d)
+        V = self.potential(d)
 
         return V, d
 
 
     def evaluate_trajectory(self, trajectory_points):
+        from tqdm import tqdm
+        
         """
         Evaluate the function on a list of trajectory points 
         """
         
-        
-
-        
         #Aparently this is the fastest way to do this:
-        values = Parallel(n_jobs=24)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        values = []
+        for trajectory_point in tqdm(trajectory_points):
+            values.append(self.evaluate_point(trajectory_point))
+        # Parallel(n_jobs=1)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
 
     
