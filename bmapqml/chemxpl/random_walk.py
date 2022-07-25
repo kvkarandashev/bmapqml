@@ -845,18 +845,25 @@ class RandomWalk:
         )
         for _ in range(num_genetic_tries):
             changed_replica_ids = self.random_changed_replica_pair()
+            # The swap before is to avoid situations where the pair's
+            # initial ordering's probability is 0 in genetic move,
+            # the second is for detailed balance concerns.
+            self.parallel_tempering_swap(changed_replica_ids)
             self.genetic_MC_step(changed_replica_ids)
+            self.parallel_tempering_swap(changed_replica_ids)
+
+    def parallel_tempering_swap(self, replica_ids):
+        trial_tps = [
+            deepcopy(self.cur_tps[replica_ids[1]]),
+            deepcopy(self.cur_tps[replica_ids[0]]),
+        ]
+        return self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
-
         if self.min_function is not None:
             for _ in range(num_parallel_tempering_tries):
-                old_ids = random_pair(self.num_replicas)
-                trial_tps = [
-                    deepcopy(self.cur_tps[old_ids[1]]),
-                    deepcopy(self.cur_tps[old_ids[0]]),
-                ]
-                _ = self.accept_reject_move(trial_tps, 0.0, replica_ids=old_ids)
+                replica_ids = self.random_changed_replica_pair()
+                _ = self.parallel_tempering_swap(replica_ids)
 
     def global_change_dict(self):
         return {
@@ -1045,13 +1052,11 @@ class RandomWalk:
 
     def ordered_trajectory_ids(self):
         assert self.keep_full_trajectory
-        output = np.zeros((self.global_MC_step_counter, self.num_replicas), dtype=int)
-        for tp_id, tp in enumerate(self.histogram):
-            if tp.visit_step_ids is not None:
-                for replica_id, replica_visits in enumerate(tp.visit_step_ids):
-                    for replica_visit in replica_visits:
-                        output[replica_visit - 1, replica_id] = tp_id
-        return output
+        return ordered_trajectory_ids(
+            self.histogram,
+            num_global_MC_steps=self.global_MC_step_counter,
+            num_replicas=self.num_replicas,
+        )
 
     # Quality-of-life-related.
     def frequency_checker(self, identifier, frequency):
@@ -1153,3 +1158,48 @@ def merge_random_walks(*rw_list):
     for rw in rw_list[1:]:
         output.combine_trajectory(rw)
     return output
+
+
+# Some procedures for convenient RandomWalk analysis.
+def histogram_num_replicas(histogram):
+    return len(histogram[0].visit_step_ids)
+
+
+def ordered_trajectory_ids(histogram, num_global_MC_steps=None, num_replicas=None):
+    if num_replicas is None:
+        num_replicas = histogram_num_replicas(histogram)
+    if num_global_MC_steps is None:
+        num_global_MC_steps = 0
+        for tp in histogram:
+            for replica_visits in tp.visit_step_ids:
+                if len(replica_visits) != 0:
+                    num_global_MC_steps = max(num_global_MC_steps, max(replica_visits))
+        num_global_MC_steps += 1
+    output = np.zeros((num_global_MC_steps, num_replicas), dtype=int)
+    for tp_id, tp in enumerate(histogram):
+        if tp.visit_step_ids is not None:
+            for replica_id, replica_visits in enumerate(tp.visit_step_ids):
+                for replica_visit in replica_visits:
+                    output[replica_visit - 1, replica_id] = tp_id
+    return output
+
+
+def average_wait_number(histogram):
+    return average_wait_number_from_traj_ids(ordered_trajectory_ids(histogram))
+
+
+def average_wait_number_from_traj_ids(traj_ids):
+    num_replicas = traj_ids.shape[-1]
+    output = np.zeros((num_replicas,), dtype=int)
+    cur_time = np.zeros((num_replicas,), dtype=int)
+    prev_ids = traj_ids[0]
+    for cur_ids in traj_ids[1:]:
+        for counter, (cur_id, prev_id) in enumerate(zip(cur_ids, prev_ids)):
+            if cur_id == prev_id:
+                cur_time[counter] += 1
+            else:
+                cur_time[counter] = 0
+        output[:] += cur_time[:]
+        prev_ids = cur_ids
+
+    return output / traj_ids.shape[0]

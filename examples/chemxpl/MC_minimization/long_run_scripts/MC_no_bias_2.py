@@ -72,6 +72,7 @@ rw = RandomWalk(
     min_function=min_func,
     min_function_name=min_func_name,
     keep_histogram=True,
+    keep_full_trajectory=True,
     make_restart_frequency=make_restart_frequency,
     soft_exit_check_frequency=make_restart_frequency,
     restart_file=restart_file_prefix + str(seed) + ".pkl",
