@@ -23,6 +23,18 @@ import random, os
 from copy import deepcopy
 import numpy as np
 
+np.seterr(all="raise")
+
+
+def exp_wexceptions(val):
+    try:
+        return np.exp(val)
+    except FloatingPointError:
+        if val > 0.0:
+            return np.inf
+        else:
+            return 0.0
+
 
 # TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
 # TODO 3. keep_histogram option needs more testing.
@@ -670,7 +682,7 @@ class RandomWalk:
         if delta_pot < 0.0:
             return True
         else:
-            return random.random() < np.exp(-delta_pot)
+            return random.random() < exp_wexceptions(-delta_pot)
 
     def virtual_beta_present(self, beta_ids):
         return any([self.virtual_beta_id(beta_id) for beta_id in beta_ids])
@@ -745,13 +757,13 @@ class RandomWalk:
                 if delta_pot < 0.0:
                     return 0.0
                 else:
-                    return 1.0 - np.exp(-delta_pot)
+                    return 1.0 - exp_wexceptions(-delta_pot)
             else:
-                exp_val = np.exp(-delta_pot)
+                exp_val = exp_wexceptions(-delta_pot)
                 if np.isinf(exp_val):
                     return None
                 else:
-                    return (1.0 + np.exp(-delta_pot)) ** (-1)
+                    return (1.0 + exp_val) ** (-1)
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):
