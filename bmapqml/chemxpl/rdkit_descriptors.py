@@ -14,6 +14,7 @@ import collections
 from bmapqml.utils import embarrassingly_parallel
 from tqdm import tqdm
 from rdkit.Chem import rdMolDescriptors
+import pdb
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -129,24 +130,14 @@ def get_single_FP(smi, fp_type, radius=4, nBits=8192, useFeatures=True):
     return fp_mol
 
 # TODO KK@Jan: rewrite all this properly using a dictionnary
-def extended_get_single_FP(smi, fp_type, radius=4, nBits=8192, useFeatures=True):
-    if fp_type=="MorganFingerprint":
+def extended_get_single_FP(smi, fp_type, radius=4, nBits=4096, useFeatures=True):
 
-        x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint",
+
+    x = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint",
                     radius=radius, nBits=nBits, useFeatures=useFeatures))
 
-    if fp_type=="COMPQ":
-
-        x = COMPQ_PLUS(smi)
-
-    if fp_type=="both":
-
-        x1  = ExplicitBitVect_to_NumpyArray(get_single_FP(smi, "MorganFingerprint",
-                        radius=radius, nBits=nBits, useFeatures=useFeatures))
-        x2  = COMPQ_PLUS(smi)
-        x   = np.concatenate((x1, x2))
-
     return x
+    
 
 
 def get_all_FP(SMILES, fp_type, **kwargs):
@@ -155,14 +146,17 @@ def get_all_FP(SMILES, fp_type, **kwargs):
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
 
-    X = np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,), other_kwargs=kwargs))
+    X = []
+    #np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,), other_kwargs=kwargs))
+    for smi in tqdm(SMILES):
+        X.append(extended_get_single_FP(smi, fp_type, **kwargs))
+    return np.array(X)
+    #return X
 
-    return X
 
 
 
-
-def atomization_en(EN, ATOMS, normalize=True):
+def atomization_en(EN, ATOMS, normalize=False):
 
     """
     Compute the atomization energy, if normalize is True, 
@@ -263,7 +257,7 @@ def process_qm9(directory, all=True):
     if all:
         nr_molecules = len(os.listdir(directory))
     else:
-        nr_molecules = 2000
+        nr_molecules = 10000
 
     for file in tqdm(os.listdir(directory)[:nr_molecules]): 
         path = os.path.join(directory, file)
@@ -272,7 +266,7 @@ def process_qm9(directory, all=True):
         data.append((atoms, coordinates))
         smiles.append(smile)  # The SMILES representation
 
-        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=True)
+        ATOMIZATION = atomization_en(float(prop[10]), atoms, normalize=False)
         prop += [ATOMIZATION]
         prop += [mol_id]
         properties.append(prop)  # The molecules properties

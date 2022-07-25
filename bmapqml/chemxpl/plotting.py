@@ -1,6 +1,21 @@
 
 from bmapqml.utils import * 
+from bmapqml.chemxpl import rdkit_descriptors
+from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
+from sklearn.decomposition import PCA
+import pickle
+import matplotlib.pyplot as plt
+import matplotlib.tri as tri
+import numpy as np
+import pdb
+from rdkit import RDLogger  
 
+#/bmapqml/chemxpl/utils.py
+lg = RDLogger.logger()
+
+lg.setLevel(RDLogger.CRITICAL)   
+import warnings
+warnings.filterwarnings('ignore')
 
 class analyze_random_walk:
 
@@ -9,57 +24,71 @@ class analyze_random_walk:
     Visualize chemical space and convex hull of the walk.
     """
 
-    def __init__(self, histograms, model=None, verbose=False):
-        import numpy as np
-        import pdb
+    def __init__(self, histograms,target, trajectory=None,fp_type=None, model=None, verbose=False, name=None, dmin=None, thickness=None):
         """
         histogram : list of all unique encountered points in the random walk.
         minimize_fct : if desired reevaluate all unique molecules using this function
         """
 
-        #pdb.set_trace()
-        import pickle
-        all_tps = []
-        for h in histograms:
-
-            all_tps.append(pickle.load(open(h, "rb")))
-
-        self.tps     = np.concatenate(all_tps)
-        self.histogram= np.array(self.convert_to_smiles(self.tps))
+        self.name = name or None
+        self.histogram = histograms or None
+        self.target = target
         self.model = None or model
+        self.trajectory = None or trajectory
+        self.fp_type = fp_type
+        self.dmin = dmin or None
+        self.thickness = thickness or None
+        print(self.fp_type)
+        #pdb.set_trace()
+
+
+        try:
+            unique_tps = []
+            for h in histograms:
+                unique_tps.append(pickle.load(open(h, "rb")))
+            self.tps     = np.concatenate(unique_tps)
+            self.histogram= np.array(self.convert_to_smiles(self.tps))
+
+        except:
+            self.tps = pickle.load(open(histograms, "rb"))
+            self.tps_smiles= np.array(self.convert_to_smiles(self.tps))
+            self.histogram= np.array(self.convert_to_smiles(self.tps))
+
         if verbose:
             print("Number of unique points in the random walk:", len(self.histogram))
-
-
-        """
-        self.saved_candidates=pickle.load(open(saved_candidates, "rb"))
-        self.saved_candidates_tps, self.saved_candidates_func_val = [],[]
-        for mol in self.saved_candidates:
-            self.saved_candidates_tps.append(mol.tp)
-            self.saved_candidates_func_val.append(mol.func_val)
-        del(self.saved_candidates)
-        self.saved_candidates = self.convert_to_smiles(self.saved_candidates_tps)
-        self.saved_candidates_func_val = np.array(self.saved_candidates_func_val)
-        """
         
+        if self.trajectory is not None:
+            print("Loading trajectory from file:", self.trajectory)
+            self.all_tps = np.array(pickle.load(open(self.trajectory, "rb")))
+            print("Done loading trajectory from file:", self.trajectory)
+            self.all_tps_smiles = np.ones_like(self.all_tps)
+            #here select a single temperature to make it easier
+            self.all_tps = self.all_tps[:,5]
 
-    
+            #self.all_tps_smiles = self.convert_to_smiles(self.all_tps)
+            #[]
+            #np.array(Parallel(n_jobs=12)(delayed(trajectory_point_to_canonical_rdkit)(tp) for tp in self.all_tps))[:,3]
+            print("Done computing all smiles")
+            #exit()
+            """
+            for n in range(len(self.all_tps)):
+                self.all_tps[n] = self.all_tps[n]
+                self.all_tps_smiles[n] =  self.convert_to_smiles(self.all_tps[n])
+            print("Done convertig trajectory to smiles")
+            self.all_tps = self.all_tps[:,5]
+            self.all_tps_smiles = self.all_tps_smiles[:,5]
+            """
+        
     def convert_to_smiles(self, mols):
-
+        from tqdm import tqdm
         """
         Convert the list of molecules to SMILES strings.
-        """
-
-        import rdkit
-        from rdkit import Chem
-
-        """
         tp_list: list of molecules as trajectory points
         smiles_mol: list of rdkit molecules
         """
 
         smiles_mol = []
-        for tp in mols:
+        for tp in tqdm(mols):
             
             rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
             smiles_mol.append(rdkit_obj[3])
@@ -68,51 +97,102 @@ class analyze_random_walk:
 
 
     def compute_representations(self):
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
-        X = rdkit_descriptors.get_all_FP(self.histogram, fp_type="both")
+        """
+        Compute the representations of all unique smiles in the random walk.
+        """
+
+        X = rdkit_descriptors.get_all_FP(self.histogram, fp_type=self.fp_type)
         return X
 
 
-    def compute_PCA(self):
+    def evaluate_all_trajectory_points(self):
+        """
+        Evaluate the function on all trajectory points.
+        """
+        print("Evaluating all trajectory points")
+        X_target = rdkit_descriptors.extended_get_single_FP(self.target,self.fp_type )
+        pdb.set_trace()
+        X = rdkit_descriptors.get_all_FP(self.all_tps_smiles, fp_type=self.fp_type)
+        print("evaluating all trajectory points")
+        evaluation = self.model.evaluate_trajectory(self.all_tps)
 
-        from sklearn.decomposition import PCA
-        from sklearn.preprocessing import StandardScaler
+        self.all_values = evaluation[:,0]
+        self.all_distances = evaluation[:,1] #np.zeros(len(self.all_tps))
+
+        #print("evaluating all distances")
+        #for ind,x in enumerate(X):
+        #    self.all_distances[ind] = np.linalg.norm(x-X_target)
+
+        np.savez_compressed("complete_histogram_{}".format(self.name), all_tps_smiles=self.all_tps_smiles,all_distances=self.all_distances,all_values=self.all_values) 
+        return self.all_tps_smiles, self.all_distances,self.all_values
+
+
+
+    def evaluate_histogram(self):
+        """
+        Compute values of a function evaluated on all unique smiles in the random walk.
+        """
+        print("Evaluating histogram")
+        #X_target = rdkit_descriptors.extended_get_single_FP(self.target,self.fp_type )
+
+        evaluation = self.model.evaluate_trajectory(self.tps)
+        self.values = evaluation[:,0]
+        self.distances = evaluation[:,1]
+        #np.zeros(len(self.tps))
+        #X = rdkit_descriptors.get_all_FP(self.tps_smiles, fp_type=self.fp_type)
+        #for ind,x in enumerate(X):
+        #   self.distances[ind] = np.linalg.norm(x-X_target)
+
+        lower_lim , upper_lim = self.dmin-self.thickness, self.dmin
+        #shell_vol = self.volume_of_nsphere(4096, upper_lim) - self.volume_of_nsphere(4096, lower_lim)
+        in_interval = ((self.distances >= lower_lim) & (self.distances <=  upper_lim))
+        print("Number of points in the interval:", "[{},{}]".format(lower_lim, upper_lim)  , len(self.distances[in_interval]))
+        print(self.tps_smiles[in_interval])
+        np.savez_compressed("histogram_{}".format(self.name), tps_smiles=self.tps_smiles,distances=self.distances,values=self.values) 
+        exit()
+        #pdb.set_trace()
+        
+        return self.values
+
+    def volume_of_nsphere(N, R):
+        from scipy.special import gamma
+
+        """
+        Compute the volume of a sphere with radius R embedded in 
+        N dimensions.
+
+        https://en.wikipedia.org/wiki/N-sphere
+        S_{n+1}=2\pi V_{n}
+        {\displaystyle Vd_{n}(R)={\frac {\pi ^{n/2}}{\Gamma {\bigl (}{\tfrac {n}{2}}+1{\bigr )}}}R^{n},}
+        #https://en.wikibooks.org/wiki/Molecular_Simulation/Radial_Distribution_Functions  
+        """
+        return (np.pi ** (N / 2)) / (gamma(N / 2 + 1)) * R ** N
+
+
+
+
+    def compute_radial_distribution_functino(self, N, R):
+        """
+        Compute the radial distribution function 
+        """
+        pass
+
+    def compute_PCA(self):
+        """
+        Compute PCA of the random walk and return the first two principal components.
+        """
         X = self.compute_representations()
         reducer = PCA(n_components=2)
         reducer.fit(X)
         X_2d = reducer.transform(X)
-        #scaler = StandardScaler()
-        #X_2d = scaler.fit_transform(X_2d)
         return X_2d, reducer
 
-
-
-
-    def evaluate_histogram(self, save_histogram=False):
-        import numpy as np
-        
-        """
-        Compute values of a function evaluated on all unique smiles in the random walk.
-        """
-
-        self.values = self.model.evaluate_trajectory(self.tps)
-
-        if save_histogram:
-            np.savez_compressed("QM9_histogram_values", values=self.values)
-
-        return self.values
-
     def compute_pareto_front(self):
-        
         """
         values: array of function values
         Returns values of points in the pareto front.
         pareto_front as well as the indices
         """
-
-            #except:
-            #    self.values = np.load("QM9_histogram_values.npz")["values"]
-            #   two_dim = self.values[:,:2]
 
         if self.values.shape == (len(self.values),3):
 
@@ -122,9 +202,7 @@ class analyze_random_walk:
             Subselect only the two properties to determine pareto front
             """
 
-            
             two_properties = self.values[:,:2]
-
             Xs, Ys = two_properties[:,0], two_properties[:,1]
             maxY = False
             sorted_list = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxY)
@@ -145,8 +223,6 @@ class analyze_random_walk:
             
             inds =np.array(inds)
             inds  = inds.astype('int')
-
-
             self.pareto_mols = self.histogram[inds]
             self.pareto_front = np.array(pareto_front)
             return self.pareto_front, np.int_(inds), self.pareto_mols
@@ -187,7 +263,7 @@ class analyze_random_walk:
         simulation
         """
 
-        import numpy as np
+        
 
         try:
             if self.values.shape == (len(self.values),3):
@@ -213,8 +289,7 @@ class analyze_random_walk:
 
 
             elif self.values.shape == (len(self.values),2):
-                import pdb
-               #
+               
                 front, _ , mols = self.compute_pareto_front()
                 best_loss = np.argsort(front[:,0])
                 if verbose:
@@ -222,7 +297,7 @@ class analyze_random_walk:
                     [print(m,  "{:.2f}".format(P1[1])) for m,P1 in zip(self.pareto_mols[best_loss], front[best_loss])]
                 f = open(filename+".dat", "w")
                 f.write("Best Candidates:\n")
-                #pdb.set_trace()
+
             
                 [f.write(m+" " + "{:.2f}".format(P1[1])+"\n") for m,P1 in zip(self.pareto_mols[best_loss], front[best_loss])]
                 f.close()
@@ -246,8 +321,7 @@ class analyze_random_walk:
 
 
     def plot_pateto_front(self, name):
-        import matplotlib.pyplot as plt
-        import matplotlib.tri as tri
+
 
         try:
             if self.values.shape == (len(self.values),3):
@@ -312,7 +386,6 @@ class analyze_random_walk:
             raise ValueError("Wrong shape of values array")
 
     def plot_chem_space(self, name):
-        import matplotlib.pyplot as plt
         
         try:
             import seaborn as sns
@@ -342,19 +415,16 @@ class analyze_random_walk:
         ax2.xaxis.set_ticks_position('bottom')
         ax2.spines['left'].set_position(('axes', -0.05))
 
-        from examples.chemxpl.rdkit_tools import rdkit_descriptors
         print("Compute PCA")
         X_2d, reducer = self.compute_PCA()
-        target = "CCCCCCCCC"
-        X_target = rdkit_descriptors.get_all_FP([target], fp_type="both")
+        target = self.target
+        X_target = rdkit_descriptors.get_all_FP([target], fp_type=self.fp_type)
         X_extra = reducer.transform(X_target)
 
         print("Plot PCA")
         if self.values.shape == (len(self.values),3):
             sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=200,alpha=0.1,marker="o", c=self.values[:,2],edgecolors='none')
         if self.values.shape == (len(self.values),2):
-            #pdb.set_trace()
-            #self.values[:,0][0]=-20
             ax2.scatter(x=X_extra[:,0], y=X_extra[:,1],s=200,marker="x",edgecolors='none')
             sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=200,alpha=0.5,marker="o", c=self.values[:,1],edgecolors='none')
         if self.values.shape == (len(self.values),):
@@ -368,55 +438,3 @@ class analyze_random_walk:
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("{}_PCA.pdf".format(name))
         plt.close()
-
-
-
-    def moltosvg(self, mol,molSize=(450,15),kekulize=True):
-        from rdkit import Chem
-        from rdkit.Chem.Draw import rdMolDraw2D
-        from rdkit.Chem.Draw import rdDepictor
-
-        mol = Chem.MolFromSmiles(mol)
-        mc = Chem.Mol(mol.ToBinary())
-        if kekulize:
-            try:
-                Chem.Kekulize(mc)
-            except:
-                mc = Chem.Mol(mol.ToBinary())
-        if not mc.GetNumConformers():
-            rdDepictor.Compute2DCoords(mc)
-        drawer = rdMolDraw2D.MolDraw2DSVG(molSize[0],molSize[1])
-        drawer.DrawMolecule(mc)
-        drawer.FinishDrawing()
-        svg = drawer.GetDrawingText()
-        return svg.replace('svg:','')
-
-
-    def interactive_chem_space(self):
-        
-        """
-        Visualize the chemical space in an interactive plot combining the
-        pareto front and lewis structures of molecules
-        """
-
-        try:
-
-            import numpy as np
-            import matplotlib.pyplot as plt
-            import mpld3
-            from rdkit.Chem.Draw import IPythonConsole
-            from rdkit.Chem import Draw
-            from rdkit.Chem import AllChem
-            from mpld3 import plugins
-            mpld3.enable_notebook()
-        
-        except:
-            print("Please install the following packages:")
-            print("matplotlib, mpld3, rdkit, seaborn")
-            raise ValueError("Missing packages")
-        
-        svgs = [self.moltosvg(m) for m in self.pareto_mols]
-        fig3,ax3= plt.subplots(figsize=(8,8))
-        points = ax3.scatter(self.pareto_front[:,0],self.pareto_front[:,1]) 
-        tooltip = plugins.PointHTMLTooltip(points, svgs)
-        plugins.connect(fig3, tooltip)
