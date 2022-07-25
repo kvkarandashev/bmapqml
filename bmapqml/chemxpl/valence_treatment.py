@@ -1092,15 +1092,72 @@ class ChemGraph:
         return triple_gt_witer(self, ch2) is None
 
     def __str__(self):
-        return (
-            "heavy atoms: "
-            + str(self.hatoms)
-            + " , bonds&orders: "
-            + str(self.bond_orders)
-        )
+        if self.canonical_permutation is None:
+            self.init_canonical_permutation()
+        hatom_strings = []
+
+        for hatom_canon_id, hatom_id in enumerate(self.inv_canonical_permutation):
+            canonical_neighbor_list = []
+            for neigh_id in self.neighbors(hatom_id):
+                canonical_neighbor_id = self.canonical_permutation[neigh_id]
+                if canonical_neighbor_id > hatom_canon_id:
+                    canonical_neighbor_list.append(canonical_neighbor_id)
+            hatom_string = str(self.hatoms[hatom_id].ncharge)
+            nhydrogens = self.hatoms[hatom_id].nhydrogens
+            if nhydrogens != 0:
+                hatom_string += "#" + str(nhydrogens)
+            if len(canonical_neighbor_list) != 0:
+                canonical_neighbor_list.sort()
+                hatom_string += "@" + "@".join(
+                    str(cn_id) for cn_id in canonical_neighbor_list
+                )
+            hatom_strings.append(hatom_string)
+        return ":".join(hatom_strings)
 
     def __repr__(self):
         return str(self)
+
+
+# For more convenient conversion from string representation of ChemGraphs to other formats.
+def chemgraph_str2unchecked_adjmat_ncharges(input_string):
+    hatom_ncharges = []
+    hydrogen_nums = []
+    hatom_neighbors = []
+    for hatom_str in input_string.split(":"):
+        if "@" in hatom_str:
+            hatom_str_split = hatom_str.split("@")
+            hatom_str_remainder = hatom_str_split[0]
+            hatom_neighbors.append([int(neigh_id) for neigh_id in hatom_str_split[1:]])
+        else:
+            hatom_str_remainder = hatom_str
+            hatom_neighbors.append([])
+        if "#" in hatom_str_remainder:
+            hatom_str_split = hatom_str_remainder.split("#")
+            hatom_ncharges.append(int(hatom_str_split[0]))
+            hydrogen_nums.append(int(hatom_str_split[1]))
+        else:
+            hatom_ncharges.append(int(hatom_str_remainder))
+            hydrogen_nums.append(0)
+    nuclear_charges = np.append(
+        np.array(hatom_ncharges), np.ones((sum(hydrogen_nums),), dtype=int)
+    )
+    natoms = len(nuclear_charges)
+    adj_mat = np.zeros((natoms, natoms), dtype=int)
+    last_h_id = len(hatom_ncharges)
+    for i, (j_list, hnum) in enumerate(zip(hatom_neighbors, hydrogen_nums)):
+        for j in j_list:
+            adj_mat[i, j] = 1
+            adj_mat[j, i] = 1
+        for _ in range(hnum):
+            adj_mat[i, last_h_id] = 1
+            adj_mat[last_h_id, i] = 1
+            last_h_id += 1
+    return adj_mat, nuclear_charges
+
+
+def str2ChemGraph(input_string):
+    unchecked_adjmat, ncharges = chemgraph_str2unchecked_adjmat_ncharges(input_string)
+    return ChemGraph(nuclear_charges=ncharges, adj_mat=unchecked_adjmat)
 
 
 # For splitting chemgraphs.
@@ -1110,7 +1167,6 @@ def split_chemgraph_no_dissociation_check(cg_input, membership_vector, copied=Fa
     else:
         cg = copy.deepcopy(cg_input)
     subgraphs_vertex_ids = sorted_by_membership(membership_vector)
-    broken_bonds = []
 
     new_graph_list = []
     new_hatoms_list = []

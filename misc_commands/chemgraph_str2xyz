@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ "$1" == "" ]
+then
+    echo "Use ChemGraph string as second argument"
+    exit
+fi
+
+python -c "
+from bmapqml.chemxpl.utils import egc2xyz_string, egc_with_coords
+from bmapqml.chemxpl.valence_treatment import str2ChemGraph
+from bmapqml.chemxpl import ExtGraphCompound
+
+import sys
+
+input_string=sys.argv[1]
+
+input_cg=str2ChemGraph(input_string)
+
+input_egc=ExtGraphCompound(chemgraph=input_cg)
+
+egc_wcoords=egc_with_coords(input_egc)
+
+print(egc2xyz_string(egc_wcoords))
+" $1

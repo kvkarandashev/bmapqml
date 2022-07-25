@@ -49,6 +49,22 @@ def canonical_atomtype(atomtype):
     return atomtype[0].upper() + atomtype[1:].lower()
 
 
+ELEMENTS = None
+
+
+def str_atom_corr(ncharge):
+    global ELEMENTS
+    if ELEMENTS is None:
+        ELEMENTS = {}
+        for cur_el, cur_ncharge in NUCLEAR_CHARGE.items():
+            ELEMENTS[cur_ncharge] = cur_el
+    return ELEMENTS[ncharge]
+
+
+# def str_atom_corr(ncharge):
+#    return canonical_atomtype(str_atom(ncharge))
+
+
 def dump2pkl(obj, filename):
     """
     Dump an object to a pickle file.
@@ -107,19 +123,34 @@ def checked_input_readlines(file_input):
 
 
 def write_compound_to_xyz_file(compound, xyz_file_name):
-    write_xyz_file(compound.coordinates, compound.atomtypes, xyz_file_name)
+    write_xyz_file(compound.coordinates, xyz_file_name, elements=compound.atomtypes)
 
 
-def write_xyz_file(coordinates, elements, xyz_file_name):
-    xyz_file = open(xyz_file_name, "w")
-    xyz_file.write(str(len(coordinates)) + "\n\n")
+def xyz_string(coordinates, elements=None, nuclear_charges=None):
+    """
+    Create an xyz-formatted string from coordinates and elements or nuclear charges.
+    coordinates : coordinate array
+    elements : string array of element symbols
+    nuclear_charges : integer array; used to generate element list if elements is set to None
+    """
+    if elements is None:
+        elements = [str_atom_corr(charge) for charge in nuclear_charges]
+    output = str(len(coordinates)) + "\n"
     for atom_coords, element in zip(coordinates, elements):
-        xyz_file.write(
-            element
+        output += (
+            "\n"
+            + element
             + " "
             + " ".join([str(atom_coord) for atom_coord in atom_coords])
-            + "\n"
         )
+    return output
+
+
+def write_xyz_file(coordinates, xyz_file_name, elements=None, nuclear_charges=None):
+    xyz_file = open(xyz_file_name, "w")
+    xyz_file.write(
+        xyz_string(coordinates, elements=elements, nuclear_charges=nuclear_charges)
+    )
     xyz_file.close()
 
 
@@ -127,7 +158,7 @@ def read_xyz_file(xyz_input, additional_attributes=["charge"]):
 
     lines = checked_input_readlines(xyz_input)
 
-    return read_xyz_lines(lines)
+    return read_xyz_lines(lines, additional_attributes=additional_attributes)
 
 
 def read_xyz_lines(xyz_lines, additional_attributes=["charge"]):

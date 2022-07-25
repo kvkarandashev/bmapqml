@@ -12,7 +12,6 @@ try:
         chiral_stereo_check,
         AC2mol,
         int_atom,
-        str_atom,
     )
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
@@ -24,7 +23,7 @@ from .ext_graph_compound import ExtGraphCompound
 from .modify import replace_heavy_atom, atom_replacement_possibilities
 import numpy as np
 from igraph import Graph
-from ..utils import canonical_atomtype, read_xyz_file, default_num_procs
+from ..utils import read_xyz_file, default_num_procs, write_xyz_file, xyz_string
 from .valence_treatment import ChemGraph, InvalidAdjMat
 import copy, tarfile
 from sortedcontainers import SortedList
@@ -267,27 +266,14 @@ def xbgf2gc(xbgf_file):
 
 
 #   Some procedures that often appear in scripts.
-def str_atom_corr(ncharge):
-    return canonical_atomtype(str_atom(ncharge))
+
+
+def egc2xyz_string(egc):
+    return xyz_string(egc.coordinates, nuclear_charges=egc.nuclear_charges)
 
 
 def write_egc2xyz(egc, xyz_file_name):
     write_xyz_file(egc.coordinates, xyz_file_name, charges=egc.nuclear_charges)
-
-
-def write_xyz_file(coordinates, xyz_file_name, charges=None, elements=None):
-    if elements is None:
-        elements = [str_atom_corr(charge) for charge in charges]
-    xyz_file = open(xyz_file_name, "w")
-    xyz_file.write(str(len(coordinates)) + "\n\n")
-    for atom_coords, element in zip(coordinates, elements):
-        xyz_file.write(
-            element
-            + " "
-            + " ".join([str(atom_coord) for atom_coord in atom_coords])
-            + "\n"
-        )
-    xyz_file.close()
 
 
 def all_egc_from_tar(tarfile_name):
