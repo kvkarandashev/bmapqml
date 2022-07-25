@@ -736,7 +736,7 @@ class RandomWalk:
                 if self.betas[replica_ids[min_arg]] is None:
                     return 1.0
                 else:
-                    return 0.0
+                    return None
         else:
             delta_pot = -(self.betas[replica_ids[0]] - self.betas[replica_ids[1]]) * (
                 mfunc_vals[0] - mfunc_vals[1]
@@ -747,7 +747,11 @@ class RandomWalk:
                 else:
                     return 1.0 - np.exp(-delta_pot)
             else:
-                return (1.0 + np.exp(-delta_pot)) ** (-1)
+                exp_val = np.exp(-delta_pot)
+                if np.isinf(exp_val):
+                    return None
+                else:
+                    return (1.0 + np.exp(-delta_pot)) ** (-1)
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):
@@ -800,10 +804,9 @@ class RandomWalk:
             if random.random() > new_pair_shuffle_prob:  # shuffle
                 new_pair_shuffle_prob = 1.0 - new_pair_shuffle_prob
                 new_pair_tps = new_pair_tps[::-1]
-            if self.virtual_beta_present(replica_ids):
-                old_pair_shuffle_prob = 1.0  # will be ignored anyway
-            else:
-                old_pair_shuffle_prob = self.tp_pair_order_prob(replica_ids)
+            old_pair_shuffle_prob = self.tp_pair_order_prob(replica_ids)
+            if old_pair_shuffle_prob is None:
+                return True
             prob_balance += np.log(new_pair_shuffle_prob / old_pair_shuffle_prob)
         accepted = self.accept_reject_move(
             new_pair_tps, prob_balance, replica_ids=replica_ids
