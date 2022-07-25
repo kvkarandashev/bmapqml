@@ -962,6 +962,8 @@ class RandomWalk:
         if (bias_coeff is None) or (tp.num_visits is None):
             return 0.0
         else:
+            if (self.histogram is None) or (tp not in self.histogram):
+                return 0.0
             tp_index = self.histogram.index(tp)
             if self.bias_pot_all_replicas:
                 cur_visit_num = float(np.sum(self.histogram[tp_index].num_visits))
