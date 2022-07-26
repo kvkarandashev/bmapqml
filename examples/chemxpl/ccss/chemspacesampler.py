@@ -27,7 +27,7 @@ random.seed(1337+args.label)
 possible_elements=["C", "O", "N"]
 
 forbidden_bonds=None
-ref_beta=8000 #4000.
+ref_beta=20000 #4000.
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas=[None, None, ref_beta, ref_beta/2, ref_beta/4, ref_beta/8]
@@ -85,3 +85,4 @@ dump2pkl(rw.histogram, "histogram.pkl")
 dump2pkl(traj, "trajectory.pkl")
 ana = analyze_random_walk("histogram.pkl",trajectory="trajectory.pkl", target=target, fp_type = fp_type, model=min_func, name=min_func_name,verbose=True, dmin=args.dmin, thickness=args.thickness)
 ana.evaluate_histogram()
+ana.evaluate_all_trajectory_points()
