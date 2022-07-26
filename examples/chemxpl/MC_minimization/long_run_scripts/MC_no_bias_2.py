@@ -79,7 +79,7 @@ rw = RandomWalk(
     num_saved_candidates=100,
     delete_temp_data=["coord_info", "res_dict"],
     histogram_dump_file_prefix="histogram_dump_",
-    max_histogram_size=1000000,
+    max_histogram_size=None,
     track_histogram_size=True,
 )
 

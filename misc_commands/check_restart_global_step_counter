@@ -1,0 +1,10 @@
+#!/bin/bash
+# Created to more easily check how far a simulation has progressed from its restart file.
+
+python -c "
+from bmapqml.utils import loadpkl
+
+l=loadpkl('$1')
+
+print(l['global_MC_step_counter'])
+"
