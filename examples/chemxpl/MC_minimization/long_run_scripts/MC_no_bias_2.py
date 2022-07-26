@@ -29,7 +29,7 @@ forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.5]
 
-make_restart_frequency = 2000
+make_restart_frequency = 10000
 num_MC_steps = 500000
 
 bias_coeff = None
@@ -45,7 +45,7 @@ randomized_change_params = {
 }
 global_change_params = {
     "num_parallel_tempering_tries": 32,
-    "num_genetic_tries": 4,
+    "num_genetic_tries": 8,
     "prob_dict": {"simple": 0.3, "genetic": 0.3, "tempering": 0.3},
 }
 
