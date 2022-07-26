@@ -14,6 +14,7 @@ from joblib import Parallel, delayed
 import os, sys
 from bmapqml.chemxpl import rdkit_descriptors
 
+from rdkit import Chem
 
 class Diatomic_barrier:
     """
@@ -709,7 +710,6 @@ class multi_obj:
         return values                
     
         """
-
 
 class Rdkit_properties:
 
