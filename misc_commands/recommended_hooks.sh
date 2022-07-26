@@ -19,14 +19,6 @@ function pip_package_check () {
 }
 
 
-# Check that black is installed.
-if [[ "\$(pip show black 2>&1)" == WARNING:* ]]
-then
-    echo "Failed to find 'black' package used to format committed Python code."
-    echo "Can be installed with 'pip install black'."
-    exit 1
-fi
-
 FAIL=0
 
 while read f

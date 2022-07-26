@@ -1,35 +1,37 @@
-# Does same as MC_all_moves_no_restart.py, but restarting mid-simulation.
-
-from bmapqml.chemxpl.valence_treatment import ChemGraph
+from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.random_walk import RandomWalk
 import random, math
 from bmapqml.chemxpl import ExtGraphCompound
-from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
+from bmapqml.chemxpl.minimized_functions import OrderSlide
 from copy import deepcopy
 import numpy as np
+import sys, os
 
-random.seed(1)
-np.random.seed(1)
+num_MC_steps = int(sys.argv[1])
 
-possible_elements = ["Cl", "F"]
+dump_restart_name = sys.argv[2]
 
-forbidden_bonds = None  # [(17, 9)]
+init_restart_file = None
+
+if len(sys.argv) == 4:
+    init_restart_file = sys.argv[3]
+
+possible_elements = ["C", "N"]
+
+forbidden_bonds = [(7, 7)]
 
 ln2 = math.log(2.0)
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, ln2, ln2 / 2]
-# betas=[ln2, ln2, ln2, ln2, ln2, ln2]
 
-num_MC_steps = 100  # 100000
-
-bias_coeff = None
+bias_coeff = 1.0
 bound_enforcing_coeff = 1.0
 
 randomized_change_params = {
     "max_fragment_num": 1,
-    "nhatoms_range": [2, 2],
-    "final_nhatoms_range": [2, 2],
+    "nhatoms_range": [2, 9],
+    "final_nhatoms_range": [4, 7],
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
@@ -40,23 +42,14 @@ global_change_params = {
     "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
 }
 
-init_ncharges = [17, 17]
-init_bond_orders = {(0, 1): 1}
-
-init_cg = ChemGraph(
-    nuclear_charges=init_ncharges, bond_orders=init_bond_orders, hydrogen_autofill=True
-)
+# The initial compound in butane.
+init_cg = str2ChemGraph("6#3@1:6#2@2:6#2@3:6#3")
 
 negcs = len(betas)
 
-init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for i in range(negcs)]
+init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(negcs)]
 
-histogram = [[] for i in range(negcs)]
-histogram_labels = [[] for i in range(negcs)]
-
-min_func = Diatomic_barrier([9, 17])
-
-restart_file = "restart.pkl"
+min_func = OrderSlide([6, 7])
 
 rw = RandomWalk(
     bias_coeff=bias_coeff,
@@ -65,22 +58,20 @@ rw = RandomWalk(
     betas=betas,
     min_function=min_func,
     init_egcs=init_egcs,
-    restart_file=restart_file,
+    restart_file=dump_restart_name,
     keep_histogram=True,
+    keep_full_trajectory=True,
 )
-other_rw = deepcopy(rw)
+
+if init_restart_file is None:
+    # Init random number generator.
+    random.seed(1)
+    np.random.seed(1)
+else:
+    rw.restart_from(init_restart_file)
+
 
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
 
 rw.make_restart()
-
-other_rw.restart_from()
-
-for MC_step in range(num_MC_steps):
-    other_rw.global_random_change(**global_change_params)
-
-
-for tp in other_rw.histogram:
-    print(tp.egc)
-    print(tp.num_visits)

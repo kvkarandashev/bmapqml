@@ -1092,7 +1092,7 @@ class RandomWalk:
                 self.make_restart()
                 raise SoftExitCalled
 
-    def make_restart(self, restart_file=None):
+    def make_restart(self, restart_file: str or None = None):
         """
         Create a file containing all information needed to restart the simulation from the current point.
         restart_file : name of the file where the dump is created; if None self.restart_file is used
@@ -1116,7 +1116,7 @@ class RandomWalk:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
         dump2pkl(saved_data, restart_file)
 
-    def restart_from(self, restart_file=None):
+    def restart_from(self, restart_file: str or None = None):
         """
         Recover all data from
         restart_file : name of the file from which the data is recovered; if None self.restart_file is used
@@ -1158,7 +1158,7 @@ class RandomWalk:
         self.histogram.clear()
         self.cur_tps = self.hist_checked_tps(self.cur_tps)
 
-    def histogram_pkl_dump(self, dump_id):
+    def histogram_pkl_dump(self, dump_id: int):
         """
         Returns name of the histogram dump file for a given dump_id.
         dump_id : int id of the dump
