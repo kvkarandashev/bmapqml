@@ -17,6 +17,11 @@ from bmapqml.chemxpl import rdkit_descriptors
 from rdkit import Chem
 
 class Diatomic_barrier:
+    """
+    Toy problem potential: If you can run a Monte Carlo simulation in chemical space of diatomic molecules with two elements available this minimization function will
+    create one global minimum for A-A, one local minimum for B-B, and A-B as a maximum that acts as a transition state for single-replica MC moves.
+    """
+
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge = max(possible_nuclear_charges)
         # Mainly used for testing purposes.
@@ -41,6 +46,10 @@ class Diatomic_barrier:
 
 
 class OrderSlide:
+    """
+    Toy problem potential for minimizing nuclear charges of heavy atoms of molecules.
+    """
+
     def __init__(self, possible_nuclear_charges_input):
         possible_nuclear_charges = sorted(possible_nuclear_charges_input)
         self.order_dict = {}
@@ -55,15 +64,16 @@ class OrderSlide:
 
 
 class ChargeSum:
+    """
+    Toy problem potential for minimizing sum of nuclear charges.
+    """
+
     def __init__(self):
         self.call_counter = 0
 
     def __call__(self, trajectory_point_in):
         self.call_counter += 1
         return sum(ha.ncharge for ha in trajectory_point_in.egc.chemgraph.hatoms)
-
-
-
 
 
 class RepGenFuncProblem(Exception):
@@ -348,6 +358,7 @@ class FF_xTB_dipole(FF_xTB_quantity):
         dipole_vector = res_dict["dipole"]
         return np.sqrt(np.sum(dipole_vector**2))
 
+
 class QM9_properties:
 
     """
@@ -437,12 +448,22 @@ class sample_local_space:
     the target molecule can be from the initial one.
     """
 
-    def __init__(self, X_init,verbose=False,check_ring=False ,pot_type="harmonic",fp_type=None, epsilon=1., sigma=1., gamma=1):
-        
-        self.fp_type=None or fp_type
-        self.epsilon=epsilon
+    def __init__(
+        self,
+        X_init,
+        verbose=False,
+        check_ring=False,
+        pot_type="harmonic",
+        fp_type=None,
+        epsilon=1.0,
+        sigma=1.0,
+        gamma=1,
+    ):
+
+        self.fp_type = None or fp_type
+        self.epsilon = epsilon
         self.check_ring = None or check_ring
-        self.sigma=sigma
+        self.sigma = sigma
         self.gamma = gamma
         self.X_init = X_init
         self.pot_type = pot_type
@@ -451,19 +472,18 @@ class sample_local_space:
             "canonical_rdkit": trajectory_point_to_canonical_rdkit
         }
 
-
         self.potential = None
-        if self.pot_type=="lj":
+        if self.pot_type == "lj":
             self.potential = self.lennard_jones_potential
-        elif self.pot_type=="harmonic":
+        elif self.pot_type == "harmonic":
             self.potential = self.harmonic_potential
-        elif self.pot_type=="buckingham":
+        elif self.pot_type == "buckingham":
             self.potential = self.buckingham_potential
-        elif self.pot_type=="exponential":
+        elif self.pot_type == "exponential":
             self.potential = self.exponential_potential
-        elif self.pot_type=="sharp_parabola":
+        elif self.pot_type == "sharp_parabola":
             self.potential = self.sharp_parabola_potential
-        elif self.pot_type=="flat_parabola":
+        elif self.pot_type == "flat_parabola":
             self.potential = self.flat_parabola_potential
 
     def get_largest_ring_size(self, SMILES):
@@ -481,7 +501,7 @@ class sample_local_space:
         for ring in ri.AtomRings():
             ringAts = set(ring)
             all_rings.append(np.array(list(ringAts)))
-            
+
         all_rings = np.array(all_rings)
         max_size = max(map(len, all_rings))
 
@@ -490,8 +510,7 @@ class sample_local_space:
         else:
             return 1e10
 
-
-    def lennard_jones_potential(self,d):
+    def lennard_jones_potential(self, d):
         """
         Lennard-Jones potential, d is the distance between the two points
         in chemical space. The potential is given by:
@@ -509,27 +528,25 @@ class sample_local_space:
         if d <= self.sigma:
             return -self.epsilon
         else:
-            return (d-self.sigma)**2 - self.epsilon
+            return (d - self.sigma) ** 2 - self.epsilon
 
-
-    def sharp_parabola_potential(self,d):
+    def sharp_parabola_potential(self, d):
         """
         Sharp parabola potential. The potential is given by:
         """
-        return 20*(d-self.sigma)**2 - self.epsilon
+        return 20 * (d - self.sigma) ** 2 - self.epsilon
 
-    def flat_parabola_potential(self,d):
+    def flat_parabola_potential(self, d):
         """
         Flat parabola potential. The potential is given by:
         """
 
         if d < self.gamma:
-            return (d-self.gamma)**2 - self.epsilon
+            return (d - self.gamma) ** 2 - self.epsilon
         if self.gamma <= d <= self.sigma:
             return -self.epsilon
         if d > self.sigma:
-            return (d-self.sigma)**2 - self.epsilon
-
+            return (d - self.sigma) ** 2 - self.epsilon
 
     def buckingham_potential(self, d):
         """
@@ -547,7 +564,6 @@ class sample_local_space:
 
         return self.epsilon * np.exp(-self.sigma * d)
 
-
     def __call__(self, trajectory_point_in):
 
         # KK: This demonstrates how expensive intermediate data can be saved too.
@@ -555,9 +571,9 @@ class sample_local_space:
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,self.fp_type)
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
 
-        d = norm(X_test-self.X_init)
+        d = norm(X_test - self.X_init)
         V = self.potential(d)
 
         if self.check_ring:
@@ -565,8 +581,8 @@ class sample_local_space:
                 ring_error = self.get_largest_ring_size(canon_SMILES)
             except:
                 ring_error = 0
-                
-            V +=  ring_error
+
+            V += ring_error
 
         if self.verbose:
             print("SMILE:", canon_SMILES, d, V)
@@ -581,20 +597,20 @@ class sample_local_space:
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES,self.fp_type)
-        d = norm(X_test-self.X_init)
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
+        d = norm(X_test - self.X_init)
         V = self.potential(d)
 
         return V, d
 
     def evaluate_trajectory(self, trajectory_points):
         from tqdm import tqdm
-        
+
         """
         Evaluate the function on a list of trajectory points
         """
-        
-        #Aparently this is the fastest way to do this:
+
+        # Aparently this is the fastest way to do this:
         values = []
         for trajectory_point in tqdm(trajectory_points):
             values.append(self.evaluate_point(trajectory_point))

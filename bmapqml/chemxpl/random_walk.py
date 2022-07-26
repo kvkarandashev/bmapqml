@@ -17,7 +17,7 @@ from .modify import (
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl
-from .valence_treatment import sorted_tuple, connection_forbidden
+from .valence_treatment import sorted_tuple, connection_forbidden, ChemGraph
 from .periodic import element_name
 import random, os
 from copy import deepcopy
@@ -184,16 +184,26 @@ def randomized_change(tp, change_prob_dict=default_change_list, **other_kwargs):
     return new_tp, total_forward_prob - total_inverse_prob
 
 
-# This class stores all the infromation needed to preserve detailed balance of the random walk.
 class TrajectoryPoint:
-    def __init__(self, egc=None, cg=None, num_visits=None):
+    def __init__(
+        self,
+        egc: ExtGraphCompound or None = None,
+        cg: ChemGraph or None = None,
+        num_visits: int or None = None,
+    ):
+        """
+        This class stores an ExtGraphCompound object along with all the infromation needed to preserve detailed balance of the random walk.
+        egc : ExtGraphCompound object to be stored.
+        cg : ChemGraph object used to define egc if the latter is None
+        num_visits : initial numbers of visits to the trajectory
+        """
         if egc is None:
             if cg is not None:
                 egc = ExtGraphCompound(chemgraph=cg)
         self.egc = egc
 
         if num_visits is not None:
-            num_visits = copy.deecopy(num_visits)
+            num_visits = deepcopy(num_visits)
         self.num_visits = num_visits
         self.visit_step_ids = None
 
@@ -446,35 +456,38 @@ class InvalidStartingMolecules(Exception):
     pass
 
 
+from types import FunctionType
+
+
 class RandomWalk:
     def __init__(
         self,
-        init_egcs=None,
-        bias_coeff=None,
-        vbeta_bias_coeff=None,
-        bias_pot_all_replicas=True,
-        randomized_change_params={},
-        starting_histogram=None,
-        conserve_stochiometry=False,
-        bound_enforcing_coeff=1.0,
-        keep_histogram=False,
-        histogram_save_rejected=True,
-        betas=None,
-        min_function=None,
-        num_replicas=None,
-        no_exploration=False,
-        no_exploration_smove_adjust=False,
-        restricted_tps=None,
-        min_function_name="MIN_FUNCTION",
-        num_saved_candidates=None,
-        keep_full_trajectory=False,
-        restart_file=None,
-        make_restart_frequency=None,
-        soft_exit_check_frequency=None,
-        delete_temp_data=None,
-        max_histogram_size=None,
-        histogram_dump_file_prefix="",
-        track_histogram_size=False,
+        init_egcs: list or None = None,
+        bias_coeff: float or None = None,
+        vbeta_bias_coeff: float or None = None,
+        bias_pot_all_replicas: bool = True,
+        randomized_change_params: dict = {},
+        starting_histogram: list or None = None,
+        conserve_stochiometry: bool = False,
+        bound_enforcing_coeff: float or None = 1.0,
+        keep_histogram: bool = False,
+        histogram_save_rejected: bool = True,
+        betas: list or None = None,
+        min_function: FunctionType or None = None,
+        num_replicas: int or None = None,
+        no_exploration: bool = False,
+        no_exploration_smove_adjust: bool = False,
+        restricted_tps: list or None = None,
+        min_function_name: str = "MIN_FUNCTION",
+        num_saved_candidates: int or None = None,
+        keep_full_trajectory: bool = False,
+        restart_file: str or None = None,
+        make_restart_frequency: int or None = None,
+        soft_exit_check_frequency: int or None = None,
+        delete_temp_data: list or None = None,
+        max_histogram_size: int or None = None,
+        histogram_dump_file_prefix: str = "",
+        track_histogram_size: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.

@@ -1092,6 +1092,14 @@ class ChemGraph:
         return triple_gt_witer(self, ch2) is None
 
     def __str__(self):
+        """
+        The representation consists of substrings corresponding to each heavy atom in canonical ordering and connected by ":".
+        Each of those substrings starts with the nuclear charge of the atom, continues after "#" with the number of hydrogens connected to
+        the heavy atom (if not 0), and finishes with list of other atom indices preceded by "@" to which the current atom is connected and
+        whose indices exceed the current atom's index.
+
+        See examples/chemxpl/chemxpl_str_representation for examples of how it works.
+        """
         if self.canonical_permutation is None:
             self.init_canonical_permutation()
         hatom_strings = []
@@ -1118,8 +1126,11 @@ class ChemGraph:
         return str(self)
 
 
-# For more convenient conversion from string representation of ChemGraphs to other formats.
-def chemgraph_str2unchecked_adjmat_ncharges(input_string):
+def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> tuple:
+    """
+    Converts a ChemGraph string representation into the adjacency matrix (with all bond orders set to one) and nuclear charges.
+    input_string : string to be converted
+    """
     hatom_ncharges = []
     hydrogen_nums = []
     hatom_neighbors = []
@@ -1155,7 +1166,11 @@ def chemgraph_str2unchecked_adjmat_ncharges(input_string):
     return adj_mat, nuclear_charges
 
 
-def str2ChemGraph(input_string):
+def str2ChemGraph(input_string: str) -> ChemGraph:
+    """
+    Converts a ChemGraph string representation into a ChemGraph object.
+    input_string : string to be converted
+    """
     unchecked_adjmat, ncharges = chemgraph_str2unchecked_adjmat_ncharges(input_string)
     return ChemGraph(nuclear_charges=ncharges, adj_mat=unchecked_adjmat)
 
