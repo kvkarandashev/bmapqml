@@ -456,32 +456,35 @@ class InvalidStartingMolecules(Exception):
     pass
 
 
+from types import FunctionType
+
+
 class RandomWalk:
     def __init__(
         self,
-        init_egcs: list(ExtGraphCompound) or None = None,
+        init_egcs: list or None = None,
         bias_coeff: float or None = None,
         vbeta_bias_coeff: float or None = None,
         bias_pot_all_replicas: bool = True,
         randomized_change_params: dict = {},
-        starting_histogram: list(TrajectoryPoint) or None = None,
+        starting_histogram: list or None = None,
         conserve_stochiometry: bool = False,
         bound_enforcing_coeff: float or None = 1.0,
         keep_histogram: bool = False,
         histogram_save_rejected: bool = True,
         betas: list or None = None,
-        min_function: function or None = None,
+        min_function: FunctionType or None = None,
         num_replicas: int or None = None,
         no_exploration: bool = False,
         no_exploration_smove_adjust: bool = False,
-        restricted_tps: list(TrajectoryPoint) or None = None,
+        restricted_tps: list or None = None,
         min_function_name: str = "MIN_FUNCTION",
         num_saved_candidates: int or None = None,
         keep_full_trajectory: bool = False,
         restart_file: str or None = None,
         make_restart_frequency: int or None = None,
         soft_exit_check_frequency: int or None = None,
-        delete_temp_data: list(str) or None = None,
+        delete_temp_data: list or None = None,
         max_histogram_size: int or None = None,
         histogram_dump_file_prefix: str = "",
         track_histogram_size: bool = False,

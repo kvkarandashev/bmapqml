@@ -1126,7 +1126,7 @@ class ChemGraph:
         return str(self)
 
 
-def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> np.array | np.array:
+def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> tuple:
     """
     Converts a ChemGraph string representation into the adjacency matrix (with all bond orders set to one) and nuclear charges.
     input_string : string to be converted
