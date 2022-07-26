@@ -4,40 +4,12 @@ from numpy.linalg import norm
 from ..utils import trajectory_point_to_canonical_rdkit
 from joblib import Parallel, delayed
 from .. import rdkit_descriptors
-
-
-class find_match:
-
-    """
-    Guide Random walk towards the target the representation corresponding to the target
-    molecule.
-    """
-
-    def __init__(self, X_target, verbose=False):
-
-        self.X_target = X_target
-        self.verbose = verbose
-        self.canonical_rdkit_output = {
-            "canonical_rdkit": trajectory_point_to_canonical_rdkit
-        }
-
-    def __call__(self, trajectory_point_in):
-
-        # KK: This demonstrates how expensive intermediate data can be saved too.
-        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-            self.canonical_rdkit_output
-        )["canonical_rdkit"]
-
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, "both")
-        d = norm(X_test - self.X_target)
-
-        if self.verbose:
-            print("SMILE:", canon_SMILES, "Prediction: ", d)
-
-            return np.exp(d)
+from rdkit import Chem
+from tqdm import tqdm
 
 
 class sample_local_space:
+
     """
     Sample local chemical space of the inital compound
     with input representation X_init. Radial symmetric
@@ -85,8 +57,7 @@ class sample_local_space:
             self.potential = self.flat_parabola_potential
 
     def get_largest_ring_size(self, SMILES):
-        from rdkit import Chem
-        import numpy as np
+
 
         """ 
         Returns the size of the largest ring in the molecule.
@@ -164,7 +135,6 @@ class sample_local_space:
 
     def __call__(self, trajectory_point_in):
 
-        # KK: This demonstrates how expensive intermediate data can be saved too.
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
@@ -188,9 +158,11 @@ class sample_local_space:
         return V
 
     def evaluate_point(self, trajectory_point_in):
+
         """
         Evaluate the function on a list of trajectory points
         """
+
         _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
@@ -202,7 +174,7 @@ class sample_local_space:
         return V, d
 
     def evaluate_trajectory(self, trajectory_points):
-        from tqdm import tqdm
+        
 
         """
         Evaluate the function on a list of trajectory points
@@ -214,3 +186,34 @@ class sample_local_space:
             values.append(self.evaluate_point(trajectory_point))
         # Parallel(n_jobs=1)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
+
+
+
+class find_match:
+
+    """
+    Guide Random walk towards the target the representation corresponding to the target
+    molecule.
+    """
+
+    def __init__(self, X_target, verbose=False):
+
+        self.X_target = X_target
+        self.verbose = verbose
+        self.canonical_rdkit_output = {
+            "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        }
+
+    def __call__(self, trajectory_point_in):
+
+        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, "both")
+        d = norm(X_test - self.X_target)
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES, "Prediction: ", d)
+
+            return np.exp(d)

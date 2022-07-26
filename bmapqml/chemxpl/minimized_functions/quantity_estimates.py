@@ -11,7 +11,7 @@ from ..utils import (
 from ...utils import read_xyz_file, read_xyz_lines
 from joblib import Parallel, delayed
 import os, sys
-
+from .. import rdkit_descriptors
 from rdkit import Chem
 
 
@@ -324,7 +324,7 @@ class QM9_properties:
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = extended_get_single_FP(canon_SMILES, "both")
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, "both")
         prediction = self.ml_model.predict(X_test.reshape(1, -1))
 
         if self.verbose:
@@ -340,7 +340,6 @@ class QM9_properties:
         Evaluate the function on a list of trajectory points
         """
 
-        # Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=4)(
             delayed(self.__call__)(tp_in) for tp_in in trajectory_points
         )
@@ -399,12 +398,10 @@ class multi_obj:
         return sum
 
     def evaluate_point(self, trajectory_point_in):
+
         """
         Evaluate the function on a single trajectory point
         """
-
-        # from joblib import Parallel, delayed
-        # values = Parallel(n_jobs=2)(delayed(fct.__call__)(trajectory_point_in) for fct in self.fct_list)
 
         values = []
         for fct in self.fct_list:
@@ -422,23 +419,10 @@ class multi_obj:
         Evaluate the function on a list of trajectory points
         """
 
-        # Aparently this is the fastest way to do this:
         values = Parallel(n_jobs=4)(
             delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points
         )
         return np.array(values)
-
-        """
-        #from tqdm import tqdm
-        values = []
-        for tp_in in tqdm(trajectory_points):
-            values.append(self.evaluate_point(tp_in))
-
-        values = np.array(values)
-
-        return values                
-    
-        """
 
 class Rdkit_properties:
 
@@ -447,13 +431,11 @@ class Rdkit_properties:
     evaluated directly using rdkit. This does not use any machine learning models and is only for testing
     E.g. if max=True and rdkit_property=rdkit.descriptors.NumRotatableBonds the algorithm should maximize the
     number of rotatible bonds of the molecule. This can be checked by running the simulation.
-
-    model_path : dummy path (not needed)
     rdkit_property : rdkit property to minimize/maximize
     verbose : print out information about the molecule
     """
 
-    def __init__(self, model_path, rdkit_property, max=True, verbose=True):
+    def __init__(self, rdkit_property, max=True, verbose=True):
 
         self.rdkit_property = rdkit_property
         self.canonical_rdkit_output = {
