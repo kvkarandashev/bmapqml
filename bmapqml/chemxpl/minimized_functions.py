@@ -14,6 +14,8 @@ from joblib import Parallel, delayed
 import os, sys
 from bmapqml.chemxpl import rdkit_descriptors
 
+from rdkit import Chem
+
 class Diatomic_barrier:
     def __init__(self, possible_nuclear_charges):
         self.larger_nuclear_charge = max(possible_nuclear_charges)
@@ -692,7 +694,6 @@ class multi_obj:
         return values                
     
         """
-
 
 class Rdkit_properties:
 
