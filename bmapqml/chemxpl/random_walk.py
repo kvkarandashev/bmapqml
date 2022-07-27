@@ -890,10 +890,6 @@ class RandomWalk:
         prob_dict={"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
         **other_kwargs
     ):
-        if self.make_restart_frequency is not None:
-            self.check_make_restart()
-        if self.soft_exit_check_frequency is not None:
-            self.check_soft_exit()
 
         self.global_MC_step_counter += 1
 
@@ -913,6 +909,11 @@ class RandomWalk:
                 cur_procedure,
                 len(self.histogram),
             )
+
+        if self.make_restart_frequency is not None:
+            self.check_make_restart()
+        if self.soft_exit_check_frequency is not None:
+            self.check_soft_exit()
 
     # For convenient interfacing with other scripts.
     def convert_to_current_egcs(self, mol_in_list, mol_format=None):

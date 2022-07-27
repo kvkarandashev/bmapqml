@@ -13,8 +13,13 @@ dump_restart_name = sys.argv[2]
 
 init_restart_file = None
 
+make_restart_frequency = None
+
 if len(sys.argv) == 4:
-    init_restart_file = sys.argv[3]
+    if sys.argv[3].startswith("init_restart_file="):
+        init_restart_file = sys.argv[3].split("=")[1]
+    if sys.argv[3].startswith("make_restart_frequency="):
+        make_restart_frequency = int(sys.argv[3].split("=")[1])
 
 possible_elements = ["C", "N"]
 
@@ -59,6 +64,7 @@ rw = RandomWalk(
     min_function=min_func,
     init_egcs=init_egcs,
     restart_file=dump_restart_name,
+    make_restart_frequency=make_restart_frequency,
     keep_histogram=True,
     keep_full_trajectory=True,
 )
@@ -74,4 +80,7 @@ else:
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
 
-rw.make_restart()
+mr_kwargs = {}
+if make_restart_frequency is not None:
+    mr_kwargs = {"restart_file": "final_restart.pkl"}
+rw.make_restart(**mr_kwargs)
