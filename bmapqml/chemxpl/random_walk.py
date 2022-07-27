@@ -776,7 +776,10 @@ class RandomWalk:
                 if np.isinf(exp_val):
                     return None
                 else:
-                    return (1.0 + exp_val) ** (-1)
+                    try:
+                        return (1.0 + exp_val) ** (-1)
+                    except FloatingPointError:
+                        return None
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):
