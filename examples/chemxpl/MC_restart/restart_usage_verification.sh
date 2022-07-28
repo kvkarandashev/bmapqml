@@ -8,7 +8,13 @@ num_components=2
 for component_id in $(seq $num_components)
 do
     new_restart=restart_$component_id.pkl
-    python MC_all_moves_wrestart.py $num_MC_steps $new_restart $prev_restart
+
+    if [ ! -z "$prev_restart" ]
+    then
+        init_restart_file_arg="init_restart_file=$prev_restart"
+    fi
+
+    python MC_all_moves_wrestart.py $num_MC_steps $new_restart $init_restart_file_arg
     prev_restart=$new_restart
 done
 # Run one long simulation with no restarts.
