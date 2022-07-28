@@ -6,5 +6,5 @@ from bmapqml.utils import loadpkl
 
 l=loadpkl('$1')
 
-print(l['global_MC_step_counter'])
-"
+print('global_MC_step_counter:', l['global_MC_step_counter'])
+print('histogram size:', len(l['histogram']))"
