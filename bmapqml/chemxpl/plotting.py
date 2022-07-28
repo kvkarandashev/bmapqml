@@ -2,13 +2,19 @@
 from bmapqml.utils import * 
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
+from bmapqml.chemxpl.minimized_functions import sample_local_space
+from bmapqml.chemxpl.random_walk import ordered_trajectory
 from sklearn.decomposition import PCA
+
 import pickle
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 import numpy as np
 import pdb
 from rdkit import RDLogger  
+import os
+import pandas as pd
+from tqdm import tqdm
 
 #/bmapqml/chemxpl/utils.py
 lg = RDLogger.logger()
@@ -16,6 +22,8 @@ lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)   
 import warnings
 warnings.filterwarnings('ignore')
+
+
 
 class analyze_random_walk:
 
@@ -63,9 +71,9 @@ class analyze_random_walk:
             print("Done loading trajectory from file:", self.trajectory)
             self.all_tps_smiles = np.ones_like(self.all_tps)
             #here select a single temperature to make it easier
-            self.all_tps = self.all_tps[:,5]
+            self.all_tps = self.all_tps[:,2]
 
-            #self.all_tps_smiles = self.convert_to_smiles(self.all_tps)
+            self.all_tps_smiles = np.array(self.convert_to_smiles(self.all_tps))
             #[]
             #np.array(Parallel(n_jobs=12)(delayed(trajectory_point_to_canonical_rdkit)(tp) for tp in self.all_tps))[:,3]
             print("Done computing all smiles")
@@ -80,7 +88,7 @@ class analyze_random_walk:
             """
         
     def convert_to_smiles(self, mols):
-        from tqdm import tqdm
+        
         """
         Convert the list of molecules to SMILES strings.
         tp_list: list of molecules as trajectory points
@@ -110,9 +118,9 @@ class analyze_random_walk:
         Evaluate the function on all trajectory points.
         """
         print("Evaluating all trajectory points")
-        X_target = rdkit_descriptors.extended_get_single_FP(self.target,self.fp_type )
-        pdb.set_trace()
-        X = rdkit_descriptors.get_all_FP(self.all_tps_smiles, fp_type=self.fp_type)
+        #X_target = rdkit_descriptors.extended_get_single_FP(self.target,self.fp_type )
+        #pdb.set_trace()
+        #X = rdkit_descriptors.get_all_FP(self.all_tps_smiles, fp_type=self.fp_type)
         print("evaluating all trajectory points")
         evaluation = self.model.evaluate_trajectory(self.all_tps)
 
@@ -124,6 +132,19 @@ class analyze_random_walk:
         #    self.all_distances[ind] = np.linalg.norm(x-X_target)
 
         np.savez_compressed("complete_histogram_{}".format(self.name), all_tps_smiles=self.all_tps_smiles,all_distances=self.all_distances,all_values=self.all_values) 
+        order = np.argsort(self.all_distances)
+        print(self.all_tps_smiles,order)
+        self.all_tps_smiles = self.all_tps_smiles[order]
+        self.all_distances = self.all_distances[order]
+        self.all_values = self.all_values[order]
+        print("Done evaluating all trajectory points")
+        trajectory_report = open("trajectory_report_{}.txt".format(self.name), "w")
+
+        for smi, d, v in zip(self.all_tps_smiles, self.all_distances, self.all_values):
+            trajectory_report.write("{}\t{}\t{}\n".format(smi, d, v))
+            print(smi, d, v)
+        trajectory_report.close()
+
         return self.all_tps_smiles, self.all_distances,self.all_values
 
 
@@ -149,7 +170,7 @@ class analyze_random_walk:
         print("Number of points in the interval:", "[{},{}]".format(lower_lim, upper_lim)  , len(self.distances[in_interval]))
         print(self.tps_smiles[in_interval])
         np.savez_compressed("histogram_{}".format(self.name), tps_smiles=self.tps_smiles,distances=self.distances,values=self.values) 
-        exit()
+        #exit()
         #pdb.set_trace()
         
         return self.values
@@ -438,3 +459,73 @@ class analyze_random_walk:
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("{}_PCA.pdf".format(name))
         plt.close()
+
+
+class Analyze:
+
+    def __init__(self, path):
+        """
+        histogram : list of all unique encountered points in the random walk.
+        minimize_fct : if desired reevaluate all unique molecules using this function
+        """
+        self.path = path
+        self.results = os.listdir(path)
+
+    def parse_results(self):
+        
+        print(self.results)
+
+        obj = pickle.load(open(self.path+self.results[0], "rb"))
+        HISTOGRAM = self.to_dataframe(obj["histogram"])
+        #ordered_trajectory
+        traj = np.array(ordered_trajectory(obj["histogram"]))
+        sel_temp = traj[:,0]
+        TRAJECTORY = self.to_dataframe(sel_temp)
+
+        return HISTOGRAM, TRAJECTORY
+
+
+    def to_dataframe(self, obj):
+        df = pd.DataFrame()
+        values, labels = self.extract_values(obj)
+        SMILES = self.convert_to_smiles(obj)
+        df["SMILES"] = SMILES
+        for l in labels:
+            df[l] = values[:,labels.index(l)]
+        
+        df = df.dropna()
+        df = df.reset_index(drop=True)
+        return df
+
+
+    def convert_to_smiles(self, mols):
+    
+        """
+        Convert the list of molecules to SMILES strings.
+        tp_list: list of molecudfles as trajectory points
+        smiles_mol: list of rdkit molecules
+        """
+
+        smiles_mol = []
+        for tp in tqdm(mols):
+            
+            rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
+            smiles_mol.append(rdkit_obj[3])
+
+
+        return smiles_mol
+
+    def extract_values(self, mols):
+        """
+        Extract the values from the trajectory points.
+        tp_list: list of molecules as trajectory points
+        """
+    
+        labels = [l for l in mols[0].calculated_data.keys()]
+        values = []
+        for tp in tqdm(mols):
+            values.append(list(tp.calculated_data.values()))
+        
+        values = np.array(values)
+
+        return values, labels
