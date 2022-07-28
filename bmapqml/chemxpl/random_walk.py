@@ -634,9 +634,10 @@ class RandomWalk:
                 if cur_min_func_val is None:
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
-            if self.keep_histogram:
-                if added_tp not in self.histogram:
-                    self.histogram.add(deepcopy(added_tp))
+        if self.num_saved_candidates is not None:
+            self.update_saved_candidates()
+        if self.keep_histogram:
+            self.update_histogram(list(range(self.num_replicas)))
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
@@ -949,7 +950,9 @@ class RandomWalk:
         self, mol_in_list, randomized_change_params=None, mol_format=None
     ):
         self.convert_to_current_egcs(mol_in_list, mol_format=mol_format)
-        self.init_randomized_change_params(randomized_change_params=None)
+        self.init_randomized_change_params(
+            randomized_change_params=randomized_change_params
+        )
         _ = self.MC_step_all()
         return self.converted_current_egcs(mol_format=mol_format)
 
@@ -1072,7 +1075,7 @@ class RandomWalk:
     def ordered_trajectory(self):
         return ordered_trajectory(
             self.histogram,
-            num_global_MC_steps=self.global_MC_step_counter,
+            global_MC_step_counter=self.global_MC_step_counter,
             num_replicas=self.num_replicas,
         )
 
@@ -1080,7 +1083,7 @@ class RandomWalk:
         assert self.keep_full_trajectory
         return ordered_trajectory_ids(
             self.histogram,
-            num_global_MC_steps=self.global_MC_step_counter,
+            global_MC_step_counter=self.global_MC_step_counter,
             num_replicas=self.num_replicas,
         )
 
@@ -1194,27 +1197,32 @@ def histogram_num_replicas(histogram):
     return None
 
 
-def ordered_trajectory_ids(histogram, num_global_MC_steps=None, num_replicas=None):
+def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=None):
     if num_replicas is None:
         num_replicas = histogram_num_replicas(histogram)
         if num_replicas is None:
             raise DataUnavailable
-    if num_global_MC_steps is None:
-        num_global_MC_steps = 0
+    if global_MC_step_counter is None:
+        global_MC_step_counter = 0
         for tp in histogram:
             if tp.visit_step_ids is not None:
                 for replica_visits in tp.visit_step_ids:
                     if len(replica_visits) != 0:
-                        num_global_MC_steps = max(
-                            num_global_MC_steps, max(replica_visits)
+                        global_MC_step_counter = max(
+                            global_MC_step_counter, max(replica_visits)
                         )
-        num_global_MC_steps += 1
-    output = np.zeros((num_global_MC_steps, num_replicas), dtype=int)
+    output = np.zeros((global_MC_step_counter + 1, num_replicas), dtype=int)
+    output[:, :] = -1
     for tp_id, tp in enumerate(histogram):
         if tp.visit_step_ids is not None:
             for replica_id, replica_visits in enumerate(tp.visit_step_ids):
                 for replica_visit in replica_visits:
-                    output[replica_visit - 1, replica_id] = tp_id
+                    output[replica_visit, replica_id] = tp_id
+    for step_id in range(global_MC_step_counter):
+        true_step_id = step_id + 1
+        for replica_id in range(num_replicas):
+            if output[true_step_id, replica_id] == -1:
+                output[true_step_id, replica_id] = output[true_step_id - 1, replica_id]
     return output
 
 
