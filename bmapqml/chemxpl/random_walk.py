@@ -456,6 +456,14 @@ class InvalidStartingMolecules(Exception):
     pass
 
 
+class DataUnavailable(Exception):
+    """
+    Raised if data not available in a histogram is referred to.
+    """
+
+    pass
+
+
 from types import FunctionType
 
 
@@ -1062,10 +1070,11 @@ class RandomWalk:
 
     # Some properties for more convenient trajectory analysis.
     def ordered_trajectory(self):
-        output = []
-        for tp_ids in self.ordered_trajectory_ids():
-            output.append([self.histogram[tp_id] for tp_id in tp_ids])
-        return output
+        return ordered_trajectory(
+            self.histogram,
+            num_global_MC_steps=self.global_MC_step_counter,
+            num_replicas=self.num_replicas,
+        )
 
     def ordered_trajectory_ids(self):
         assert self.keep_full_trajectory
@@ -1179,18 +1188,26 @@ def merge_random_walks(*rw_list):
 
 # Some procedures for convenient RandomWalk analysis.
 def histogram_num_replicas(histogram):
-    return len(histogram[0].visit_step_ids)
+    for tp in histogram:
+        if tp.visit_step_ids is not None:
+            return len(tp.visit_step_ids)
+    return None
 
 
 def ordered_trajectory_ids(histogram, num_global_MC_steps=None, num_replicas=None):
     if num_replicas is None:
         num_replicas = histogram_num_replicas(histogram)
+        if num_replicas is None:
+            raise DataUnavailable
     if num_global_MC_steps is None:
         num_global_MC_steps = 0
         for tp in histogram:
-            for replica_visits in tp.visit_step_ids:
-                if len(replica_visits) != 0:
-                    num_global_MC_steps = max(num_global_MC_steps, max(replica_visits))
+            if tp.visit_step_ids is not None:
+                for replica_visits in tp.visit_step_ids:
+                    if len(replica_visits) != 0:
+                        num_global_MC_steps = max(
+                            num_global_MC_steps, max(replica_visits)
+                        )
         num_global_MC_steps += 1
     output = np.zeros((num_global_MC_steps, num_replicas), dtype=int)
     for tp_id, tp in enumerate(histogram):
@@ -1198,6 +1215,13 @@ def ordered_trajectory_ids(histogram, num_global_MC_steps=None, num_replicas=Non
             for replica_id, replica_visits in enumerate(tp.visit_step_ids):
                 for replica_visit in replica_visits:
                     output[replica_visit - 1, replica_id] = tp_id
+    return output
+
+
+def ordered_trajectory(histogram, **ordered_trajectory_ids_kwargs):
+    output = []
+    for tp_ids in ordered_trajectory_ids(histogram, **ordered_trajectory_ids_kwargs):
+        output.append([histogram[tp_id] for tp_id in tp_ids])
     return output
 
 
