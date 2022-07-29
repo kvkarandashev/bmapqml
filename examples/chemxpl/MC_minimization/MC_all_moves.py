@@ -25,7 +25,7 @@ betas = [None, ln2, ln2 / 2]
 num_MC_steps = 100000  # 100000
 
 bias_coeff = None
-bound_enforcing_coeff = 1.0
+bound_enforcing_coeff = None
 
 randomized_change_params = {
     "max_fragment_num": 1,

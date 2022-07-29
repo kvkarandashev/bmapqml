@@ -19,7 +19,7 @@ bias_coeff = None
 
 randomized_change_params = {
     "max_fragment_num": 1,
-    "nhatoms_range": [2, 3],
+    "nhatoms_range": [1, 3],
     "final_nhatoms_range": [2, 3],
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
@@ -51,6 +51,7 @@ rw = RandomWalk(
     randomized_change_params=randomized_change_params,
     conserve_stochiometry=conserve_stochiometry,
     num_replicas=num_egcs,
+    bound_enforcing_coeff=np.log(2.0),
 )
 for MC_step in range(MC_step_num):
     # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
@@ -76,13 +77,17 @@ print(
     rw.num_attempted_cross_couplings,
 )
 
-distrs = []
+nhatoms_lists = [[1], [2, 3]]
 
-for egc, distr in zip(histogram_labels, histogram):
-    print("EGC:", egc)
-    print("Distribution:", distr)
-    distrs.append(distr)
+for nhatoms_list in nhatoms_lists:
+    distrs = []
+    for egc, distr in zip(histogram_labels, histogram):
+        if egc.chemgraph.nhatoms() in nhatoms_list:
+            print("EGC:", egc)
+            print("Distribution:", distr)
+            distrs.append(distr)
 
-distrs = np.array(distrs)
-print("Average:", np.mean(distrs))
-print("Standard deviation:", np.std(distrs))
+    distrs = np.array(distrs)
+    print("nhatoms available:", nhatoms_list)
+    print("Average:", np.mean(distrs))
+    print("Standard deviation:", np.std(distrs))

@@ -477,7 +477,7 @@ class RandomWalk:
         randomized_change_params: dict = {},
         starting_histogram: list or None = None,
         conserve_stochiometry: bool = False,
-        bound_enforcing_coeff: float or None = 1.0,
+        bound_enforcing_coeff: float or None = None,
         keep_histogram: bool = False,
         histogram_save_rejected: bool = True,
         betas: list or None = None,
@@ -759,23 +759,23 @@ class RandomWalk:
     ):
         if tp_pair is None:
             tp_pair = [self.cur_tps[replica_id] for replica_id in replica_ids]
-        mfunc_vals = [
+        tot_pot_vals = [
             self.tot_pot(tp, replica_id) for tp, replica_id in zip(tp_pair, replica_ids)
         ]
-        if None in mfunc_vals:
+        if None in tot_pot_vals:
             return None
         if self.virtual_beta_present(replica_ids):
             if all([(self.betas[replica_id] is None) for replica_id in replica_ids]):
                 return 0.5
             else:
-                min_arg = np.argmin(mfunc_vals)
+                min_arg = np.argmin(tot_pot_vals)
                 if self.betas[replica_ids[min_arg]] is None:
                     return 1.0
                 else:
                     return None
         else:
             delta_pot = -(self.betas[replica_ids[0]] - self.betas[replica_ids[1]]) * (
-                mfunc_vals[0] - mfunc_vals[1]
+                tot_pot_vals[0] - tot_pot_vals[1]
             )
             if Metropolis_rejection_prob:
                 if delta_pot < 0.0:
@@ -832,7 +832,7 @@ class RandomWalk:
         new_pair_tps = self.hist_checked_tps(
             [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
         )
-        if self.min_function is not None:
+        if self.betas is not None:
             new_pair_shuffle_prob = self.tp_pair_order_prob(
                 replica_ids, tp_pair=new_pair_tps
             )
