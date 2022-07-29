@@ -48,13 +48,23 @@ class OrderSlide:
         )
 
 
-class ChargeSum:
+class ZeroFunc:
     """
-    Toy problem potential for minimizing sum of nuclear charges.
+    Unbiased chemical space exploration.
     """
 
     def __init__(self):
         self.call_counter = 0
+
+    def __call__(self, trajectory_point_in: TrajectoryPoint):
+        self.call_counter += 1
+        return 0.0
+
+
+class ChargeSum(ZeroFunc):
+    """
+    Toy problem potential for minimizing sum of nuclear charges.
+    """
 
     def __call__(self, trajectory_point_in: TrajectoryPoint):
         self.call_counter += 1

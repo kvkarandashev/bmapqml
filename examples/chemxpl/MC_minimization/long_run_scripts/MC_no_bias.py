@@ -58,9 +58,9 @@ xyz_dir = os.environ["DATA"] + "/QM9_filtered/xyzs"
 mmff_xyzs = dirs_xyz_list(os.environ["DATA"] + "/QM9_filtered/MMFF_xyzs")
 
 if min_func_pkl == "TRIAL_RUN":
-    from bmapqml.chemxpl.minimized_functions import ChargeSum
+    from bmapqml.chemxpl.minimized_functions import ZeroFunc
 
-    min_func = ChargeSum()
+    min_func = ZeroFunc()
 else:
     min_func = loadpkl(min_func_pkl)
 
@@ -79,7 +79,7 @@ rw = RandomWalk(
     num_saved_candidates=100,
     delete_temp_data=["coord_info", "res_dict"],
     histogram_dump_file_prefix="histogram_dump_",
-    max_histogram_size=1000000,
+    max_histogram_size=None,
     track_histogram_size=True,
 )
 

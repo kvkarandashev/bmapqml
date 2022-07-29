@@ -753,6 +753,17 @@ class RandomWalk:
                     output += final_nhatoms_range[0] - egc.num_heavy_atoms()
         return output
 
+    def min_over_virtual(self, tot_pot_vals, replica_ids):
+        output = None
+        for tot_pot_val, replica_id in zip(tot_pot_vals, replica_ids):
+            if (
+                self.virtual_beta_id(replica_id)
+                and (output is not None)
+                and (output > tot_pot_val)
+            ):
+                output = tot_pot_val
+        return output
+
     # TODO do we still need Metropolis_rejection_prob? Does not appear anywhere.
     def tp_pair_order_prob(
         self, replica_ids, tp_pair=None, Metropolis_rejection_prob=False
@@ -764,20 +775,25 @@ class RandomWalk:
         ]
         if None in cur_tot_pot_vals:
             return None
+        switched_tot_pot_vals = [
+            self.tot_pot(tp, replica_id)
+            for tp, replica_id in zip(tp_pair, replica_ids[::-1])
+        ]
         if self.virtual_beta_present(replica_ids):
             if all([(self.betas[replica_id] is None) for replica_id in replica_ids]):
                 return 0.5
             else:
-                min_arg = np.argmin(cur_tot_pot_vals)
-                if self.betas[replica_ids[min_arg]] is None:
+                cur_virt_min = self.min_over_virtual(cur_tot_pot_vals, replica_ids)
+                switched_virt_min = self.min_over_virtual(
+                    switched_tot_pot_vals, replica_ids
+                )
+                if cur_virt_min == switched_virt_min:
+                    return 0.5
+                if cur_virt_min < switched_virt_min:
                     return 1.0
                 else:
                     return None
         else:
-            switched_tot_pot_vals = [
-                self.tot_pot(tp, replica_id)
-                for tp, replica_id in zip(tp_pair, replica_ids[::-1])
-            ]
             delta_pot = sum(cur_tot_pot_vals) - sum(switched_tot_pot_vals)
             if Metropolis_rejection_prob:
                 if delta_pot < 0.0:

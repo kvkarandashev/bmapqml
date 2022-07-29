@@ -28,6 +28,6 @@ do
     cd $final_dump_directory
     for seed in $(seq 1 8)
     do
-        spython --OMP_NUM_THREADS=20 --CPUs=20 $py_script ${job_name}_$seed TRIAL_RUN $min_func_name $seed
+        spython --OMP_NUM_THREADS=1 --CPUs=1 $py_script ${job_name}_$seed TRIAL_RUN $min_func_name $seed
     done
 done
