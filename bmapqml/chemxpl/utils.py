@@ -114,7 +114,6 @@ def generate_unrepeated_database(egc_list):
 def generate_carbonized_unrepeated_database(egc_list, target_el="C"):
     carbon_only_egc_list = []
     other_egc_list = []
-    target_ncharge = int_atom(target_el)
     for egc in egc_list:
         if other_than_target_el_present(egc, target_el=target_el):
             other_egc_list.append(egc)
@@ -273,7 +272,7 @@ def egc2xyz_string(egc):
 
 
 def write_egc2xyz(egc, xyz_file_name):
-    write_xyz_file(egc.coordinates, xyz_file_name, charges=egc.nuclear_charges)
+    write_xyz_file(egc.coordinates, xyz_file_name, nuclear_charges=egc.nuclear_charges)
 
 
 def all_egc_from_tar(tarfile_name):
