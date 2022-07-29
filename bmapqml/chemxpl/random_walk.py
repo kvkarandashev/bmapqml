@@ -759,7 +759,9 @@ class RandomWalk:
     ):
         if tp_pair is None:
             tp_pair = [self.cur_tps[replica_id] for replica_id in replica_ids]
-        mfunc_vals = [self.eval_min_func(tp) for tp in tp_pair]
+        mfunc_vals = [
+            self.tot_pot(tp, replica_id) for tp, replica_id in zip(tp_pair, replica_ids)
+        ]
         if None in mfunc_vals:
             return None
         if self.virtual_beta_present(replica_ids):

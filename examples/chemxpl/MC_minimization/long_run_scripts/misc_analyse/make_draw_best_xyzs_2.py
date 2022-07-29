@@ -16,7 +16,7 @@ for pkl_file in pkl_files:
     min_val_file = (
         os.path.dirname(pkl_file)
         + os.path.basename(pkl_file).replace(".", "_")
-        + ".min_vals"
+        + ".expl_data"
     )
     cur_data = loadpkl(pkl_file)
     histogram = cur_data["histogram"]
@@ -43,13 +43,15 @@ for pkl_file in pkl_files:
     #    min_vals=np.repeat(min_val_ubound, traj_ncut+1)
     ve_id = 0
     cur_min_val = min_val_ubound
+    cur_hist_size = 0
     for step_id in range(traj_ncut + 1):
         while ve_id != num_vals_encounters and step_id == vals_encounters[ve_id][1]:
             cur_val = vals_encounters[ve_id][0]
+            cur_hist_size += 1
             if cur_min_val > cur_val:
                 cur_min_val = cur_val
             ve_id += 1
-        f.write(str(step_id) + " " + str(cur_min_val) + "\n")
+        f.write(str(step_id) + " " + str(cur_min_val) + " " + str(cur_hist_size) + "\n")
     #        min_vals[step_id]=cur_min_val
     f.close()
 
