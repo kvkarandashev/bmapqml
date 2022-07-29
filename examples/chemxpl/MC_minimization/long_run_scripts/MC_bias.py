@@ -27,13 +27,13 @@ possible_elements = ["C", "N", "O", "F"]
 forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
-betas = [None, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.5]
+betas = [None, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
 
 make_restart_frequency = 2000
 num_MC_steps = 500000
 
-bias_coeff = None
-vbeta_bias_coeff = None
+bias_coeff = .2
+vbeta_bias_coeff = .2
 
 randomized_change_params = {
     "max_fragment_num": 1,
@@ -45,7 +45,7 @@ randomized_change_params = {
 }
 global_change_params = {
     "num_parallel_tempering_tries": 32,
-    "num_genetic_tries": 8,
+    "num_genetic_tries": 4,
     "prob_dict": {"simple": 0.3, "genetic": 0.3, "tempering": 0.3},
 }
 
@@ -79,7 +79,7 @@ rw = RandomWalk(
     num_saved_candidates=100,
     delete_temp_data=["coord_info", "res_dict"],
     histogram_dump_file_prefix="histogram_dump_",
-    max_histogram_size=None,
+    max_histogram_size=1000000,
     track_histogram_size=True,
 )
 

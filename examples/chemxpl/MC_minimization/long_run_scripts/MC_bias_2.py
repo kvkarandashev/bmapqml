@@ -29,11 +29,11 @@ forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 betas = [None, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.5]
 
-make_restart_frequency = 10000
+make_restart_frequency = 2000
 num_MC_steps = 500000
 
-bias_coeff = 0.05
-vbeta_bias_coeff = 0.05
+bias_coeff = 0.2
+vbeta_bias_coeff = 0.2
 
 randomized_change_params = {
     "max_fragment_num": 1,
