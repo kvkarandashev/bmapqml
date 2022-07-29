@@ -2,8 +2,9 @@
 # to demonstrate how RandomWalk class can be used to Monte Carlo optimization.
 
 from bmapqml.chemxpl.valence_treatment import ChemGraph
-from bmapqml.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.random_walk import RandomWalk, TrajectoryPoint
 import random, math
+import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound
 from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
 from copy import deepcopy
@@ -84,15 +85,26 @@ for MC_step in range(num_MC_steps):
 global_hist_labels = []
 global_histogram = []
 
+
 # Print histograms corresponding to each of the betas. If everything went correctly,
 # None should've spent overwhelming part of the simulation in the global minimum ("F2" or "9@1:9" as the code outputs it),
 # for the others the ratio of probabilities of F2, Cl2 ("17@1:17"), and ClF ("17@1:9") should approach 1.0 - exp(-beta) - exp(-2*beta) as the number of Monte Carlo steps
 # increases.
 for i, beta in enumerate(betas):
     print("Beta:", beta, "index:", i)
-    for egc, distr in zip(histogram_labels[i], histogram[i]):
+    rec_pots = []
+    calc_pots = []
+    for i, (egc, distr) in enumerate(zip(histogram_labels[i], histogram[i])):
         print("EGC:", egc)
         print("Distribution:", distr)
+        if beta is not None:
+            rec_pots.append(-np.log(distr) / beta)
+            calc_pots.append(min_func(TrajectoryPoint(egc=egc)))
+    if beta is not None:
+        print(
+            "Average square density error:",
+            np.std(np.array(rec_pots) - np.array(calc_pots)),
+        )
     for hl, hv in zip(histogram_labels[i], histogram[i]):
         if hl not in global_hist_labels:
             global_hist_labels.append(hl)
