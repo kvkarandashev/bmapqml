@@ -15,6 +15,7 @@ from rdkit import RDLogger
 import os
 import pandas as pd
 from tqdm import tqdm
+from rdkit import Chem  
 
 #/bmapqml/chemxpl/utils.py
 lg = RDLogger.logger()
@@ -66,6 +67,8 @@ class analyze_random_walk:
             print("Number of unique points in the random walk:", len(self.histogram))
         
         if self.trajectory is not None:
+            pass
+            """
             print("Loading trajectory from file:", self.trajectory)
             self.all_tps = np.array(pickle.load(open(self.trajectory, "rb")))
             print("Done loading trajectory from file:", self.trajectory)
@@ -77,15 +80,10 @@ class analyze_random_walk:
             #[]
             #np.array(Parallel(n_jobs=12)(delayed(trajectory_point_to_canonical_rdkit)(tp) for tp in self.all_tps))[:,3]
             print("Done computing all smiles")
-            #exit()
+            
             """
-            for n in range(len(self.all_tps)):
-                self.all_tps[n] = self.all_tps[n]
-                self.all_tps_smiles[n] =  self.convert_to_smiles(self.all_tps[n])
-            print("Done convertig trajectory to smiles")
-            self.all_tps = self.all_tps[:,5]
-            self.all_tps_smiles = self.all_tps_smiles[:,5]
-            """
+
+
         
     def convert_to_smiles(self, mols):
         
@@ -165,29 +163,53 @@ class analyze_random_walk:
         #   self.distances[ind] = np.linalg.norm(x-X_target)
 
         lower_lim , upper_lim = self.dmin-self.thickness, self.dmin
-        #shell_vol = self.volume_of_nsphere(4096, upper_lim) - self.volume_of_nsphere(4096, lower_lim)
         in_interval = ((self.distances >= lower_lim) & (self.distances <=  upper_lim))
         print("Number of points in the interval:", "[{},{}]".format(lower_lim, upper_lim)  , len(self.distances[in_interval]))
         print(self.tps_smiles[in_interval])
-        np.savez_compressed("histogram_{}".format(self.name), tps_smiles=self.tps_smiles,distances=self.distances,values=self.values) 
+
+
+        #np.savez_compressed("histogram_{}".format(self.name), tps_smiles=self.tps_smiles,distances=self.distances,values=self.values) 
         #exit()
         #pdb.set_trace()
         
         return self.values
 
-    def volume_of_nsphere(N, R):
-        from scipy.special import gamma
+
+    def evaluate_RDF(self):
+        import mpmath
 
         """
-        Compute the volume of a sphere with radius R embedded in 
-        N dimensions.
-
-        https://en.wikipedia.org/wiki/N-sphere
-        S_{n+1}=2\pi V_{n}
-        {\displaystyle Vd_{n}(R)={\frac {\pi ^{n/2}}{\Gamma {\bigl (}{\tfrac {n}{2}}+1{\bigr )}}}R^{n},}
-        #https://en.wikibooks.org/wiki/Molecular_Simulation/Radial_Distribution_Functions  
+        Compute values of a function evaluated on all unique smiles in the random walk.
         """
-        return (np.pi ** (N / 2)) / (gamma(N / 2 + 1)) * R ** N
+        print("Evaluating RDF")
+
+        evaluation = self.model.evaluate_trajectory(self.tps)
+        self.values = evaluation[:,0]
+        self.distances = evaluation[:,1]
+
+        lower_lim , upper_lim = self.dmin-self.thickness, self.dmin 
+        shell_vol = self.volume_of_nsphere(4096, upper_lim) - self.volume_of_nsphere(4096, lower_lim)
+        
+        in_interval = ((self.distances >= lower_lim) & (self.distances <=  upper_lim))
+        N = len(self.distances[in_interval])
+        logRDF =   mpmath.log(N/shell_vol)
+        print("Number of points in the interval:", "[{},{}]".format(lower_lim, upper_lim)  , N )
+        print(self.tps_smiles[in_interval])
+
+
+        return lower_lim, upper_lim, N,logRDF
+
+
+
+
+    def volume_of_nsphere(self,N, R):
+        #from scipy.special import gamma
+        import mpmath
+        
+        N = mpmath.mpmathify(N)
+        R = mpmath.mpmathify(R)
+
+        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * R ** N
 
 
 
@@ -463,26 +485,61 @@ class analyze_random_walk:
 
 class Analyze:
 
-    def __init__(self, path):
-        """
-        histogram : list of all unique encountered points in the random walk.
-        minimize_fct : if desired reevaluate all unique molecules using this function
-        """
+    def __init__(self, path, verbose=False):
+
+
         self.path = path
         self.results = os.listdir(path)
+        self.verbose = verbose
 
     def parse_results(self):
         
-        print(self.results)
+        if self.verbose:
+            print("Parsing results...")
+            Nsim = len(self.results)
+            print("Number of simulations: {}".format(Nsim))
 
-        obj = pickle.load(open(self.path+self.results[0], "rb"))
-        HISTOGRAM = self.to_dataframe(obj["histogram"])
-        #ordered_trajectory
-        traj = np.array(ordered_trajectory(obj["histogram"]))
-        sel_temp = traj[:,0]
-        TRAJECTORY = self.to_dataframe(sel_temp)
+        ALL_HISTOGRAMS   = []
+        ALL_TRAJECTORIES = []
 
-        return HISTOGRAM, TRAJECTORY
+        for run in tqdm(self.results):
+
+            obj = pickle.load(open(self.path+run, "rb"))
+            HISTOGRAM = self.to_dataframe(obj["histogram"])
+            ALL_HISTOGRAMS.append(HISTOGRAM)
+            traj = np.array(ordered_trajectory(obj["histogram"]))
+            CURR_TRAJECTORIES = []
+            for T in range(traj.shape[1]):
+                sel_temp = traj[:,T]
+                TRAJECTORY = self.to_dataframe(sel_temp)
+                CURR_TRAJECTORIES.append(TRAJECTORY)
+            ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+
+
+        self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
+
+        GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
+        GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        
+        LABELS = GLOBAL_HISTOGRAM.columns[1:]
+
+        if self.verbose:
+            print("Best 5 molecules")
+
+        for ind, label in enumerate(LABELS):
+            print("{}".format(label))
+            if ind <2:
+                BEST = GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
+                print
+            else:
+                BEST = GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
+
+            print("==========================================================")
+            print(BEST)
+            print("==========================================================")
+                
+        return self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES
+
 
 
     def to_dataframe(self, obj):
@@ -507,12 +564,12 @@ class Analyze:
         """
 
         smiles_mol = []
-        for tp in tqdm(mols):
+        for tp in mols:
             
             rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
             smiles_mol.append(rdkit_obj[3])
 
-
+        smiles_mol = self.make_canon(smiles_mol)
         return smiles_mol
 
     def extract_values(self, mols):
@@ -523,9 +580,20 @@ class Analyze:
     
         labels = [l for l in mols[0].calculated_data.keys()]
         values = []
-        for tp in tqdm(mols):
+        for tp in mols:
             values.append(list(tp.calculated_data.values()))
         
         values = np.array(values)
 
         return values, labels
+
+    def make_canon(self,SMILES):
+    
+        CANON_SMILES = []
+        for smi in SMILES:
+            
+            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
+            CANON_SMILES.append(can)
+
+
+        return CANON_SMILES
