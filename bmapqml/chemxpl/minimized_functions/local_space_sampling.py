@@ -77,7 +77,7 @@ class sample_local_space:
         if max_size < 7:
             return 0
         else:
-            return 1e10
+            return None
 
     def lennard_jones_potential(self, d):
         """
@@ -135,9 +135,14 @@ class sample_local_space:
 
     def __call__(self, trajectory_point_in):
 
-        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-            self.canonical_rdkit_output
-        )["canonical_rdkit"]
+
+        try:
+            _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+                self.canonical_rdkit_output
+            )["canonical_rdkit"]
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
 
         X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
 

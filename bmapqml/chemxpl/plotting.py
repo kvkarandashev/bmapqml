@@ -484,12 +484,15 @@ class analyze_random_walk:
 
 
 class Analyze:
+    """
+    Analyze class for the analysis of the results of the optimization.
+    """
 
     def __init__(self, path, verbose=False):
 
 
         self.path = path
-        self.results = os.listdir(path)
+        self.results = os.listdir(path)[:2]
         self.verbose = verbose
 
     def parse_results(self):
@@ -519,30 +522,66 @@ class Analyze:
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
 
         GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
-        GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
         
-        LABELS = GLOBAL_HISTOGRAM.columns[1:]
+        self.LABELS = GLOBAL_HISTOGRAM.columns[1:]
 
         if self.verbose:
             print("Best 5 molecules")
 
-        for ind, label in enumerate(LABELS):
+        for ind, label in enumerate(self.LABELS):
             print("{}".format(label))
             if ind <2:
-                BEST = GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
+                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
                 print
             else:
-                BEST = GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
+                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
 
             print("==========================================================")
             print(BEST)
             print("==========================================================")
                 
-        return self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES
+        return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
 
+
+    def pareto(self,HISTOGRAM, maxX = True, maxY = True):
+        
+        """
+        Filter the histogram to keep only the pareto optimal solutions.
+        """
+
+        Xs, Ys = HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values
+        myList = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxX)
+    
+        p_front = [myList[0]]    
+    
+        for pair in myList[1:]:
+            if maxY: 
+                if pair[1] >= p_front[-1][1]:
+                    p_front.append(pair)
+            else:
+                if pair[1] <= p_front[-1][1]:
+                    p_front.append(pair)
+    
+        p_frontX = [pair[0] for pair in p_front]
+        p_frontY = [pair[1] for pair in p_front]
+
+        inds = []
+        for p1, p2 in zip(p_frontX, p_frontY):
+            ind = 0
+
+            for v1, v2 in zip(Xs, Ys):
+                if p1==v1 and p2==v2:
+                    inds.append(ind)
+                ind+=1
+
+        return  HISTOGRAM.iloc[np.array(inds)].sort_values("xTB_MMFF_electrolyte")
 
 
     def to_dataframe(self, obj):
+        """
+        Convert the object to a dataframe.
+        """
         df = pd.DataFrame()
         values, labels = self.extract_values(obj)
         SMILES = self.convert_to_smiles(obj)
@@ -588,6 +627,10 @@ class Analyze:
         return values, labels
 
     def make_canon(self,SMILES):
+        
+        """
+        Convert to canonical smiles form.
+        """
     
         CANON_SMILES = []
         for smi in SMILES:
