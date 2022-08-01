@@ -5,17 +5,19 @@ from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
 from bmapqml.chemxpl.minimized_functions import sample_local_space
 from bmapqml.chemxpl.random_walk import ordered_trajectory
 from sklearn.decomposition import PCA
-
 import pickle
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 import numpy as np
-import pdb
 from rdkit import RDLogger  
 import os
 import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem  
+import matplotlib.pyplot as plt
+import matplotlib.tri as tri
+import numpy as np
+import seaborn as sns
 
 #/bmapqml/chemxpl/utils.py
 lg = RDLogger.logger()
@@ -23,6 +25,262 @@ lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)   
 import warnings
 warnings.filterwarnings('ignore')
+
+
+class Analyze:
+    """
+    Analysis of the results of the optimization.
+    """
+
+    def __init__(self, path, verbose=False):
+
+
+        self.path = path
+        self.results = os.listdir(path) #[:2]
+        self.verbose = verbose
+
+    def parse_results(self):
+        
+        if self.verbose:
+            print("Parsing results...")
+            Nsim = len(self.results)
+            print("Number of simulations: {}".format(Nsim))
+
+        ALL_HISTOGRAMS   = []
+        ALL_TRAJECTORIES = []
+
+        for run in tqdm(self.results):
+
+            obj = pickle.load(open(self.path+run, "rb"))
+            HISTOGRAM = self.to_dataframe(obj["histogram"])
+            ALL_HISTOGRAMS.append(HISTOGRAM)
+            traj = np.array(ordered_trajectory(obj["histogram"]))
+            CURR_TRAJECTORIES = []
+            for T in range(traj.shape[1]):
+                sel_temp = traj[:,T]
+                TRAJECTORY = self.to_dataframe(sel_temp)
+                CURR_TRAJECTORIES.append(TRAJECTORY)
+            ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+
+        del obj, traj
+
+        self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
+
+        GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
+        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        
+        self.LABELS = GLOBAL_HISTOGRAM.columns[1:]
+
+        if self.verbose:
+            print("Best 5 molecules")
+
+        for ind, label in enumerate(self.LABELS):
+            print("{}".format(label))
+            if ind <2:
+                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
+                print
+            else:
+                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
+
+            print("==========================================================")
+            print(BEST)
+            print("==========================================================")
+                
+        return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+
+
+    def pareto(self,HISTOGRAM, maxX = True, maxY = True):
+        
+        """
+        Filter the histogram to keep only the pareto optimal solutions.
+        """
+
+        Xs, Ys = HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values
+        myList = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxX)
+    
+        p_front = [myList[0]]    
+    
+        for pair in myList[1:]:
+            if maxY: 
+                if pair[1] >= p_front[-1][1]:
+                    p_front.append(pair)
+            else:
+                if pair[1] <= p_front[-1][1]:
+                    p_front.append(pair)
+    
+        p_frontX = [pair[0] for pair in p_front]
+        p_frontY = [pair[1] for pair in p_front]
+
+        inds = []
+        for p1, p2 in zip(p_frontX, p_frontY):
+            ind = 0
+
+            for v1, v2 in zip(Xs, Ys):
+                if p1==v1 and p2==v2:
+                    inds.append(ind)
+                ind+=1
+
+
+        PARETO =  HISTOGRAM.iloc[np.array(inds)]
+        if self.verbose:
+            print("Pareto optimal solutions:")
+            print(PARETO.sort_values("xTB_MMFF_electrolyte"))
+
+        return  PARETO
+
+    def pareto_plot(self, HISTOGRAM, PARETO):
+
+
+        fs = 24
+
+        plt.rc('font', size=fs)
+        plt.rc('axes', titlesize=fs)
+        plt.rc('axes', labelsize=fs)           
+        plt.rc('xtick', labelsize=fs)          
+        plt.rc('ytick', labelsize=fs)          
+        plt.rc('legend', fontsize=fs)   
+        plt.rc('figure', titlesize=fs) 
+
+        fig,ax1= plt.subplots(figsize=(8,8))
+        p1  = HISTOGRAM["Dipole"].values
+        p2  = HISTOGRAM["HOMO_LUMO_gap"].values
+        summe = HISTOGRAM["xTB_MMFF_electrolyte"].values
+        xi = np.linspace(min(p1), max(p1), 1000)
+        yi = np.linspace(min(p2), max(p2), 1000)
+        #pdb.set_trace()
+        triang = tri.Triangulation(p1, p2)
+        interpolator = tri.LinearTriInterpolator(triang,summe)
+        Xi, Yi = np.meshgrid(xi, yi)
+        zi = interpolator(Xi, Yi)
+
+        ax1.contour(xi, yi, zi, levels=18, linewidths=0.5, colors='k')
+        sc = ax1.scatter(p1, p2,s =4, c=summe)
+        plt.xlabel("Dipole"  + " [unit 1]", fontsize=21)
+        plt.ylabel("HOMO_LUMO_gap" + " [unit 2]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+        clb = plt.colorbar(sc)
+        clb.set_label("Loss") 
+
+        ax1.spines['right'].set_color('none')
+        ax1.spines['top'].set_color('none')
+        ax1.spines['bottom'].set_position(('axes', -0.05))
+        ax1.spines['bottom'].set_color('black')
+        ax1.spines['left'].set_color('black')
+        ax1.yaxis.set_ticks_position('left')
+        ax1.xaxis.set_ticks_position('bottom')
+        ax1.spines['left'].set_position(('axes', -0.05))
+
+        plt.plot(PARETO["Dipole"],PARETO["HOMO_LUMO_gap"],'o', color='black')
+        plt.plot(PARETO["Dipole"],PARETO["HOMO_LUMO_gap"],'k-',linewidth=2)
+        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+        plt.savefig("pareto.pdf")  
+        plt.close("all")      
+
+
+
+    def result_spread(self, HISTOGRAMS, label):
+        
+        """
+        Analyze the spread of the results accross different seeds.
+        """
+        plt.close("all")
+        fs = 24
+
+        plt.rc('font', size=fs)
+        plt.rc('axes', titlesize=fs)
+        plt.rc('axes', labelsize=fs)           
+        plt.rc('xtick', labelsize=fs)          
+        plt.rc('ytick', labelsize=fs)          
+        plt.rc('legend', fontsize=fs)   
+        plt.rc('figure', titlesize=fs) 
+        fig2,ax2= plt.subplots(figsize=(8,8))
+
+        DIFFERENT_SEEDS = pd.DataFrame()
+        for ind, hist in enumerate(HISTOGRAMS):
+            Front = self.pareto(hist)
+            BEST_SEED_ind = Front.sort_values(label, ascending=True).head(1)
+            print(ind, BEST_SEED_ind)
+            DIFFERENT_SEEDS = DIFFERENT_SEEDS.append(BEST_SEED_ind)
+
+        #sns.kdeplot(data=DIFFERENT_SEEDS, x=label,fill=True, palette="crest",cut=0, ax=ax2)
+        sns.rugplot(data=DIFFERENT_SEEDS, x=label,palette="crest", height=.1, ax=ax2)
+        sns.violinplot(x=DIFFERENT_SEEDS[label], palette="Set3", ax=ax2)
+        ax2.set_ylabel("#")
+        ax2.spines['right'].set_color('none')
+        ax2.spines['top'].set_color('none')
+        ax2.spines['bottom'].set_position(('axes', -0.05))
+        ax2.spines['bottom'].set_color('black')
+        ax2.spines['left'].set_color('black')
+        ax2.yaxis.set_ticks_position('left')
+        ax2.xaxis.set_ticks_position('bottom')
+        ax2.spines['left'].set_position(('axes', -0.05))
+        plt.tight_layout()
+
+        plt.savefig("spread.pdf")
+
+
+    def to_dataframe(self, obj):
+        """
+        Convert the object to a dataframe.
+        """
+        df = pd.DataFrame()
+        values, labels = self.extract_values(obj)
+        SMILES = self.convert_to_smiles(obj)
+        df["SMILES"] = SMILES
+        for l in labels:
+            df[l] = values[:,labels.index(l)]
+        
+        df = df.dropna()
+        df = df.reset_index(drop=True)
+        return df
+
+
+    def convert_to_smiles(self, mols):
+    
+        """
+        Convert the list of molecules to SMILES strings.
+        tp_list: list of molecudfles as trajectory points
+        smiles_mol: list of rdkit molecules
+        """
+
+        smiles_mol = []
+        for tp in mols:
+            
+            rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
+            smiles_mol.append(rdkit_obj[3])
+
+        smiles_mol = self.make_canon(smiles_mol)
+        return smiles_mol
+
+    def extract_values(self, mols):
+        """
+        Extract the values from the trajectory points.
+        tp_list: list of molecules as trajectory points
+        """
+    
+        labels = [l for l in mols[0].calculated_data.keys()]
+        values = []
+        for tp in mols:
+            values.append(list(tp.calculated_data.values()))
+        
+        values = np.float_(np.array(values))
+
+        return values, labels
+
+    def make_canon(self,SMILES):
+        
+        """
+        Convert to canonical smiles form.
+        """
+    
+        CANON_SMILES = []
+        for smi in SMILES:
+            
+            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
+            CANON_SMILES.append(can)
+
+
+        return CANON_SMILES
+
 
 
 
@@ -481,162 +739,3 @@ class analyze_random_walk:
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("{}_PCA.pdf".format(name))
         plt.close()
-
-
-class Analyze:
-    """
-    Analyze class for the analysis of the results of the optimization.
-    """
-
-    def __init__(self, path, verbose=False):
-
-
-        self.path = path
-        self.results = os.listdir(path)[:2]
-        self.verbose = verbose
-
-    def parse_results(self):
-        
-        if self.verbose:
-            print("Parsing results...")
-            Nsim = len(self.results)
-            print("Number of simulations: {}".format(Nsim))
-
-        ALL_HISTOGRAMS   = []
-        ALL_TRAJECTORIES = []
-
-        for run in tqdm(self.results):
-
-            obj = pickle.load(open(self.path+run, "rb"))
-            HISTOGRAM = self.to_dataframe(obj["histogram"])
-            ALL_HISTOGRAMS.append(HISTOGRAM)
-            traj = np.array(ordered_trajectory(obj["histogram"]))
-            CURR_TRAJECTORIES = []
-            for T in range(traj.shape[1]):
-                sel_temp = traj[:,T]
-                TRAJECTORY = self.to_dataframe(sel_temp)
-                CURR_TRAJECTORIES.append(TRAJECTORY)
-            ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
-
-
-        self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
-
-        GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
-        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
-        
-        self.LABELS = GLOBAL_HISTOGRAM.columns[1:]
-
-        if self.verbose:
-            print("Best 5 molecules")
-
-        for ind, label in enumerate(self.LABELS):
-            print("{}".format(label))
-            if ind <2:
-                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
-                print
-            else:
-                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
-
-            print("==========================================================")
-            print(BEST)
-            print("==========================================================")
-                
-        return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
-
-
-    def pareto(self,HISTOGRAM, maxX = True, maxY = True):
-        
-        """
-        Filter the histogram to keep only the pareto optimal solutions.
-        """
-
-        Xs, Ys = HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values
-        myList = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxX)
-    
-        p_front = [myList[0]]    
-    
-        for pair in myList[1:]:
-            if maxY: 
-                if pair[1] >= p_front[-1][1]:
-                    p_front.append(pair)
-            else:
-                if pair[1] <= p_front[-1][1]:
-                    p_front.append(pair)
-    
-        p_frontX = [pair[0] for pair in p_front]
-        p_frontY = [pair[1] for pair in p_front]
-
-        inds = []
-        for p1, p2 in zip(p_frontX, p_frontY):
-            ind = 0
-
-            for v1, v2 in zip(Xs, Ys):
-                if p1==v1 and p2==v2:
-                    inds.append(ind)
-                ind+=1
-
-        return  HISTOGRAM.iloc[np.array(inds)].sort_values("xTB_MMFF_electrolyte")
-
-
-    def to_dataframe(self, obj):
-        """
-        Convert the object to a dataframe.
-        """
-        df = pd.DataFrame()
-        values, labels = self.extract_values(obj)
-        SMILES = self.convert_to_smiles(obj)
-        df["SMILES"] = SMILES
-        for l in labels:
-            df[l] = values[:,labels.index(l)]
-        
-        df = df.dropna()
-        df = df.reset_index(drop=True)
-        return df
-
-
-    def convert_to_smiles(self, mols):
-    
-        """
-        Convert the list of molecules to SMILES strings.
-        tp_list: list of molecudfles as trajectory points
-        smiles_mol: list of rdkit molecules
-        """
-
-        smiles_mol = []
-        for tp in mols:
-            
-            rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
-            smiles_mol.append(rdkit_obj[3])
-
-        smiles_mol = self.make_canon(smiles_mol)
-        return smiles_mol
-
-    def extract_values(self, mols):
-        """
-        Extract the values from the trajectory points.
-        tp_list: list of molecules as trajectory points
-        """
-    
-        labels = [l for l in mols[0].calculated_data.keys()]
-        values = []
-        for tp in mols:
-            values.append(list(tp.calculated_data.values()))
-        
-        values = np.array(values)
-
-        return values, labels
-
-    def make_canon(self,SMILES):
-        
-        """
-        Convert to canonical smiles form.
-        """
-    
-        CANON_SMILES = []
-        for smi in SMILES:
-            
-            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
-            CANON_SMILES.append(can)
-
-
-        return CANON_SMILES
