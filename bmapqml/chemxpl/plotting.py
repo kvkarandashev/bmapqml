@@ -2,7 +2,6 @@
 from bmapqml.utils import * 
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
-from bmapqml.chemxpl.minimized_functions import sample_local_space
 from bmapqml.chemxpl.random_walk import ordered_trajectory
 from sklearn.decomposition import PCA
 import pickle
@@ -13,10 +12,7 @@ from rdkit import RDLogger
 import os
 import pandas as pd
 from tqdm import tqdm
-from rdkit import Chem  
-import matplotlib.pyplot as plt
-import matplotlib.tri as tri
-import numpy as np
+from rdkit import Chem
 import seaborn as sns
 
 #/bmapqml/chemxpl/utils.py

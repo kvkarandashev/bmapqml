@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from bmapqml.chemxpl.plotting import Analyze
 
 ana = Analyze(path="/store/jan/trash/plotting_data/restart_files/restart_files/", verbose=False)
