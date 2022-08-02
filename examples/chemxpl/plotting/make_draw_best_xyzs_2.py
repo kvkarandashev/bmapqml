@@ -1,12 +1,20 @@
 from bmapqml.utils import loadpkl
 from bmapqml.chemxpl.utils import write_egc2xyz, egc_with_coords
-import glob, os
+import glob, os, sys
 import numpy as np
 
-pkl_files = glob.glob("data_*/restart_file_*.pkl")
+if len(sys.argv) == 1:
+    pkl_folders = "data_*"
+    output_folder = "."
+else:
+    pkl_folders = sys.argv[1]
+    output_folder = pkl_folders
+
+
+pkl_files = glob.glob(pkl_folders + "/restart_file_*.pkl")
 pkl_files.sort()
 
-traj_ncut = 50000
+traj_ncut = 100000
 
 min_func_name = "xTB_MMFF_electrolyte"
 
@@ -15,6 +23,7 @@ j = 1
 for pkl_file in pkl_files:
     min_val_file = (
         os.path.dirname(pkl_file)
+        + "/"
         + os.path.basename(pkl_file).replace(".", "_")
         + ".expl_data"
     )
@@ -62,6 +71,8 @@ for pkl_file in pkl_files:
             continue
         break
     print(pkl_file, hist_size, best_tp.calculated_data)
-    write_egc2xyz(best_candidate_egc, "best_candidate_" + str(j) + ".xyz")
+    write_egc2xyz(
+        best_candidate_egc, output_folder + "/best_candidate_" + str(j) + ".xyz"
+    )
 
     j += 1
