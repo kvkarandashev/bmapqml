@@ -21,4 +21,4 @@ done
 python MC_all_moves_wrestart.py $((num_MC_steps*num_components)) restart_no_pause.pkl
 
 # Compare the two restart files.
-python check_traj_equivalence.py restart_no_pause.pkl $new_restart
+check_traj_equivalence restart_no_pause.pkl $new_restart

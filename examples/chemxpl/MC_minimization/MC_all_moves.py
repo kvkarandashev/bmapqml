@@ -10,6 +10,7 @@ from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
 from copy import deepcopy
 
 random.seed(1)
+np.random.seed(1)
 
 possible_elements = ["Cl", "F"]
 

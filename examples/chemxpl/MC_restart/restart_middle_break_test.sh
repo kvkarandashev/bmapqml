@@ -15,4 +15,4 @@ python MC_all_moves_wrestart.py $((num_MC_steps_1+num_MC_steps_2)) $restart_mid 
 python MC_all_moves_wrestart.py $num_MC_steps_2 $other_final_restart init_restart_file=$restart_mid
 
 # Compare the two restart files created in the end of the simulations.
-python check_traj_equivalence.py final_restart.pkl $other_final_restart
+check_traj_equivalence final_restart.pkl $other_final_restart

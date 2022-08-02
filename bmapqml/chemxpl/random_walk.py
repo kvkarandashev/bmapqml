@@ -333,6 +333,9 @@ class TrajectoryPoint:
             return self.num_visits[replica_id]
 
     def copy_extra_data_to(self, other_tp):
+        """
+        Copy all calculated data from self to other_tp.
+        """
         for quant_name in self.calculated_data:
             if quant_name not in other_tp.calculated_data:
                 other_tp.calculated_data[quant_name] = self.calculated_data[quant_name]
@@ -353,6 +356,7 @@ class TrajectoryPoint:
                 other_tp.valence_change_possibilities = deepcopy(
                     self.valence_change_possibilities
                 )
+        self.egc.chemgraph.copy_extra_data_to(other_tp.egc.chemgraph)
 
     def __lt__(self, tp2):
         return self.egc < tp2.egc

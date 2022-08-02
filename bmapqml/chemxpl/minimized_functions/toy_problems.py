@@ -1,5 +1,6 @@
 # Contains toy problems for code testing.
 from ..random_walk import TrajectoryPoint
+from ...data import NUCLEAR_CHARGE
 
 
 class Diatomic_barrier:
@@ -32,17 +33,23 @@ class Diatomic_barrier:
 
 
 class OrderSlide:
-    def __init__(self, possible_nuclear_charges_input: list):
+    def __init__(
+        self,
+        possible_nuclear_charges: list or None = None,
+        possible_elements: list or None = None,
+    ):
         """
         Toy problem potential for minimizing nuclear charges of heavy atoms of molecules.
         """
-        possible_nuclear_charges = sorted(possible_nuclear_charges_input)
+        if possible_nuclear_charges is None:
+            possible_nuclear_charges = [NUCLEAR_CHARGE[el] for el in possible_elements]
+        used_nuclear_charges = sorted(possible_nuclear_charges)
         self.order_dict = {}
-        for i, ncharge in enumerate(possible_nuclear_charges):
+        for i, ncharge in enumerate(used_nuclear_charges):
             self.order_dict[ncharge] = i
 
     def __call__(self, trajectory_point_in: TrajectoryPoint):
-        return sum(
+        return -sum(
             self.order_dict[ha.ncharge]
             for ha in trajectory_point_in.egc.chemgraph.hatoms
         )
