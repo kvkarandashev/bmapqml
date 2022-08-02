@@ -6,6 +6,7 @@ from bmapqml.chemxpl.random_walk import ordered_trajectory
 from sklearn.decomposition import PCA
 import pickle
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import matplotlib.tri as tri
 import numpy as np
 from rdkit import RDLogger  
@@ -32,7 +33,7 @@ class Analyze:
 
 
         self.path = path
-        self.results = os.listdir(path) #[:2]
+        self.results = os.listdir(path)[:1]
         self.verbose = verbose
 
     def parse_results(self):
@@ -63,7 +64,17 @@ class Analyze:
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
 
         GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
-        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM
+
+        # GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        """
+        Somehow be careful!!!
+        (Pdb) GLOBAL_HISTOGRAM[GLOBAL_HISTOGRAM["SMILES"]=="OC(O)CC(F)C(O)F"]
+                    SMILES    Dipole  HOMO_LUMO_gap  xTB_MMFF_electrolyte
+        5591  OC(O)CC(F)C(O)F  1.330659       0.415468             -7.507930
+        5442  OC(O)CC(F)C(O)F  3.610319       0.394474            -10.972133        
+        """
+        
         
         self.LABELS = GLOBAL_HISTOGRAM.columns[1:]
 
@@ -124,7 +135,7 @@ class Analyze:
 
         return  PARETO
 
-    def pareto_plot(self, HISTOGRAM, PARETO):
+    def pareto_plot(self, HISTOGRAM, PARETO, ALL_PARETOS=False):
 
 
         fs = 24
@@ -167,9 +178,56 @@ class Analyze:
 
         plt.plot(PARETO["Dipole"],PARETO["HOMO_LUMO_gap"],'o', color='black')
         plt.plot(PARETO["Dipole"],PARETO["HOMO_LUMO_gap"],'k-',linewidth=2)
+
+        alpha = 0.5
+        if ALL_PARETOS!=False:
+            cmap   = iter(cm.rainbow(np.linspace(0, 1, len(ALL_PARETOS))))
+            for color, hist in zip(cmap, ALL_PARETOS):
+                SUB_PARETO = self.pareto(hist)
+                plt.plot(SUB_PARETO["Dipole"],SUB_PARETO["HOMO_LUMO_gap"],'o',alpha=alpha, color=color)
+                plt.plot(SUB_PARETO["Dipole"],SUB_PARETO["HOMO_LUMO_gap"],'-',color=color, alpha=alpha ,linewidth=0.5)
+
+
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("pareto.pdf")  
         plt.close("all")      
+
+
+
+    def trajectory_plot(self, TRAJECTORY):
+            
+            fs = 24
+    
+            plt.rc('font', size=fs)
+            plt.rc('axes', titlesize=fs)
+            plt.rc('axes', labelsize=fs)           
+            plt.rc('xtick', labelsize=fs)          
+            plt.rc('ytick', labelsize=fs)          
+            plt.rc('legend', fontsize=fs)   
+            plt.rc('figure', titlesize=fs) 
+    
+            fig,ax1= plt.subplots(figsize=(8,8))
+            p1   = TRAJECTORY["Dipole"].values
+            p2   = TRAJECTORY["HOMO_LUMO_gap"].values
+            step = np.arange(len(p1))
+            sc = ax1.scatter(p1, p2,s =4, c=step)
+            plt.xlabel("Dipole"  + " [unit 1]", fontsize=21)
+            plt.ylabel("HOMO_LUMO_gap" + " [unit 2]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+            clb = plt.colorbar(sc)
+            clb.set_label("step")     
+
+            ax1.spines['right'].set_color('none')
+            ax1.spines['top'].set_color('none')
+            ax1.spines['bottom'].set_position(('axes', -0.05))
+            ax1.spines['bottom'].set_color('black')
+            ax1.spines['left'].set_color('black')
+            ax1.yaxis.set_ticks_position('left')
+            ax1.xaxis.set_ticks_position('bottom')
+            ax1.spines['left'].set_position(('axes', -0.05))
+
+            plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+            plt.savefig("steps.pdf")  
+            plt.close("all")         
 
 
 
