@@ -83,22 +83,32 @@ if __name__ == "__main__":
 
     # Here you define the probabilities of taking each of the individual smaller moves:
     # If we define it as a list the probabilities are equal:
-    change_prob_dict = [
-        add_heavy_atom_chain,
-        remove_heavy_atom,
-        replace_heavy_atom,
-        change_bond_order,
-        change_valence,
-    ]
+    # change_prob_dict = [
+    #    add_heavy_atom_chain,
+    #    remove_heavy_atom,
+    #    replace_heavy_atom,
+    #    change_bond_order,
+    #    change_valence,
+    # ]
+
+    change_prob_dict = {
+        add_heavy_atom_chain: 0.5,
+        remove_heavy_atom: 0.5,
+        change_bond_order: 0.2,
+        change_valence: 0.1,
+    }
 
     randomized_change_params = {
-        "max_fragment_num": 1,
-        "nhatoms_range": [1, 3],
-        "final_nhatoms_range": [2, 3],
-        "possible_elements": allowed_elements,
-        "bond_order_changes": [-1, 1],
-        "forbidden_bonds": None,
-        "change_prob_dict": change_prob_dict,
+        "max_fragment_num": 1,  # maximal number of fragments a molecule is allowed to break into
+        "nhatoms_range": [1, 3],  # numbers of heavy atoms allowed in the system
+        "final_nhatoms_range": [
+            2,
+            3,
+        ],  # numbers of heavy atoms of "principle interest" (simulation is biased towards that if bound_enfocing_coeff in RandomWalk is not None)
+        "possible_elements": allowed_elements,  # allowed elements
+        "bond_order_changes": [-1, 1],  # values by which bond orders can be changed
+        "forbidden_bonds": None,  # bonds that are not allowed (i.e. choosing [(9, 8)] forbids O-F bonds from forming)
+        "change_prob_dict": change_prob_dict,  # dictionnary of probabilities with which a single replica change procedure is chosen; if list the probabilities are equal
     }
 
     random.seed(42)
