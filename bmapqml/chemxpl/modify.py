@@ -542,13 +542,15 @@ def randomized_split_membership_vector(cg, origin_choices, fragment_size):
 
 
 def randomized_cross_coupling(
-    cg_pair,
-    cross_coupling_fragment_ratio_range=[0.0, 0.5],
-    cross_coupling_fragment_size_range=None,
-    forbidden_bonds=None,
-    nhatoms_range=None,
+    cg_pair: list,
+    cross_coupling_fragment_ratio_range: list or None = [0.0, 0.5],
+    cross_coupling_fragment_size_range: list or None = None,
+    forbidden_bonds: list or None = None,
+    nhatoms_range: list or None = None,
+    visited_tp_list: list or None = None,
     **dummy_kwargs
 ):
+    """ """
 
     ppfs_kwargs = {
         "nhatoms_range": nhatoms_range,
@@ -593,6 +595,13 @@ def randomized_cross_coupling(
 
     if (new_cg_pair[0] is None) or (new_cg_pair[1] is None):
         return None, None
+
+    if visited_tp_list is not None:
+        for new_cg_id, new_cg in enumerate(new_cg_pair):
+            if new_cg in visited_tp_list:
+                visited_tp_list[
+                    visited_tp_list.index(new_cg)
+                ].chemgraph().copy_extra_data_to(new_cg_pair[new_cg_id])
 
     # Account for probability of choosing the correct fragment sizes to do the inverse move.
     tot_choice_prob_ratio /= len(

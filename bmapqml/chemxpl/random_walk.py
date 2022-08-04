@@ -135,53 +135,11 @@ def lookup_or_none(dict_in, key):
         return None
 
 
-def randomized_change(tp, change_prob_dict=default_change_list, **other_kwargs):
-    cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
-        tp.possibilities(), change_prob_dict
-    )
-    possibility_dict_label = change_possibility_label[cur_change_procedure]
-    possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
-    possibility_label, change_possibilities, forward_prob = random_choice_from_dict(
-        possibilities, possibility_dict
-    )
-    total_forward_prob += forward_prob - np.log(len(change_possibilities))
-    final_possibility_val = random.choice(change_possibilities)
-
-    new_egc = egc_change_func(
-        tp.egc, possibility_label, final_possibility_val, cur_change_procedure
-    )
-
-    if new_egc is None:
-        return None, None
-
-    new_tp = TrajectoryPoint(egc=new_egc)
-    new_tp.init_possibility_info(**other_kwargs)
-
-    # Calculate the chances of doing the inverse operation
-    inv_proc = inverse_procedure[cur_change_procedure]
-    inverse_possibilities, total_inverse_prob = random_choice_from_dict(
-        new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc
-    )
-    if cur_change_procedure is change_valence:
-        inverse_prob = -np.log(len(new_tp.possibilities()[cur_change_procedure]))
-        inverse_final_possibilities = change_possibilities
+def tp_or_chemgraph(tp):
+    if isinstance(tp, ChemGraph):
+        return tp
     else:
-        inv_poss_dict_label = change_possibility_label[inv_proc]
-        inv_poss_dict = lookup_or_none(other_kwargs, inv_poss_dict_label)
-        if cur_change_procedure is replace_heavy_atom:
-            inverse_pl = element_name[
-                tp.egc.chemgraph.hatoms[final_possibility_val].ncharge
-            ]
-        else:
-            inverse_pl = inverse_possibility_label(
-                cur_change_procedure, possibility_label
-            )
-        inverse_final_possibilities, inverse_prob = random_choice_from_dict(
-            inverse_possibilities, inv_poss_dict, get_probability_of=inverse_pl
-        )
-    total_inverse_prob += inverse_prob - np.log(len(inverse_final_possibilities))
-
-    return new_tp, total_forward_prob - total_inverse_prob
+        return tp.chemgraph()
 
 
 class TrajectoryPoint:
@@ -358,14 +316,17 @@ class TrajectoryPoint:
                 )
         self.egc.chemgraph.copy_extra_data_to(other_tp.egc.chemgraph)
 
+    def chemgraph(self):
+        return self.egc.chemgraph
+
     def __lt__(self, tp2):
-        return self.egc < tp2.egc
+        return self.chemgraph() < tp_or_chemgraph(tp2)
 
     def __gt__(self, tp2):
-        return self.egc > tp2.egc
+        return self.chemgraph() > tp_or_chemgraph(tp2)
 
     def __eq__(self, tp2):
-        return self.egc == tp2.egc
+        return self.chemgraph() == tp_or_chemgraph(tp2)
 
     def __str__(self):
         return str(self.egc)
@@ -439,10 +400,6 @@ def conv_func_mol_egc(inp, forward=True, mol_format=None):
         return mol_egc_converter[mol_format][conv_func_id](inp)
 
 
-def random_pair(arr_length):
-    return random.sample(range(arr_length), 2)
-
-
 #   Auxiliary exception classes.
 class SoftExitCalled(Exception):
     """
@@ -469,6 +426,69 @@ class DataUnavailable(Exception):
 
 
 from types import FunctionType
+
+
+def randomized_change(
+    tp: TrajectoryPoint,
+    change_prob_dict=default_change_list,
+    visited_tp_list: list or None = None,
+    **other_kwargs
+):
+    """
+    Randomly modify a TrajectoryPoint object.
+    visited_tp_list : list of TrajectoryPoint objects for which data is available.
+    """
+    cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
+        tp.possibilities(), change_prob_dict
+    )
+    possibility_dict_label = change_possibility_label[cur_change_procedure]
+    possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
+    possibility_label, change_possibilities, forward_prob = random_choice_from_dict(
+        possibilities, possibility_dict
+    )
+    total_forward_prob += forward_prob - np.log(len(change_possibilities))
+    final_possibility_val = random.choice(change_possibilities)
+
+    new_egc = egc_change_func(
+        tp.egc, possibility_label, final_possibility_val, cur_change_procedure
+    )
+
+    if new_egc is None:
+        return None, None
+
+    new_tp = TrajectoryPoint(egc=new_egc)
+    if visited_tp_list is not None:
+        if new_tp in visited_tp_list:
+            tp_id = visited_tp_list.index(new_tp)
+            visited_tp_list[tp_id].copy_extra_data_to(new_tp)
+
+    new_tp.init_possibility_info(**other_kwargs)
+
+    # Calculate the chances of doing the inverse operation
+    inv_proc = inverse_procedure[cur_change_procedure]
+    inverse_possibilities, total_inverse_prob = random_choice_from_dict(
+        new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc
+    )
+    if cur_change_procedure is change_valence:
+        inverse_prob = -np.log(len(new_tp.possibilities()[cur_change_procedure]))
+        inverse_final_possibilities = change_possibilities
+    else:
+        inv_poss_dict_label = change_possibility_label[inv_proc]
+        inv_poss_dict = lookup_or_none(other_kwargs, inv_poss_dict_label)
+        if cur_change_procedure is replace_heavy_atom:
+            inverse_pl = element_name[
+                tp.egc.chemgraph.hatoms[final_possibility_val].ncharge
+            ]
+        else:
+            inverse_pl = inverse_possibility_label(
+                cur_change_procedure, possibility_label
+            )
+        inverse_final_possibilities, inverse_prob = random_choice_from_dict(
+            inverse_possibilities, inv_poss_dict, get_probability_of=inverse_pl
+        )
+    total_inverse_prob += inverse_prob - np.log(len(inverse_final_possibilities))
+
+    return new_tp, total_forward_prob - total_inverse_prob
 
 
 class RandomWalk:
@@ -819,7 +839,9 @@ class RandomWalk:
         changed_tp = self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance = randomized_change(
-            changed_tp, **self.used_randomized_change_params
+            changed_tp,
+            visited_tp_list=self.histogram,
+            **self.used_randomized_change_params
         )
         if new_tp is None:
             return False
@@ -834,7 +856,9 @@ class RandomWalk:
             self.cur_tps[replica_id].egc.chemgraph for replica_id in replica_ids
         ]
         new_cg_pair, prob_balance = randomized_cross_coupling(
-            old_cg_pair, **self.used_randomized_change_params
+            old_cg_pair,
+            visited_tp_list=self.histogram,
+            **self.used_randomized_change_params
         )
         self.num_attempted_cross_couplings += 1
         if new_cg_pair is not None:

@@ -391,6 +391,8 @@ class ChemGraph:
         self.resonance_structure_map = None
         self.resonance_structure_inverse_map = None
 
+        self.comparison_list = None
+
     # Checking graph's state.
     def valences_reasonable(self):
         for ha_id, ha in enumerate(self.hatoms):
@@ -612,7 +614,7 @@ class ChemGraph:
                         res_addition += res_struct_ord[stuple]
                 return res_addition / len(res_struct_ords) + 1.0
             else:
-                output = self.bond_orders[stuple]
+                return self.bond_orders[stuple]
         else:
             return 0.0
 
@@ -1133,20 +1135,22 @@ class ChemGraph:
         self.init_canonical_permutation()
         return self.inv_canonical_permutation
 
-    def comparison_iterator(self):
-        iterators = [iter([self.nhatoms()])]
-        self.init_canonical_permutation()
-        iterators.append(
-            [self.hatoms[hatom_id] for hatom_id in self.inv_canonical_permutation]
-        )
-        for hatom_id in self.inv_canonical_permutation:
-            neighbor_permuted_list = [
-                self.canonical_permutation[neigh_id]
-                for neigh_id in self.neighbors(hatom_id)
-            ]
-            iterators.append(iter([len(neighbor_permuted_list)]))
-            iterators.append(iter(sorted(neighbor_permuted_list)))
-        return itertools.chain(*iterators)
+    def get_comparison_list(self):
+        if self.comparison_list is None:
+            iterators = [iter([self.nhatoms()])]
+            self.init_canonical_permutation()
+            iterators.append(
+                [self.hatoms[hatom_id] for hatom_id in self.inv_canonical_permutation]
+            )
+            for hatom_id in self.inv_canonical_permutation:
+                neighbor_permuted_list = [
+                    self.canonical_permutation[neigh_id]
+                    for neigh_id in self.neighbors(hatom_id)
+                ]
+                iterators.append(iter([len(neighbor_permuted_list)]))
+                iterators.append(iter(sorted(neighbor_permuted_list)))
+            self.comparison_list = list(itertools.chain(*iterators))
+        return self.comparison_list
 
     def copy_extra_data_to(self, other_cg):
         self.copy_equivalence_info_to(other_cg)
@@ -1199,13 +1203,13 @@ class ChemGraph:
         ]
 
     def __lt__(self, ch2):
-        return triple_gt_witer(self, ch2) is False
+        return self.get_comparison_list() < ch2.get_comparison_list()
 
     def __gt__(self, ch2):
-        return triple_gt_witer(self, ch2) is True
+        return self.get_comparison_list() > ch2.get_comparison_list()
 
     def __eq__(self, ch2):
-        return triple_gt_witer(self, ch2) is None
+        return self.get_comparison_list() == ch2.get_comparison_list()
 
     def __str__(self):
         """
