@@ -500,6 +500,9 @@ class ChemGraph:
             output.append(example_tuple)
         return output
 
+    def equiv_class_members(self, equiv_class_id, atom_set_length):
+        return list(zip(*np.where(self.equiv_arr(atom_set_length) == equiv_class_id)))
+
     def check_equivalence_class(self, atom_id_set):
         atom_set_length = len(atom_id_set)
         self.init_equivalence_array(atom_set_length)
@@ -1164,30 +1167,40 @@ class ChemGraph:
 
             num_equiv_classes = self.num_equiv_classes(atom_set_length)
 
+            other_num_equiv_classes = other_cg.num_equiv_classes(atom_set_length)
+
+            copied_equivalence_classes = {}
+
+            for other_equiv_class_id in range(other_num_equiv_classes):
+                other_cg_equiv_class_members = other_cg.equiv_class_members(
+                    other_equiv_class_id, atom_set_length
+                )
+                equiv_class_members = other_cg.match_atom_id_sets(
+                    other_cg_equiv_class_members, self
+                )
+                for equiv_class_member in equiv_class_members:
+                    equiv_class_id = self.equiv_arr(atom_set_length)[equiv_class_member]
+                    if equiv_class_id != -1:
+                        copied_equivalence_classes[
+                            equiv_class_id
+                        ] = other_equiv_class_id
+                        break
+
             for equiv_class_id in range(num_equiv_classes):
-                equiv_class_members = list(
-                    zip(*np.where(self.equiv_arr(atom_set_length) == equiv_class_id))
+                equiv_class_members = self.equiv_class_members(
+                    equiv_class_id, atom_set_length
                 )
                 other_cg_equiv_class_members = self.match_atom_id_sets(
                     equiv_class_members, other_cg
                 )
-                other_cg_equiv_class_id = None
-                for other_cg_equiv_class_member in other_cg_equiv_class_members:
-                    cur_class_id = other_cg.equiv_arr(atom_set_length)[
-                        other_cg_equiv_class_member
-                    ]
-                    if cur_class_id != -1:
-                        other_cg_equiv_class_id = cur_class_id
-                        break
-                if other_cg_equiv_class_id is None:
-                    other_example_member = other_cg_equiv_class_members[0]
-                    other_cg.check_equivalence_class(other_example_member)
-                    other_cg_equiv_class_id = other_cg.equiv_arr(atom_set_length)[
-                        other_example_member
-                    ]
+                if equiv_class_id in copied_equivalence_classes:
+                    assigned_equiv_class_id = copied_equivalence_classes[equiv_class_id]
+                else:
+                    assigned_equiv_class_id = other_num_equiv_classes
+                    other_num_equiv_classes += 1
                 for other_cg_equiv_class_member in other_cg_equiv_class_members:
                     other_cg.assign_equivalence_class(
-                        other_cg_equiv_class_member, other_cg_equiv_class_id
+                        other_cg_equiv_class_member, assigned_equiv_class_id
                     )
 
     def match_atom_id_set(self, atom_id_set, other_cg):
@@ -1201,6 +1214,11 @@ class ChemGraph:
             self.match_atom_id_set(atom_id_set, other_cg)
             for atom_id_set in atom_id_sets
         ]
+
+    def canonical_atom_set_iterator(self, atom_set_length):
+        return itertools.product(
+            *[self.inv_canonical_permutation for _ in range(atom_set_length)]
+        )
 
     def __lt__(self, ch2):
         return self.get_comparison_list() < ch2.get_comparison_list()
