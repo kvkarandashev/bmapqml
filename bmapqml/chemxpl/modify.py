@@ -29,7 +29,7 @@ def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
 
 def atom_pair_equivalent_to_list_member(egc, atom_pair, atom_pair_list):
     for other_atom_pair in atom_pair_list:
-        if egc.chemgraph.pairs_equivalent(atom_pair[:2], other_atom_pair[:2]):
+        if egc.chemgraph.atom_sets_equivalent(atom_pair[:2], other_atom_pair[:2]):
             return True
     return False
 

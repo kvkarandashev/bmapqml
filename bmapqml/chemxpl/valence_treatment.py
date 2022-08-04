@@ -417,14 +417,14 @@ class ChemGraph:
         return len(self.neighbors(hatom_id)) + self.hatoms[hatom_id].nhydrogens
 
     # Everything related to equivalences.
-    def atoms_equivalent(self, *atom_id_list):
-        for i in range(len(atom_id_list) - 1):
-            if not self.atom_pair_equivalent(atom_id_list[i], atom_id_list[i + 1]):
-                return False
-        return True
-
-    def num_equiv_classes(self, equiv_class_arr):
+    def num_equiv_classes_from_arr(self, equiv_class_arr):
         return np.amax(equiv_class_arr) + 1
+
+    def num_equiv_classes(self, atom_set_length):
+        if atom_set_length == 1:
+            return self.num_equiv_classes_from_arr(self.equivalence_vector)
+        else:
+            return self.num_equiv_classes_from_arr(self.pair_equivalence_matrix)
 
     def init_equivalence_vector(self):
         if self.equivalence_vector is None:
@@ -436,82 +436,86 @@ class ChemGraph:
                 (self.nhatoms(), self.nhatoms()), dtype=int
             )
 
-    def num_hatom_equiv_classes(self):
-        self.init_equivalence_vector()
-        return self.num_equiv_classes(self.equivalence_vector)
+    def init_equivalence_array(self, atom_set_length):
+        if atom_set_length == 1:
+            self.init_equivalence_vector()
+        else:
+            self.init_pair_equivalence_matrix()
 
-    def num_pair_equiv_classes(self):
-        self.init_pair_equivalence_matrix()
-        return self.num_equiv_classes(self.pair_equivalence_matrix)
+    def equiv_arr(self, atom_set_length):
+        if atom_set_length == 1:
+            return self.equivalence_vector
+        else:
+            return self.pair_equivalence_matrix
 
-    def equiv_class_examples(self, equiv_class_arr):
-        num_classes = self.num_equiv_classes(equiv_class_arr)
-        output = []
-        for equiv_class_id in range(num_classes):
-            where_output = np.where(equiv_class_arr == equiv_class_id)
-            example_tuple = tuple(where_column[0] for where_column in where_output)
-            output.append((equiv_class_id, example_tuple))
-        return output
-
-    def check_equivalence_class(self, atom_id):
-        if self.equivalence_vector is None:
-            self.equivalence_vector = np.repeat(-1, self.nhatoms())
-        if self.equivalence_vector[atom_id] == -1:
-            self.init_colors()
-            for (equiv_class_id, example_tuple) in self.equiv_class_examples(
-                self.equivalence_vector
-            ):
-                if self.colors[atom_id] == self.colors[example_tuple[0]]:
-                    if self.uninit_atom_sets_equivalent([atom_id], example_tuple):
-                        self.equivalence_vector[atom_id] = equiv_class_id
-                        return
-            self.equivalence_vector[atom_id] = self.num_hatom_equiv_classes()
-
-    def check_pair_equivalence_class(self, atom_id_tuple):
-        self.init_pair_equivalence_matrix()
-        if self.pair_equivalence_matrix[atom_id_tuple] == -1:
-            cur_sorted_colors = self.sorted_colors(atom_id_tuple)
-
-            self.init_colors()
-            for (equiv_class_id, example_tuple) in self.equiv_class_examples(
-                self.pair_equivalence_matrix
-            ):
-                if cur_sorted_colors == self.sorted_colors(example_tuple):
-                    if self.uninit_atom_sets_equivalent(atom_id_tuple, example_tuple):
-                        self.pair_equivalence_matrix[atom_id_tuple] = equiv_class_id
-                        self.pair_equivalence_matrix[
-                            atom_id_tuple[::-1]
-                        ] = equiv_class_id
-                        return
-            self.pair_equivalence_matrix[atom_id_tuple] = self.num_pair_equiv_classes()
-            self.pair_equivalence_matrix[
-                atom_id_tuple[::-1]
-            ] = self.pair_equivalence_matrix[atom_id_tuple]
-
-    def atom_pair_equivalent(self, atom_id1, atom_id2):
-        if atom_id1 == atom_id2:
-            return True
-        self.check_equivalence_class(atom_id1)
-        self.check_equivalence_class(atom_id2)
-        return self.equivalence_vector[atom_id1] == self.equivalence_vector[atom_id2]
+    def equiv_class_val(self, atom_id_set):
+        if len(atom_id_set) == 1:
+            return self.equivalence_vector[atom_id_set]
+        else:
+            return self.pair_equivalence_matrix[atom_id_set]
 
     def sorted_colors(self, atom_set):
         self.init_colors()
         return sorted([self.colors[atom_id] for atom_id in atom_set])
 
-    def uninit_atom_sets_equivalent(self, atom_set1, atom_set2):
-        self.init_colors()
-
-        if len(atom_set1) == 1:
-            if self.colors[atom_set1[0]] != self.colors[atom_set2[0]]:
-                return False
+    def atom_sets_equivalence_reasonable(self, atom_id_set1, atom_id_set2):
+        if len(atom_id_set1) == 1:
+            self.init_colors()
+            return self.colors[atom_id_set1[0]] == self.colors[atom_id_set2[0]]
         else:
-            if self.sorted_colors(atom_set1) != self.sorted_colors(atom_set2):
+            if self.sorted_colors(atom_id_set1) != self.sorted_colors(atom_id_set2):
                 return False
-            if self.aa_all_bond_orders(*atom_set1) != self.aa_all_bond_orders(
-                *atom_set2
+            if self.aa_all_bond_orders(*atom_id_set1) != self.aa_all_bond_orders(
+                *atom_id_set2
             ):
                 return False
+            for atom_id_set2_permut in itertools.permutations(atom_id_set2):
+                match = True
+                for atom_id1, atom_id2 in zip(atom_id_set1, atom_id_set2_permut):
+                    if not self.atom_pair_equivalent(atom_id1, atom_id2):
+                        match = False
+                        break
+                if match:
+                    return True
+            return False
+
+    def assign_equivalence_class(self, atom_id_set, assigned_val):
+        if len(atom_id_set) == 1:
+            self.equivalence_vector[atom_id_set] = assigned_val
+        else:
+            self.pair_equivalence_matrix[atom_id_set] = assigned_val
+            self.pair_equivalence_matrix[atom_id_set[::-1]] = assigned_val
+
+    def equiv_class_examples(self, atom_set_length, as_tuples=True):
+        num_classes = self.num_equiv_classes(atom_set_length)
+        equiv_class_arr = self.equiv_arr(atom_set_length)
+        output = []
+        for equiv_class_id in range(num_classes):
+            where_output = np.where(equiv_class_arr == equiv_class_id)
+            example_tuple = tuple(where_column[0] for where_column in where_output)
+            if not as_tuples:
+                example_tuple = example_tuple[0]
+            output.append(example_tuple)
+        return output
+
+    def check_equivalence_class(self, atom_id_set):
+        atom_set_length = len(atom_id_set)
+        self.init_equivalence_array(atom_set_length)
+        if self.equiv_class_val(atom_id_set) == -1:
+            self.init_colors()
+            for equiv_class_id, example_tuple in enumerate(
+                self.equiv_class_examples(atom_set_length)
+            ):
+                if self.atom_sets_equivalence_reasonable(atom_id_set, example_tuple):
+                    if self.uninit_atom_sets_equivalent(atom_id_set, example_tuple):
+                        self.assign_equivalence_class(atom_id_set, equiv_class_id)
+                        return
+            self.assign_equivalence_class(
+                atom_id_set, self.num_equiv_classes(atom_set_length)
+            )
+
+    def uninit_atom_sets_equivalent(self, atom_set1, atom_set2):
+        self.init_colors()
 
         temp_colors1 = copy.deepcopy(self.colors)
         temp_colors2 = copy.deepcopy(self.colors)
@@ -523,16 +527,21 @@ class ChemGraph:
             self.graph, color1=temp_colors1, color2=temp_colors2
         )
 
-    # TO-DO a better graph-based way to do it?
-    def pairs_equivalent(self, unsorted_tuple1, unsorted_tuple2):
+    def atom_pair_equivalent(self, atom_id1, atom_id2):
+        return self.atom_sets_equivalent([atom_id1], [atom_id2])
 
-        self.check_pair_equivalence_class(unsorted_tuple1)
-        self.check_pair_equivalence_class(unsorted_tuple2)
+    def equivalence_class(self, atom_set):
+        if isinstance(atom_set, int) or (len(atom_set) == 1):
+            return self.equivalence_vector[atom_set]
+        else:
+            return self.pair_equivalence_matrix[atom_set]
 
-        return (
-            self.pair_equivalence_matrix[unsorted_tuple2]
-            == self.pair_equivalence_matrix[unsorted_tuple1]
-        )
+    def atom_sets_equivalent(self, atom_set1, atom_set2):
+        if len(atom_set1) == 2:
+            return self.uninit_atom_sets_equivalent(atom_set1, atom_set2)
+        self.check_equivalence_class(atom_set1)
+        self.check_equivalence_class(atom_set2)
+        return self.equiv_class_val(atom_set1) == self.equiv_class_val(atom_set2)
 
     # How many times atom_id is repeated inside a molecule.
     def atom_multiplicity(self, atom_id):
@@ -542,6 +551,10 @@ class ChemGraph:
         )
 
     def unrepeated_atom_list(self):
+        #        for atom_id in range(self.nhatoms()):
+        #            self.check_equivalence_class([atom_id])
+        #        return self.equiv_class_examples(1, as_tuples=False)
+        # TODO I think the function can be rewritten more elegantly as above, but for now stays like this to not break any tests.
         output = []
         for i in range(self.nhatoms()):
             unrepeated = True
@@ -1136,35 +1149,54 @@ class ChemGraph:
         return itertools.chain(*iterators)
 
     def copy_extra_data_to(self, other_cg):
-        return
-        self.copy_equivalence_vector_info_to(other_cg)
+        self.copy_equivalence_info_to(other_cg)
 
-    def copy_equivalence_vector_info_to(self, other_cg):
-        if self.equivalence_vector is not None:
-            self.init_canonical_permutation()
-            other_cg.init_equivalence_vector()
+    def copy_equivalence_info_to(self, other_cg):
+        for atom_set_length in range(1, 3):
+            if self.equiv_arr(atom_set_length) is None:
+                continue
+            else:
+                other_cg.init_equivalence_array(atom_set_length)
 
-            num_equiv_classes = self.num_hatom_equiv_classes()
-            for _ in range(num_equiv_classes):
-                canonical_class_member_ids = [
-                    self.canonical_permutation[i]
-                    for i in np.where(self.equivalence_vector)[0]
-                ]
-                other_cg_member_ids = [
-                    other_cg.inv_canonical_permutation[i]
-                    for i in canonical_class_member_ids
-                ]
+            num_equiv_classes = self.num_equiv_classes(atom_set_length)
+
+            for equiv_class_id in range(num_equiv_classes):
+                equiv_class_members = list(
+                    zip(*np.where(self.equiv_arr(atom_set_length) == equiv_class_id))
+                )
+                other_cg_equiv_class_members = self.match_atom_id_sets(
+                    equiv_class_members, other_cg
+                )
                 other_cg_equiv_class_id = None
-                for other_cg_member_id in other_cg_member_ids:
-                    cur_class_id = other_cg.equivalence_vector[other_cg_member_id]
+                for other_cg_equiv_class_member in other_cg_equiv_class_members:
+                    cur_class_id = other_cg.equiv_arr(atom_set_length)[
+                        other_cg_equiv_class_member
+                    ]
                     if cur_class_id != -1:
                         other_cg_equiv_class_id = cur_class_id
+                        break
                 if other_cg_equiv_class_id is None:
-                    other_cg_equiv_class_id = other_cg.num_hatom_equiv_classes()
-                for other_cg_member_id in other_cg_member_ids:
-                    other_cg.equivalence_vector[
-                        other_cg_member_id
-                    ] = other_cg_equiv_class_id
+                    other_example_member = other_cg_equiv_class_members[0]
+                    other_cg.check_equivalence_class(other_example_member)
+                    other_cg_equiv_class_id = other_cg.equiv_arr(atom_set_length)[
+                        other_example_member
+                    ]
+                for other_cg_equiv_class_member in other_cg_equiv_class_members:
+                    other_cg.assign_equivalence_class(
+                        other_cg_equiv_class_member, other_cg_equiv_class_id
+                    )
+
+    def match_atom_id_set(self, atom_id_set, other_cg):
+        return tuple(
+            other_cg.inv_canonical_permutation[self.canonical_permutation[atom_id]]
+            for atom_id in atom_id_set
+        )
+
+    def match_atom_id_sets(self, atom_id_sets, other_cg):
+        return [
+            self.match_atom_id_set(atom_id_set, other_cg)
+            for atom_id_set in atom_id_sets
+        ]
 
     def __lt__(self, ch2):
         return triple_gt_witer(self, ch2) is False
