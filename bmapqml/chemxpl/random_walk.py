@@ -164,6 +164,7 @@ class TrajectoryPoint:
             num_visits = deepcopy(num_visits)
         self.num_visits = num_visits
         self.visit_step_ids = None
+        self.visit_global_step_ids = None
 
         self.first_MC_step_encounter = None
         self.first_global_MC_step_encounter = None
@@ -520,6 +521,7 @@ class RandomWalk:
         max_histogram_size: int or None = None,
         histogram_dump_file_prefix: str = "",
         track_histogram_size: bool = False,
+        visit_num_count_acceptance: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -540,6 +542,7 @@ class RandomWalk:
         max_histogram_size : if not None sets the maximal size for the histogram that, when exceeded, triggers dumping the histogram
         histogram_dump_file_prefix : sets the prefix from which the name of the pickle file where histogram is dumped if its maximal size is exceeded
         track_histogram_size : print current size of the histogram after each global MC step
+        visit_num_count_acceptance : if True number of visit numbers (used in biasing potential) is counted during each accept_reject_move call rather than each global step
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -560,6 +563,7 @@ class RandomWalk:
 
         self.keep_histogram = keep_histogram
         self.histogram_save_rejected = histogram_save_rejected
+        self.visit_num_count_acceptance = visit_num_count_acceptance
 
         self.no_exploration = no_exploration
         if self.no_exploration:
@@ -660,8 +664,8 @@ class RandomWalk:
             self.cur_tps.append(added_tp)
         if self.num_saved_candidates is not None:
             self.update_saved_candidates()
-        if self.keep_histogram:
-            self.update_histogram(list(range(self.num_replicas)))
+        self.update_histogram(list(range(self.num_replicas)))
+        self.update_global_histogram()
 
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
@@ -974,6 +978,7 @@ class RandomWalk:
             self.check_make_restart()
         if self.soft_exit_check_frequency is not None:
             self.check_soft_exit()
+        self.update_global_histogram()
 
     # For convenient interfacing with other scripts.
     def convert_to_current_egcs(self, mol_in_list, mol_format=None):
@@ -1055,36 +1060,58 @@ class RandomWalk:
             return cur_visit_num * bias_coeff
 
     def update_histogram(self, replica_ids):
-        for replica_id in replica_ids:
-            cur_tp = self.cur_tps[replica_id]
-            tp_in_hist = cur_tp in self.histogram
-            if not tp_in_hist:
-                self.histogram.add(deepcopy(cur_tp))
-            cur_tp_index = self.histogram.index(cur_tp)
-            if tp_in_hist:
-                cur_tp.copy_extra_data_to(self.histogram[cur_tp_index])
+        if self.keep_histogram:
+            for replica_id in replica_ids:
+                cur_tp = self.cur_tps[replica_id]
+                tp_in_hist = cur_tp in self.histogram
+                if not tp_in_hist:
+                    self.histogram.add(deepcopy(cur_tp))
+                cur_tp_index = self.histogram.index(cur_tp)
+                if tp_in_hist:
+                    cur_tp.copy_extra_data_to(self.histogram[cur_tp_index])
 
-            if self.histogram[cur_tp_index].num_visits is None:
-                self.histogram[cur_tp_index].num_visits = np.zeros(
-                    (self.num_replicas,), dtype=int
-                )
-                self.histogram[
-                    cur_tp_index
-                ].first_MC_step_encounter = self.MC_step_counter
-                self.histogram[
-                    cur_tp_index
-                ].first_global_MC_step_encounter = self.global_MC_step_counter
+                if self.histogram[cur_tp_index].first_MC_step_encounter is None:
+                    self.histogram[
+                        cur_tp_index
+                    ].first_MC_step_encounter = self.MC_step_counter
 
-            self.histogram[cur_tp_index].num_visits[replica_id] += 1
+                if self.histogram[cur_tp_index].first_global_MC_step_encounter is None:
+                    self.histogram[
+                        cur_tp_index
+                    ].first_global_MC_step_encounter = self.global_MC_step_counter
 
-            if self.keep_full_trajectory:
-                if self.histogram[cur_tp_index].visit_step_ids is None:
-                    self.histogram[cur_tp_index].visit_step_ids = [
-                        [] for _ in range(self.num_replicas)
-                    ]
-                self.histogram[cur_tp_index].visit_step_ids[replica_id].append(
-                    self.global_MC_step_counter
-                )
+                if self.keep_full_trajectory:
+                    if self.histogram[cur_tp_index].visit_step_ids is None:
+                        self.histogram[cur_tp_index].visit_step_ids = [
+                            [] for _ in range(self.num_replicas)
+                        ]
+                    self.histogram[cur_tp_index].visit_step_ids[replica_id].append(
+                        self.MC_step_counter
+                    )
+                if self.visit_num_count_acceptance:
+                    self.update_num_visits(cur_tp_index, replica_id)
+
+    def update_global_histogram(self):
+        if self.keep_histogram:
+            for replica_id, cur_tp in enumerate(self.cur_tps):
+                cur_tp_index = self.histogram.index(cur_tp)
+                if self.keep_full_trajectory:
+                    if self.histogram[cur_tp_index].visit_global_step_ids is None:
+                        self.histogram[cur_tp_index].visit_global_step_ids = [
+                            [] for _ in range(self.num_replicas)
+                        ]
+                    self.histogram[cur_tp_index].visit_global_step_ids[
+                        replica_id
+                    ].append(self.global_MC_step_counter)
+                if not self.visit_num_count_acceptance:
+                    self.update_num_visits(cur_tp_index, replica_id)
+
+    def update_num_visits(self, tp_index, replica_id):
+        if self.histogram[tp_index].num_visits is None:
+            self.histogram[tp_index].num_visits = np.zeros(
+                (self.num_replicas,), dtype=int
+            )
+        self.histogram[tp_index].num_visits[replica_id] += 1
 
     def hist_checked_tps(self, tp_list):
         """
@@ -1254,7 +1281,7 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
         global_MC_step_counter = 0
         for tp in histogram:
             if tp.visit_step_ids is not None:
-                for replica_visits in tp.visit_step_ids:
+                for replica_visits in tp.visit_global_step_ids:
                     if len(replica_visits) != 0:
                         global_MC_step_counter = max(
                             global_MC_step_counter, max(replica_visits)
