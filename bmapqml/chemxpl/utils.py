@@ -82,7 +82,7 @@ def break_into_connected(egc):
                 hids[mvec[ha_id]].append(h_id)
                 break
 
-    for sgc_id, sgc in enumerate(sgcs):
+    for sgc_id, _ in enumerate(sgcs):
         new_members = np.where(mvec == sgc_id)[0]
         if len(hids[sgc_id]) != 0:
             new_members = np.append(new_members, hids[sgc_id])
@@ -444,7 +444,64 @@ def RDKit_FF_optimize_coords(
     raise FFInconsistent
 
 
-def chemgraph_to_canonical_rdkit_wcoords(cg, ff_type="MMFF", num_attempts=1):
+rdkit_ff_creator = {
+    "MMFF": AllChem.MMFFGetMoleculeForceField,
+    "UFF": AllChem.UFFGetMoleculeForceField,
+}
+
+rdkit_properties_creator = {"MMFF": Chem.rdForceFieldHelpers.MMFFGetMoleculeProperties}
+
+
+def RDKit_FF_min_en_conf(mol, ff_type, num_attempts=1, corresponding_cg=None):
+    """
+    Repeats FF coordinate optimization several times to make sure the used configuration is the smallest one.
+    """
+    try:
+        AllChem.EmbedMolecule(mol)
+    except:
+        print("#PROBLEMATIC_EMBED_MOLECULE:", corresponding_cg)
+        raise FFInconsistent
+    min_en = None
+    min_coords = None
+    cur_nuclear_charges = None
+    for _ in range(num_attempts):
+        args = (mol,)
+        if ff_type in rdkit_properties_creator:
+            prop_obj = rdkit_properties_creator[ff_type](mol)
+            args = (*args, prop_obj)
+        try:
+            ff = rdkit_ff_creator[ff_type](*args)
+        except ValueError:
+            cur_en = None
+        try:
+            converted = ff.Minimize()
+            cur_en = ff.CalcEnergy()
+        except:
+            raise FFInconsistent
+        if converted != 0:
+            continue
+        try:
+            cur_coords = np.array(np.array(mol.GetConformer().GetPositions()))
+            cur_nuclear_charges = np.array(
+                [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+            )
+        except ValueError:
+            cur_coords = None
+            cur_nuclear_charges = None
+
+        if ((cur_en is not None) and (cur_coords is not None)) and (
+            (min_en is None) or (min_en > cur_en)
+        ):
+            min_en = cur_en
+            min_coords = cur_coords
+            min_nuclear_charges = cur_nuclear_charges
+
+    return min_coords, min_nuclear_charges, min_en
+
+
+def chemgraph_to_canonical_rdkit_wcoords(
+    cg, ff_type="MMFF", num_attempts=1, pick_minimal_conf=False
+):
     """
     Creates an rdkit Molecule object whose heavy atoms are canonically ordered.
     cg : ChemGraph input chemgraph object
@@ -460,14 +517,21 @@ def chemgraph_to_canonical_rdkit_wcoords(cg, ff_type="MMFF", num_attempts=1):
         canon_SMILES,
     ) = chemgraph_to_canonical_rdkit(cg)
 
-    RDKit_FF_optimize_coords(
-        mol,
-        rdkit_coord_optimizer[ff_type],
-        num_attempts=num_attempts,
-        corresponding_cg=cg,
-    )
-    rdkit_coords = np.array(mol.GetConformer().GetPositions())
-    rdkit_nuclear_charges = np.array([atom.GetAtomicNum() for atom in mol.GetAtoms()])
+    if pick_minimal_conf:
+        rdkit_coords, rdkit_nuclear_charges, _ = RDKit_FF_min_en_conf(
+            mol, ff_type, num_attempts=num_attempts, corresponding_cg=cg
+        )
+    else:
+        RDKit_FF_optimize_coords(
+            mol,
+            rdkit_coord_optimizer[ff_type],
+            num_attempts=num_attempts,
+            corresponding_cg=cg,
+        )
+        rdkit_coords = np.array(mol.GetConformer().GetPositions())
+        rdkit_nuclear_charges = np.array(
+            [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+        )
     # Additionally check that the coordinates actually correspond to the molecule.
     try:
         coord_based_cg = chemgraph_from_ncharges_coords(
@@ -481,7 +545,9 @@ def chemgraph_to_canonical_rdkit_wcoords(cg, ff_type="MMFF", num_attempts=1):
     return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, rdkit_coords
 
 
-def egc_with_coords(egc, coords=None, ff_type="MMFF", num_attempts=1):
+def egc_with_coords(
+    egc, coords=None, ff_type="MMFF", num_attempts=1, pick_minimal_conf=False
+):
     """
     Create a copy of an ExtGraphCompound object with coordinates. If coordinates are set to None they are generated with RDKit.
     egc : ExtGraphCompound input object
@@ -498,7 +564,10 @@ def egc_with_coords(egc, coords=None, ff_type="MMFF", num_attempts=1):
             canon_SMILES,
             coords,
         ) = chemgraph_to_canonical_rdkit_wcoords(
-            egc.chemgraph, ff_type=ff_type, num_attempts=num_attempts
+            egc.chemgraph,
+            ff_type=ff_type,
+            num_attempts=num_attempts,
+            pick_minimal_conf=pick_minimal_conf,
         )
     else:
         (

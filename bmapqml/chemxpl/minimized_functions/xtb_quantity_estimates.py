@@ -66,6 +66,7 @@ class FF_xTB_res_dict:
         coord_calculation_type="RDKit",
         display_problematic_coord_tps=False,
         display_problematic_xTB_tps=False,
+        pick_minimal_conf=False,
     ):
         """
         Calculating xTB result dictionnary produced by tblite library from coordinates obtained by RDKit.
@@ -79,6 +80,7 @@ class FF_xTB_res_dict:
 
         self.num_ff_attempts = num_ff_attempts
         self.ff_type = ff_type
+        self.pick_minimal_conf = pick_minimal_conf
         self.display_problematic_coord_tps = display_problematic_coord_tps
         self.display_problematic_xTB_tps = display_problematic_xTB_tps
         self.coord_calculation_type = coord_calculation_type
@@ -96,6 +98,7 @@ class FF_xTB_res_dict:
             "coord_info": {
                 "num_attempts": self.num_ff_attempts,
                 "ff_type": self.ff_type,
+                "pick_minimal_conf": self.pick_minimal_conf,
             }
         }
 
