@@ -52,7 +52,8 @@ def est_stddev_vals(quant_estimate, tp_array):
         if v is not None:
             final_quant_vals.append(v)
         quant_vals.append(v)
-        tp_array[i].calculated_data = copy.deepcopy(val_tp[1].calculated_data)
+        if tp_array[i] is not None:
+            tp_array[i].calculated_data = copy.deepcopy(val_tp[1].calculated_data)
     final_quant_vals = np.array(final_quant_vals)
     return np.std(final_quant_vals), quant_vals
 

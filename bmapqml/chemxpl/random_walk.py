@@ -1280,7 +1280,7 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
     if global_MC_step_counter is None:
         global_MC_step_counter = 0
         for tp in histogram:
-            if tp.visit_step_ids is not None:
+            if tp.visit_global_step_ids is not None:
                 for replica_visits in tp.visit_global_step_ids:
                     if len(replica_visits) != 0:
                         global_MC_step_counter = max(
@@ -1289,8 +1289,8 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
     output = np.zeros((global_MC_step_counter + 1, num_replicas), dtype=int)
     output[:, :] = -1
     for tp_id, tp in enumerate(histogram):
-        if tp.visit_step_ids is not None:
-            for replica_id, replica_visits in enumerate(tp.visit_step_ids):
+        if tp.visit_global_step_ids is not None:
+            for replica_id, replica_visits in enumerate(tp.visit_global_step_ids):
                 for replica_visit in replica_visits:
                     output[replica_visit, replica_id] = tp_id
     for step_id in range(global_MC_step_counter):
