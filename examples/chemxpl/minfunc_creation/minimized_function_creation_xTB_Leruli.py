@@ -1,10 +1,10 @@
 from bmapqml.test_utils import dirs_xyz_list
 from bmapqml.chemxpl.utils import xyz2mol_extgraph
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
-from bmapqml.chemxpl.minimized_functions import (
+from bmapqml.chemxpl.minimized_functions import LinearCombination
+from bmapqml.chemxpl.minimized_functions.xtb_quantity_estimates import (
     FF_xTB_HOMO_LUMO_gap,
     FF_xTB_dipole,
-    LinearCombination,
 )
 import os, copy, random
 from bmapqml.utils import dump2pkl, embarrassingly_parallel
