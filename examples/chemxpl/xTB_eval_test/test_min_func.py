@@ -1,6 +1,6 @@
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
 from bmapqml.chemxpl.ext_graph_compound import ExtGraphCompound
-from bmapqml.chemxpl.minimized_functions import (
+from bmapqml.chemxpl.minimized_functions.xtb_quantity_estimates import (
     FF_xTB_res_dict,
     FF_xTB_dipole,
     FF_xTB_HOMO_LUMO_gap,
