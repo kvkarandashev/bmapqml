@@ -15,8 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
 import seaborn as sns
-
-#/bmapqml/chemxpl/utils.py
+import pdb
 lg = RDLogger.logger()
 
 lg.setLevel(RDLogger.CRITICAL)   
@@ -33,7 +32,7 @@ class Analyze:
 
 
         self.path = path
-        self.results = os.listdir(path)[:1]
+        self.results = os.listdir(path) #[:1]
         self.verbose = verbose
 
     def parse_results(self):
@@ -45,10 +44,11 @@ class Analyze:
 
         ALL_HISTOGRAMS   = []
         ALL_TRAJECTORIES = []
-
+        #pdb.set_trace()
         for run in tqdm(self.results):
 
             obj = pickle.load(open(self.path+run, "rb"))
+            
             HISTOGRAM = self.to_dataframe(obj["histogram"])
             ALL_HISTOGRAMS.append(HISTOGRAM)
             traj = np.array(ordered_trajectory(obj["histogram"]))
@@ -131,12 +131,58 @@ class Analyze:
         PARETO =  HISTOGRAM.iloc[np.array(inds)]
         if self.verbose:
             print("Pareto optimal solutions:")
-            print(PARETO.sort_values("xTB_MMFF_electrolyte"))
+            print(PARETO.sort_values("xTB_MMFF_min_en_conf_electrolyte"))
 
         return  PARETO
 
-    def pareto_plot(self, HISTOGRAM, PARETO, ALL_PARETOS=False):
 
+    def plot_trajectory_loss(self, ALL_TRAJECTORIES):
+        """
+        Compute the loss of the trajectories.
+        """
+
+        fs = 24
+
+        plt.rc('font', size=fs)
+        plt.rc('axes', titlesize=fs)
+        plt.rc('axes', labelsize=fs)           
+        plt.rc('xtick', labelsize=fs)          
+        plt.rc('ytick', labelsize=fs)          
+        plt.rc('legend', fontsize=fs)   
+        plt.rc('figure', titlesize=fs) 
+        #markers = [',', '+', '-', '.', 'o', '*']
+
+        fig,ax1= plt.subplots(figsize=(8,8))
+
+
+        
+
+        for traj in ALL_TRAJECTORIES: #zip(markers, ALL_TRAJECTORIES):
+            n_temps = len(traj)
+            cmap   = cm.coolwarm(np.linspace(0, 1, n_temps))
+            for c, T in zip(cmap,range(n_temps)[:3]):
+                #pdb.set_trace()
+                sel_temp = traj[T]["xTB_MMFF_min_en_conf_electrolyte"]
+                N = np.arange(len(sel_temp))
+                #ax1.scatter(N,sel_temp,marker=m,s=5, color=c, alpha=0.5)
+                ax1.scatter(N,sel_temp,s=5, color=c, alpha=0.5)
+                ax1.plot(N,sel_temp,"-", alpha=0.1)
+    
+        ax1.spines['right'].set_color('none')
+        ax1.spines['top'].set_color('none')
+        ax1.spines['bottom'].set_position(('axes', -0.05))
+        ax1.spines['bottom'].set_color('black')
+        ax1.spines['left'].set_color('black')
+        ax1.yaxis.set_ticks_position('left')
+        ax1.xaxis.set_ticks_position('bottom')
+        ax1.spines['left'].set_position(('axes', -0.05))
+
+        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+        plt.savefig("loss.pdf")  
+        plt.close("all")
+
+
+    def plot_pareto(self, HISTOGRAM, PARETO, ALL_PARETOS=False):
 
         fs = 24
 
@@ -149,19 +195,19 @@ class Analyze:
         plt.rc('figure', titlesize=fs) 
 
         fig,ax1= plt.subplots(figsize=(8,8))
-        p1  = HISTOGRAM["Dipole"].values
-        p2  = HISTOGRAM["HOMO_LUMO_gap"].values
-        summe = HISTOGRAM["xTB_MMFF_electrolyte"].values
-        xi = np.linspace(min(p1), max(p1), 1000)
-        yi = np.linspace(min(p2), max(p2), 1000)
+        P1  = HISTOGRAM["Dipole"].values
+        P2  = HISTOGRAM["HOMO_LUMO_gap"].values
+        summe = HISTOGRAM["xTB_MMFF_min_en_conf_electrolyte"].values
+        xi = np.linspace(min(P1), max(P1), 1000)
+        yi = np.linspace(min(P2), max(P2), 1000)
         #pdb.set_trace()
-        triang = tri.Triangulation(p1, p2)
+        triang = tri.Triangulation(P1, P2)
         interpolator = tri.LinearTriInterpolator(triang,summe)
         Xi, Yi = np.meshgrid(xi, yi)
         zi = interpolator(Xi, Yi)
 
         ax1.contour(xi, yi, zi, levels=18, linewidths=0.5, colors='k')
-        sc = ax1.scatter(p1, p2,s =4, c=summe)
+        sc = ax1.scatter(P1, P2,s = 4, c=summe)
         plt.xlabel("Dipole"  + " [unit 1]", fontsize=21)
         plt.ylabel("HOMO_LUMO_gap" + " [unit 2]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
         clb = plt.colorbar(sc)
@@ -194,7 +240,7 @@ class Analyze:
 
 
 
-    def trajectory_plot(self, TRAJECTORY):
+    def plot_trajectory(self, TRAJECTORY):
             
             fs = 24
     
@@ -231,7 +277,7 @@ class Analyze:
 
 
 
-    def result_spread(self, HISTOGRAMS, label):
+    def plot_result_spread(self, HISTOGRAMS, label):
         
         """
         Analyze the spread of the results accross different seeds.
@@ -270,6 +316,81 @@ class Analyze:
         plt.tight_layout()
 
         plt.savefig("spread.pdf")
+
+    def compute_representations(self, MOLS):
+        """
+        Compute the representations of all unique smiles in the random walk.
+        """
+
+        X = rdkit_descriptors.get_all_FP(MOLS, fp_type="MorganFingerprint")
+        return X
+
+    def compute_PCA(self, MOLS):
+        """
+        Compute PCA
+        """
+
+        X = self.compute_representations(MOLS)
+        reducer = PCA(n_components=2)
+        reducer.fit(X)
+        X_2d = reducer.transform(X)
+        return X_2d
+
+    
+    def plot_chem_space(self, HISTOGRAM,  label="xTB_MMFF_min_en_conf_electrolyte"):
+        
+        try:
+            import seaborn as sns
+            sns.set_context("poster")
+            sns.set_style('whitegrid')
+        except:
+            pass
+
+        fs = 24
+
+        plt.rc('font', size=fs)
+        plt.rc('axes', titlesize=fs)
+        plt.rc('axes', labelsize=fs)           
+        plt.rc('xtick', labelsize=fs)          
+        plt.rc('ytick', labelsize=fs)          
+        plt.rc('legend', fontsize=fs)   
+        plt.rc('figure', titlesize=fs) 
+        print("Plot Chemical Space PCA")
+        fig2,ax2= plt.subplots(figsize=(8,8))
+
+        ax2.spines['right'].set_color('none')
+        ax2.spines['top'].set_color('none')
+        ax2.spines['bottom'].set_position(('axes', -0.05))
+        ax2.spines['bottom'].set_color('black')
+        ax2.spines['left'].set_color('black')
+        ax2.yaxis.set_ticks_position('left')
+        ax2.xaxis.set_ticks_position('bottom')
+        ax2.spines['left'].set_position(('axes', -0.05))
+
+
+        MOLS = HISTOGRAM["SMILES"]
+        P    = HISTOGRAM[label].values
+
+        if self.verbose:
+            print("Compute PCA")
+        X_2d = self.compute_PCA(MOLS)
+
+        if self.verbose:
+            print("Plot PCA")
+
+
+        sc = ax2.scatter(x=X_2d[:,0], y=X_2d[:,1],s=50,alpha=0.1,marker="o", c=P,edgecolors='none')
+
+        ax2.set_xlabel("PC1", fontsize=21)
+        ax2.set_ylabel("PC2", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+
+        clb = plt.colorbar(sc)
+        clb.set_label('Loss')
+
+        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+        plt.savefig("PCA.pdf")
+        plt.close("all")
+
 
 
     def to_dataframe(self, obj):
