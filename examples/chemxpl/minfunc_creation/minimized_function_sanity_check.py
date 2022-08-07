@@ -1,5 +1,7 @@
 # The script takes a string representation of a molecular graph and evaluates the minimized function for it.
 # If repeating this script several times yields inconsistent result for the same SMILES then the function should be fixed.
+# Example of usage:
+# python minimized_function_sanity_check.py C /store/common/konst/chemxpl_related/minimized_function_xTB_MMFF_min_en_conf_electrolyte.pkl
 import sys
 from bmapqml.utils import loadpkl
 from bmapqml.chemxpl.utils import SMILES_to_egc
