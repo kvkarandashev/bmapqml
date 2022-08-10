@@ -23,6 +23,7 @@
 
 # Miscellaneous functions and classes used throughout the code.
 import pickle, subprocess, os
+import bz2
 from joblib import Parallel, delayed
 
 from .data import NUCLEAR_CHARGE
@@ -77,10 +78,33 @@ def dump2pkl(obj, filename):
 
 
 def loadpkl(filename):
+    """
+    Load an object from a pickle file.
+    """
     input_file = open(filename, "rb")
     obj = pickle.load(input_file)
     input_file.close()
     return obj
+
+def dump2tar(obj, filename):
+    """
+    Dump an object to a tar file.
+    obj : object to be saved
+    filename : name of the output file
+    """
+    output_file = bz2.BZ2File(filename,'wb')
+    pickle.dump(obj,output_file)
+    output_file.close()
+
+def loadtar(filename):
+    """
+    Load an object from a tar file.
+    """
+    input_file = bz2.BZ2File(filename,'rb')
+    obj = pickle.load(input_file)
+    input_file.close()
+    return obj
+
 
 
 def mktmp(directory=False):
