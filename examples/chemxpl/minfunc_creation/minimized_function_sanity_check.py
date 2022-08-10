@@ -10,16 +10,22 @@ from bmapqml.chemxpl.random_walk import TrajectoryPoint
 SMILES_str = None
 minfunc_location = None
 
-if len(sys.argv) > 3:
-    minfunc_location = sys.argv[3]
-    if len(sys.argv[1] == "--SMILES"):
-        SMILES_str = sys.argv[2]
+# if len(sys.argv) > 3:
+#    minfunc_location = sys.argv[3]
+#    if len(sys.argv[1] == "--SMILES"):
+#        SMILES_str = sys.argv[2]
+# else:
+SMILES_str = sys.argv[1]
+minfunc_location = sys.argv[2]
+
+if len(sys.argv) < 4:
+    num_attempts = 1
 else:
-    SMILES_str = sys.argv[1]
-    minfunc_location = sys.argv[2]
+    num_attempts = int(sys.argv[3])
 
 est_func = loadpkl(minfunc_location)
 
-tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES_str))
+for _ in range(num_attempts):
+    tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES_str))
 
-print(est_func(tp))
+    print(est_func(tp))

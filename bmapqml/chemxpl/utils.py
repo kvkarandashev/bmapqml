@@ -456,18 +456,22 @@ def RDKit_FF_min_en_conf(mol, ff_type, num_attempts=1, corresponding_cg=None):
     """
     Repeats FF coordinate optimization several times to make sure the used configuration is the smallest one.
     """
-    try:
-        AllChem.EmbedMolecule(mol)
-    except:
-        print("#PROBLEMATIC_EMBED_MOLECULE:", corresponding_cg)
-        raise FFInconsistent
+
     min_en = None
     min_coords = None
-    cur_nuclear_charges = None
-    for _ in range(num_attempts):
-        args = (mol,)
+    min_nuclear_charges = None
+    for seed in range(num_attempts):
+        cur_mol = copy.deepcopy(mol)
+
+        try:
+            AllChem.EmbedMolecule(cur_mol, randomSeed=seed)
+        except:
+            print("#PROBLEMATIC_EMBED_MOLECULE:", corresponding_cg)
+
+        args = (cur_mol,)
+
         if ff_type in rdkit_properties_creator:
-            prop_obj = rdkit_properties_creator[ff_type](mol)
+            prop_obj = rdkit_properties_creator[ff_type](cur_mol)
             args = (*args, prop_obj)
         try:
             ff = rdkit_ff_creator[ff_type](*args)
@@ -481,20 +485,22 @@ def RDKit_FF_min_en_conf(mol, ff_type, num_attempts=1, corresponding_cg=None):
         if converted != 0:
             continue
         try:
-            cur_coords = np.array(np.array(mol.GetConformer().GetPositions()))
+            cur_coords = np.array(np.array(cur_mol.GetConformer().GetPositions()))
             cur_nuclear_charges = np.array(
-                [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+                [atom.GetAtomicNum() for atom in cur_mol.GetAtoms()]
             )
         except ValueError:
             cur_coords = None
             cur_nuclear_charges = None
-
         if ((cur_en is not None) and (cur_coords is not None)) and (
             (min_en is None) or (min_en > cur_en)
         ):
             min_en = cur_en
             min_coords = cur_coords
             min_nuclear_charges = cur_nuclear_charges
+
+    if min_en is None:
+        raise FFInconsistent
 
     return min_coords, min_nuclear_charges, min_en
 
