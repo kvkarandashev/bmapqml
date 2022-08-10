@@ -33,7 +33,7 @@ make_restart_frequency = 2000
 num_MC_steps = 500000
 
 bias_coeff = 0.2
-vbeta_bias_coeff = 0.2
+vbeta_bias_coeff = 0.01
 
 randomized_change_params = {
     "max_fragment_num": 1,

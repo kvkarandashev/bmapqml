@@ -1042,7 +1042,8 @@ class RandomWalk:
                 self.histogram.add(tp)
 
     def biasing_potential(self, tp, replica_id):
-        if self.virtual_beta_id(replica_id):
+        cur_beta_virtual = self.virtual_beta_id(replica_id)
+        if cur_beta_virtual:
             bias_coeff = self.vbeta_bias_coeff
         else:
             bias_coeff = self.bias_coeff
@@ -1054,7 +1055,13 @@ class RandomWalk:
                 return 0.0
             tp_index = self.histogram.index(tp)
             if self.bias_pot_all_replicas:
-                cur_visit_num = float(np.sum(self.histogram[tp_index].num_visits))
+                cur_visit_num = 0
+                for other_replica_id in range(self.num_replicas):
+                    if cur_beta_virtual == self.virtual_beta_id(other_replica_id):
+                        cur_visit_num += self.histogram[tp_index].num_visits[
+                            other_replica_id
+                        ]
+                cur_visit_num = float(cur_visit_num)
             else:
                 cur_visit_num = self.histogram[tp_index].num_visits[replica_id]
             return cur_visit_num * bias_coeff
