@@ -7,7 +7,6 @@ from sklearn.decomposition import PCA
 import pickle
 import matplotlib.pyplot as plt
 from matplotlib import cm
-import matplotlib.tri as tri
 import numpy as np
 from rdkit import RDLogger  
 import os
@@ -15,7 +14,6 @@ import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
 import seaborn as sns
-import pdb
 lg = RDLogger.logger()
 
 lg.setLevel(RDLogger.CRITICAL)   
@@ -32,7 +30,7 @@ class Analyze:
 
 
         self.path = path
-        self.results = os.listdir(path) #[:1]
+        self.results = os.listdir(path)
         self.verbose = verbose
 
     def parse_results(self):
@@ -44,7 +42,7 @@ class Analyze:
 
         ALL_HISTOGRAMS   = []
         ALL_TRAJECTORIES = []
-        #pdb.set_trace()
+        
         for run in tqdm(self.results):
 
             obj = pickle.load(open(self.path+run, "rb"))
@@ -62,39 +60,38 @@ class Analyze:
         del obj, traj
 
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
+        self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
+        self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
+        self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-        GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
-        self.GLOBAL_HISTOGRAM = GLOBAL_HISTOGRAM
+        if len(self.LABELS) > 0:
+            if self.verbose:
+                print("Best 5 molecules")
 
-        # GLOBAL_HISTOGRAM.drop_duplicates(subset=['SMILES'])
-        """
-        Somehow be careful!!!
-        (Pdb) GLOBAL_HISTOGRAM[GLOBAL_HISTOGRAM["SMILES"]=="OC(O)CC(F)C(O)F"]
-                    SMILES    Dipole  HOMO_LUMO_gap  xTB_MMFF_electrolyte
-        5591  OC(O)CC(F)C(O)F  1.330659       0.415468             -7.507930
-        5442  OC(O)CC(F)C(O)F  3.610319       0.394474            -10.972133        
-        """
+            for ind, label in enumerate(self.LABELS):
+                print("{}".format(label))
+                if ind <2:
+                    BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
+                else:
+                    BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
+
+                print("==========================================================")
+                print(BEST)
+                print("==========================================================")
+                    
+            return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
         
-        
-        self.LABELS = GLOBAL_HISTOGRAM.columns[1:]
+        else:
+            print("No Values could be extracted, only the SMILES were saved")
+            return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
 
-        if self.verbose:
-            print("Best 5 molecules")
 
-        for ind, label in enumerate(self.LABELS):
-            print("{}".format(label))
-            if ind <2:
-                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=True).tail()[::-1]
-                print
-            else:
-                BEST = self.GLOBAL_HISTOGRAM.sort_values(label, ascending=False).tail()[::-1]
+    def export_csv(self, HISTOGRAM):
+        """
+        Export the histogram to a csv file.
+        """
 
-            print("==========================================================")
-            print(BEST)
-            print("==========================================================")
-                
-        return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
-
+        HISTOGRAM.to_csv("results.csv", index=False)
 
     def pareto(self,HISTOGRAM, maxX = True, maxY = True):
         
@@ -150,21 +147,16 @@ class Analyze:
         plt.rc('ytick', labelsize=fs)          
         plt.rc('legend', fontsize=fs)   
         plt.rc('figure', titlesize=fs) 
-        #markers = [',', '+', '-', '.', 'o', '*']
 
         fig,ax1= plt.subplots(figsize=(8,8))
 
-
-        
-
-        for traj in ALL_TRAJECTORIES: #zip(markers, ALL_TRAJECTORIES):
+        for traj in ALL_TRAJECTORIES:
             n_temps = len(traj)
             cmap   = cm.coolwarm(np.linspace(0, 1, n_temps))
             for c, T in zip(cmap,range(n_temps)[:3]):
-                #pdb.set_trace()
+
                 sel_temp = traj[T]["xTB_MMFF_min_en_conf_electrolyte"]
                 N = np.arange(len(sel_temp))
-                #ax1.scatter(N,sel_temp,marker=m,s=5, color=c, alpha=0.5)
                 ax1.scatter(N,sel_temp,s=5, color=c, alpha=0.5)
                 ax1.plot(N,sel_temp,"-", alpha=0.1)
     
@@ -179,6 +171,7 @@ class Analyze:
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("loss.pdf")  
+        plt.savefig("loss.png")
         plt.close("all")
 
 
@@ -200,16 +193,10 @@ class Analyze:
         summe = HISTOGRAM["xTB_MMFF_min_en_conf_electrolyte"].values
         xi = np.linspace(min(P1), max(P1), 1000)
         yi = np.linspace(min(P2), max(P2), 1000)
-        #pdb.set_trace()
-        triang = tri.Triangulation(P1, P2)
-        interpolator = tri.LinearTriInterpolator(triang,summe)
-        Xi, Yi = np.meshgrid(xi, yi)
-        zi = interpolator(Xi, Yi)
 
-        ax1.contour(xi, yi, zi, levels=18, linewidths=0.5, colors='k')
         sc = ax1.scatter(P1, P2,s = 4, c=summe)
-        plt.xlabel("Dipole"  + " [unit 1]", fontsize=21)
-        plt.ylabel("HOMO_LUMO_gap" + " [unit 2]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+        plt.xlabel("Dipole"  + " (a.u.)", fontsize=21)
+        plt.ylabel("Gap" + " (a.u.)", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
         clb = plt.colorbar(sc)
         clb.set_label("Loss") 
 
@@ -236,6 +223,7 @@ class Analyze:
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("pareto.pdf")  
+        plt.savefig("pareto.png")
         plt.close("all")      
 
 
@@ -257,8 +245,8 @@ class Analyze:
             p2   = TRAJECTORY["HOMO_LUMO_gap"].values
             step = np.arange(len(p1))
             sc = ax1.scatter(p1, p2,s =4, c=step)
-            plt.xlabel("Dipole"  + " [unit 1]", fontsize=21)
-            plt.ylabel("HOMO_LUMO_gap" + " [unit 2]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+            plt.xlabel("Dipole"  + " (a.u.)", fontsize=21)
+            plt.ylabel("Gap" + " (a.u.)", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
             clb = plt.colorbar(sc)
             clb.set_label("step")     
 
@@ -273,6 +261,7 @@ class Analyze:
 
             plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
             plt.savefig("steps.pdf")  
+            plt.savefig("steps.png")  
             plt.close("all")         
 
 
@@ -282,6 +271,7 @@ class Analyze:
         """
         Analyze the spread of the results accross different seeds.
         """
+
         plt.close("all")
         fs = 24
 
@@ -316,29 +306,35 @@ class Analyze:
         plt.tight_layout()
 
         plt.savefig("spread.pdf")
+        plt.savefig("spread.png")
 
-    def compute_representations(self, MOLS):
+    def compute_representations(self, MOLS, nbits):
         """
         Compute the representations of all unique smiles in the random walk.
         """
 
-        X = rdkit_descriptors.get_all_FP(MOLS, fp_type="MorganFingerprint")
+        X = rdkit_descriptors.get_all_FP(MOLS,nBits=nbits, fp_type="MorganFingerprint")
         return X
 
-    def compute_PCA(self, MOLS):
+    def compute_PCA(self, MOLS, nbits=4096):
         """
         Compute PCA
         """
 
-        X = self.compute_representations(MOLS)
+        X = self.compute_representations(MOLS, nBits=nbits)
         reducer = PCA(n_components=2)
         reducer.fit(X)
         X_2d = reducer.transform(X)
         return X_2d
 
-    
+
+
+
     def plot_chem_space(self, HISTOGRAM,  label="xTB_MMFF_min_en_conf_electrolyte"):
-        
+        """
+        Make a PCA plot of the chemical space.
+        """
+
         try:
             import seaborn as sns
             sns.set_context("poster")
@@ -389,6 +385,7 @@ class Analyze:
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("PCA.pdf")
+        plt.savefig("PCA.png")
         plt.close("all")
 
 
@@ -398,11 +395,17 @@ class Analyze:
         Convert the object to a dataframe.
         """
         df = pd.DataFrame()
-        values, labels = self.extract_values(obj)
         SMILES = self.convert_to_smiles(obj)
         df["SMILES"] = SMILES
-        for l in labels:
-            df[l] = values[:,labels.index(l)]
+
+        try:
+            values, labels = self.extract_values(obj)
+            for l in labels:
+                df[l] = values[:,labels.index(l)]
+
+        except Exception as e:
+            print(e)
+            print("Error in to_dataframe")
         
         df = df.dropna()
         df = df.reset_index(drop=True)
@@ -410,7 +413,6 @@ class Analyze:
 
 
     def convert_to_smiles(self, mols):
-    
         """
         Convert the list of molecules to SMILES strings.
         tp_list: list of molecudfles as trajectory points
@@ -431,7 +433,7 @@ class Analyze:
         Extract the values from the trajectory points.
         tp_list: list of molecules as trajectory points
         """
-    
+
         labels = [l for l in mols[0].calculated_data.keys()]
         values = []
         for tp in mols:
@@ -455,6 +457,46 @@ class Analyze:
 
 
         return CANON_SMILES
+
+
+    def count_shell(self, X_init, X_sampled, dl, dh, nbits=4096):
+
+        """
+        Count the number of molecules in 
+        the shell of radius dl and dh.
+        """
+
+        darr = np.zeros(len(X_sampled))
+        for i, xs in  enumerate(X_sampled):
+            darr[i] = np.linalg.norm(X_init - xs)
+
+
+        in_interval = ((darr >= dl) & (darr <=  dh))
+        N = len(darr[in_interval])
+
+        try:
+            import mpmath
+            dV = self.volume_of_nsphere(nbits, dh) - self.volume_of_nsphere(nbits, dl)
+            logRDF =   mpmath.log(N/dV)
+            return N, logRDF
+
+        except ImportError:
+            print("mpmath not installed")
+            return N, None
+
+
+    def volume_of_nsphere(self,N, d):
+        import mpmath
+        
+        N = mpmath.mpmathify(N)
+        d = mpmath.mpmathify(d)
+
+        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * d ** N
+
+
+
+
+
 
 
 
@@ -645,14 +687,6 @@ class analyze_random_walk:
         return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * R ** N
 
 
-
-
-    def compute_radial_distribution_functino(self, N, R):
-        """
-        Compute the radial distribution function 
-        """
-        pass
-
     def compute_PCA(self):
         """
         Compute PCA of the random walk and return the first two principal components.
@@ -827,12 +861,8 @@ class analyze_random_walk:
                 xi = np.linspace(min(p1), max(p1), 100)
                 yi = np.linspace(min(p2), max(p2), 100)
 
-                triang = tri.Triangulation(p1, p2)
-                interpolator = tri.LinearTriInterpolator(triang,summe)
-                Xi, Yi = np.meshgrid(xi, yi)
-                zi = interpolator(Xi, Yi)
 
-                ax1.contour(xi, yi, zi, levels=18, linewidths=0.5, colors='k')
+
                 sc = ax1.scatter(p1, p2,s =4, c=summe)
                 plt.xlabel("$E_{\\rm {at}}/ N^{\\rm tot}$"  + " [eV]", fontsize=21)
                 plt.ylabel("$E_{\\rm {gap}}$" + " [eV]", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
@@ -852,6 +882,7 @@ class analyze_random_walk:
                 plt.plot(self.pareto_front[:,0],self.pareto_front[:,1],'k-',linewidth=2)
                 plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
                 plt.savefig("{}_pareto.pdf".format(name))
+                plt.savefig("{}_pareto.png".format(name))
                 plt.close()
 
             elif self.values.shape == (len(self.values),):
@@ -913,4 +944,5 @@ class analyze_random_walk:
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("{}_PCA.pdf".format(name))
+        plt.savefig("{}_PCA.png".format(name))
         plt.close()
