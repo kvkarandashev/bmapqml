@@ -24,6 +24,15 @@ warnings.filterwarnings('ignore')
 class Analyze:
     """
     Analysis of the results of the optimization.
+
+    Usage:
+    analysis = Analyze(path)
+    analysis.parse_results()
+    as shown in analysis_example.py
+
+    path contains the path to the results of the optimization 
+    given as restart files in the tar format.
+
     """
 
     def __init__(self, path, verbose=False):
@@ -178,6 +187,9 @@ class Analyze:
 
 
     def plot_pareto(self, HISTOGRAM, PARETO, ALL_PARETOS=False):
+        """
+        Plot the pareto optimal solutions.
+        """
 
         fs = 24
 
@@ -228,46 +240,48 @@ class Analyze:
 
 
 
-    def plot_trajectory(self, TRAJECTORY):
-            
-            fs = 24
-    
-            plt.rc('font', size=fs)
-            plt.rc('axes', titlesize=fs)
-            plt.rc('axes', labelsize=fs)           
-            plt.rc('xtick', labelsize=fs)          
-            plt.rc('ytick', labelsize=fs)          
-            plt.rc('legend', fontsize=fs)   
-            plt.rc('figure', titlesize=fs) 
-    
-            fig,ax1= plt.subplots(figsize=(8,8))
-            p1   = TRAJECTORY["Dipole"].values
-            p2   = TRAJECTORY["HOMO_LUMO_gap"].values
-            step = np.arange(len(p1))
-            sc = ax1.scatter(p1, p2,s =4, c=step)
-            plt.xlabel("Dipole"  + " (a.u.)", fontsize=21)
-            plt.ylabel("Gap" + " (a.u.)", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
-            clb = plt.colorbar(sc)
-            clb.set_label("step")     
+    def plot_trajectory(self, TRAJECTORY): 
+        """
+        Plot the trajectory in propery space.
+        """
 
-            ax1.spines['right'].set_color('none')
-            ax1.spines['top'].set_color('none')
-            ax1.spines['bottom'].set_position(('axes', -0.05))
-            ax1.spines['bottom'].set_color('black')
-            ax1.spines['left'].set_color('black')
-            ax1.yaxis.set_ticks_position('left')
-            ax1.xaxis.set_ticks_position('bottom')
-            ax1.spines['left'].set_position(('axes', -0.05))
+        fs = 24
 
-            plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-            plt.savefig("steps.pdf")  
-            plt.savefig("steps.png")  
-            plt.close("all")         
+        plt.rc('font', size=fs)
+        plt.rc('axes', titlesize=fs)
+        plt.rc('axes', labelsize=fs)           
+        plt.rc('xtick', labelsize=fs)          
+        plt.rc('ytick', labelsize=fs)          
+        plt.rc('legend', fontsize=fs)   
+        plt.rc('figure', titlesize=fs) 
+
+        fig,ax1= plt.subplots(figsize=(8,8))
+        p1   = TRAJECTORY["Dipole"].values
+        p2   = TRAJECTORY["HOMO_LUMO_gap"].values
+        step = np.arange(len(p1))
+        sc = ax1.scatter(p1, p2,s =4, c=step)
+        plt.xlabel("Dipole"  + " (a.u.)", fontsize=21)
+        plt.ylabel("Gap" + " (a.u.)", fontsize=21,rotation=0, ha="left", y=1.05, labelpad=-50, weight=500)
+        clb = plt.colorbar(sc)
+        clb.set_label("step")     
+
+        ax1.spines['right'].set_color('none')
+        ax1.spines['top'].set_color('none')
+        ax1.spines['bottom'].set_position(('axes', -0.05))
+        ax1.spines['bottom'].set_color('black')
+        ax1.spines['left'].set_color('black')
+        ax1.yaxis.set_ticks_position('left')
+        ax1.xaxis.set_ticks_position('bottom')
+        ax1.spines['left'].set_position(('axes', -0.05))
+
+        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
+        plt.savefig("steps.pdf")  
+        plt.savefig("steps.png")  
+        plt.close("all")         
 
 
 
     def plot_result_spread(self, HISTOGRAMS, label):
-        
         """
         Analyze the spread of the results accross different seeds.
         """
@@ -393,6 +407,7 @@ class Analyze:
         """
         Convert the object to a dataframe.
         """
+
         df = pd.DataFrame()
         SMILES = self.convert_to_smiles(obj)
         df["SMILES"] = SMILES
@@ -403,8 +418,7 @@ class Analyze:
                 df[l] = values[:,labels.index(l)]
 
         except:
-            if self.verbose:
-                print("Error in reading values")
+            pass
         
         df = df.dropna()
         df = df.reset_index(drop=True)
@@ -442,7 +456,6 @@ class Analyze:
         return values, labels
 
     def make_canon(self,SMILES):
-        
         """
         Convert to canonical smiles form.
         """
@@ -458,7 +471,6 @@ class Analyze:
 
 
     def count_shell(self, X_init, X_sampled, dl, dh, nBits=4096):
-
         """
         Count the number of molecules in 
         the shell of radius dl and dh.
@@ -484,6 +496,10 @@ class Analyze:
 
 
     def volume_of_nsphere(self,N, d):
+        """
+        Compute the volume of a n-sphere of radius d.
+        """
+
         import mpmath
         
         N = mpmath.mpmathify(N)
