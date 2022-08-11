@@ -2,11 +2,11 @@
 import numpy as np
 from numpy.linalg import norm
 from ..utils import trajectory_point_to_canonical_rdkit
-from joblib import Parallel, delayed
 from .. import rdkit_descriptors
 from rdkit import Chem
-from tqdm import tqdm
-
+from rdkit.Chem import Crippen
+from rdkit.Chem import Lipinski
+from rdkit.Chem import Descriptors
 
 class sample_local_space:
 
@@ -28,6 +28,7 @@ class sample_local_space:
         epsilon=1.0,
         sigma=1.0,
         gamma=1,
+        nbits = 4096
     ):
 
         self.fp_type = None or fp_type
@@ -38,6 +39,7 @@ class sample_local_space:
         self.X_init = X_init
         self.pot_type = pot_type
         self.verbose = verbose
+        self.nbits = nbits
         self.canonical_rdkit_output = {
             "canonical_rdkit": trajectory_point_to_canonical_rdkit
         }
@@ -55,6 +57,8 @@ class sample_local_space:
             self.potential = self.sharp_parabola_potential
         elif self.pot_type == "flat_parabola":
             self.potential = self.flat_parabola_potential
+
+        
 
     def get_largest_ring_size(self, SMILES):
 
@@ -144,18 +148,18 @@ class sample_local_space:
             print("Error in canonical SMILES, therefore skipping")
             return None
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        if self.check_ring:
-            try:
-                ring_error = self.get_largest_ring_size(canon_SMILES)
-            except:
-                ring_error = 0
-
-            V += ring_error
+        #if self.check_ring:
+        #    try:
+        #        ring_error = self.get_largest_ring_size(canon_SMILES)
+        #    except:
+        #        ring_error = 0
+        #
+        #    V += ring_error
 
         if self.verbose:
             print("SMILE:", canon_SMILES, d, V)
@@ -172,7 +176,7 @@ class sample_local_space:
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
@@ -187,19 +191,125 @@ class sample_local_space:
 
         # Aparently this is the fastest way to do this:
         values = []
-        for trajectory_point in tqdm(trajectory_points):
+        for trajectory_point in trajectory_points:
             values.append(self.evaluate_point(trajectory_point))
         # Parallel(n_jobs=1)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
         return np.array(values)
+
+class local_lipinski:
+
+    def __init__(
+        self,
+        X_init,
+        verbose=False,
+        fp_type=None,
+        epsilon=1.0,
+        sigma=1.0,
+        gamma=1,
+    ):
+
+        self.fp_type = None or fp_type
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.gamma = gamma
+        self.X_init = X_init
+        self.verbose = verbose
+        self.canonical_rdkit_output = {
+            "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        }
+
+        self.potential = self.flat_parabola_potential
+
+
+    def flat_parabola_potential(self, d):
+        """
+        Flat parabola potential. The potential is given by:
+        """
+
+        if d < self.gamma:
+            return (d - self.gamma) ** 2 - self.epsilon
+        if self.gamma <= d <= self.sigma:
+            return -self.epsilon
+        if d > self.sigma:
+            return (d - self.sigma) ** 2 - self.epsilon
+
+    def log_partition_coefficient(smiles):
+        '''
+        Returns the octanol-water partition coefficient given a molecule SMILES 
+        string
+        '''
+        try:
+            mol = Chem.MolFromSmiles(smiles)
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
+
+        return Crippen.MolLogP(mol)
+
+    def lipinski_trial(self, smiles):
+        
+        '''
+        Lipinski's rules are:
+        Hydrogen bond donors <= 5
+        Hydrogen bond acceptors <= 5
+        Molecular weight < 500 daltons
+        logP < 5
+        '''
+
+        
+        mol = Chem.MolFromSmiles(smiles)
+        num_hdonors = Lipinski.NumHDonors(mol)
+        num_hacceptors = Lipinski.NumHAcceptors(mol)
+        mol_weight = Descriptors.MolWt(mol)
+        mol_logp = Crippen.MolLogP(mol)
+        mol_rot  = Lipinski.NumRotatableBonds(mol)
+        mol_ring = Lipinski.RingCount(mol)
+
+        print(num_hdonors,num_hacceptors, mol_weight,mol_logp )
+        if num_hdonors <=5 and num_hacceptors <=5 and mol_weight < 500 and mol_logp <5 and mol_rot <=5 and mol_ring > 0:
+            return True
+        else:
+            return False
+
+
+    def __call__(self, trajectory_point_in):
+
+
+        try:
+            _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+                self.canonical_rdkit_output
+            )["canonical_rdkit"]
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
+
+        if self.lipinski_trial(canon_SMILES):
+            pass
+        else:
+            print("skipping because of Lipinski")
+            return None
+
+
+        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
+
+        d = norm(X_test - self.X_init)
+        V = self.potential(d)
+
+
+        if self.verbose:
+            print("SMILE:", canon_SMILES, d, V)
+
+        return V
+
+
+
+
+
 
 
 
 class find_match:
 
-    """
-    Guide Random walk towards the target the representation corresponding to the target
-    molecule.
-    """
 
     def __init__(self, X_target, verbose=False):
 

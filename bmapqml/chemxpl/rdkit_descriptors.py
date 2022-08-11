@@ -1,5 +1,4 @@
 import os
-from tqdm import tqdm
 from rdkit.Chem import DataStructs
 import rdkit
 import pandas as pd
@@ -11,10 +10,7 @@ from rdkit.Chem.Crippen import MolLogP, MolMR
 from rdkit import Chem  
 import numpy as np
 import collections
-from bmapqml.utils import embarrassingly_parallel
-from tqdm import tqdm
 from rdkit.Chem import rdMolDescriptors
-import pdb
 
 def canonize(mol):
     return Chem.MolToSmiles(Chem.MolFromSmiles(mol), isomericSmiles=True, canonical=True)
@@ -141,14 +137,14 @@ def extended_get_single_FP(smi, fp_type, radius=4, nBits=4096, useFeatures=True)
 
 
 def get_all_FP(SMILES, fp_type, **kwargs):
-    from tqdm import tqdm
+    
     """
     Returns a list of fingerprints for all the molecules in the list of SMILES
     """
 
     X = []
     #np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,), other_kwargs=kwargs))
-    for smi in tqdm(SMILES):
+    for smi in SMILES:
         X.append(extended_get_single_FP(smi, fp_type, **kwargs))
     return np.array(X)
     #return X
@@ -259,7 +255,7 @@ def process_qm9(directory, all=True):
     else:
         nr_molecules = 10000
 
-    for file in tqdm(os.listdir(directory)[:nr_molecules]): 
+    for file in os.listdir(directory)[:nr_molecules]: 
         path = os.path.join(directory, file)
         mol_id, atoms, coordinates, smile, prop = read_xyz(path)
         # A tuple with the atoms and its coordinates
@@ -367,7 +363,7 @@ def process_qm9_FF():
             print(e)
         
     
-    df_new = pd.DataFrame(properties, columns = properties_names) #.astype('float32')
+    df_new = pd.DataFrame(properties, columns = properties_names)
 
     df_new.to_csv('qm9_FF.csv', index=False)
     return df_new
