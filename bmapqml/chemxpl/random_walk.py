@@ -16,7 +16,7 @@ from .modify import (
     egc_valid_wrt_change_params,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl, loadpkl
+from ..utils import dump2pkl, loadpkl, dump2tar, loadtar
 from .valence_treatment import sorted_tuple, connection_forbidden, ChemGraph
 from .periodic import element_name
 import random, os
@@ -1190,7 +1190,7 @@ class RandomWalk:
                 self.make_restart()
                 raise SoftExitCalled
 
-    def make_restart(self, restart_file: str or None = None):
+    def make_restart(self, restart_file: str or None = None, tarball: bool = False):
         """
         Create a file containing all information needed to restart the simulation from the current point.
         restart_file : name of the file where the dump is created; if None self.restart_file is used
@@ -1212,7 +1212,10 @@ class RandomWalk:
             saved_data = {**saved_data, "histogram": self.histogram}
         if self.num_saved_candidates is not None:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
-        dump2pkl(saved_data, restart_file)
+        if tarball == False:
+            dump2pkl(saved_data, restart_file)
+        else:
+            dump2tar(saved_data, restart_file)
 
     def restart_from(self, restart_file: str or None = None):
         """

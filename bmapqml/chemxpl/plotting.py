@@ -4,16 +4,19 @@ from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
 from bmapqml.chemxpl.random_walk import ordered_trajectory
 from sklearn.decomposition import PCA
-import pickle
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import numpy as np
 from rdkit import RDLogger  
 import os
+import glob
 import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
 import seaborn as sns
+
+import pdb
+
 lg = RDLogger.logger()
 
 lg.setLevel(RDLogger.CRITICAL)   
@@ -30,7 +33,8 @@ class Analyze:
 
 
         self.path = path
-        self.results = os.listdir(path)
+        #pdb.set_trace()
+        self.results = glob.glob(path)
         self.verbose = verbose
 
     def parse_results(self):
@@ -45,7 +49,8 @@ class Analyze:
         
         for run in tqdm(self.results):
 
-            obj = pickle.load(open(self.path+run, "rb"))
+            obj = loadtar(run)
+            #pickle.load(open(run, "rb"))
             
             HISTOGRAM = self.to_dataframe(obj["histogram"])
             ALL_HISTOGRAMS.append(HISTOGRAM)
@@ -82,7 +87,8 @@ class Analyze:
             return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
         
         else:
-            print("No Values could be extracted, only the SMILES were saved")
+            if self.verbose:
+                print("No Values could be extracted, only the SMILES were saved")
             return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
 
 
@@ -291,7 +297,6 @@ class Analyze:
             print(ind, BEST_SEED_ind)
             DIFFERENT_SEEDS = DIFFERENT_SEEDS.append(BEST_SEED_ind)
 
-        #sns.kdeplot(data=DIFFERENT_SEEDS, x=label,fill=True, palette="crest",cut=0, ax=ax2)
         sns.rugplot(data=DIFFERENT_SEEDS, x=label,palette="crest", height=.1, ax=ax2)
         sns.violinplot(x=DIFFERENT_SEEDS[label], palette="Set3", ax=ax2)
         ax2.set_ylabel("#")
@@ -308,20 +313,20 @@ class Analyze:
         plt.savefig("spread.pdf")
         plt.savefig("spread.png")
 
-    def compute_representations(self, MOLS, nbits):
+    def compute_representations(self, MOLS, nBits):
         """
         Compute the representations of all unique smiles in the random walk.
         """
 
-        X = rdkit_descriptors.get_all_FP(MOLS,nBits=nbits, fp_type="MorganFingerprint")
+        X = rdkit_descriptors.get_all_FP(MOLS,nBits=nBits, fp_type="MorganFingerprint")
         return X
 
-    def compute_PCA(self, MOLS, nbits=4096):
+    def compute_PCA(self, MOLS, nBits=4096):
         """
         Compute PCA
         """
 
-        X = self.compute_representations(MOLS, nBits=nbits)
+        X = self.compute_representations(MOLS, nBits=nBits)
         reducer = PCA(n_components=2)
         reducer.fit(X)
         X_2d = reducer.transform(X)
@@ -404,8 +409,8 @@ class Analyze:
                 df[l] = values[:,labels.index(l)]
 
         except Exception as e:
-            print(e)
-            print("Error in to_dataframe")
+            if self.verbose:
+                print("Error in reading values")
         
         df = df.dropna()
         df = df.reset_index(drop=True)
@@ -459,7 +464,7 @@ class Analyze:
         return CANON_SMILES
 
 
-    def count_shell(self, X_init, X_sampled, dl, dh, nbits=4096):
+    def count_shell(self, X_init, X_sampled, dl, dh, nBits=4096):
 
         """
         Count the number of molecules in 
@@ -476,8 +481,8 @@ class Analyze:
 
         try:
             import mpmath
-            dV = self.volume_of_nsphere(nbits, dh) - self.volume_of_nsphere(nbits, dl)
-            logRDF =   mpmath.log(N/dV)
+            dV = self.volume_of_nsphere(nBits, dh) - self.volume_of_nsphere(nBits, dl)
+            logRDF =   float(mpmath.log(N/dV))
             return N, logRDF
 
         except ImportError:
