@@ -1,4 +1,4 @@
-# If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
+# For quantity estimates with xTB and MMFF coordinates.
 import numpy as np
 from ..utils import (
     canonical_SMILES_from_tp,
@@ -14,7 +14,7 @@ from tblite.interface import Calculator
 from leruli import graph_to_geometry
 from leruli.internal import LeruliInternalError
 
-# For quantity estimates with xTB and MMFF coordinates.
+
 class LeruliCoordCalc:
     def __init__(self, time_check=1.0e-2):
 
@@ -64,6 +64,8 @@ class FF_xTB_res_dict:
         num_ff_attempts=1,
         ff_type="MMFF",
         coord_calculation_type="RDKit",
+        coord_info_from_tp_func=None,
+        coord_info_from_tp_func_check=None,
         display_problematic_coord_tps=False,
         display_problematic_xTB_tps=False,
         pick_minimal_conf=False,
@@ -85,13 +87,19 @@ class FF_xTB_res_dict:
         self.display_problematic_xTB_tps = display_problematic_xTB_tps
         self.coord_calculation_type = coord_calculation_type
 
-        assert self.coord_calculation_type in available_FF_xTB_coord_calculation_types
-        if self.coord_calculation_type != "Leruli":
-            self.coord_info_from_tp_func = coord_info_from_tp
-            if self.coord_calculation_type == "RDKit_wLeruli":
-                self.coord_info_from_tp_func_check = LeruliCoordCalc()
-        else:
-            self.coord_info_from_tp_func = LeruliCoordCalc()
+        if coord_info_from_tp_func is None:
+            assert (
+                self.coord_calculation_type in available_FF_xTB_coord_calculation_types
+            )
+            if self.coord_calculation_type != "Leruli":
+                coord_info_from_tp_func = coord_info_from_tp
+                if self.coord_calculation_type == "RDKit_wLeruli":
+                    coord_info_from_tp_func_check = LeruliCoordCalc()
+            else:
+                coord_info_from_tp_func = LeruliCoordCalc()
+
+        self.coord_info_from_tp_func = coord_info_from_tp_func
+        self.coord_info_from_tp_func_check = coord_info_from_tp_func_check
 
         self.ff_coord_info_dict = {"coord_info": self.coord_info_from_tp_func}
         self.ff_coord_kwargs_dict = {
