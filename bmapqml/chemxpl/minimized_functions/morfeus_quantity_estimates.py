@@ -19,24 +19,29 @@ def morpheus_coord_info_from_tp(
     num_attempts : number of attempts taken to generate MMFF coordinates (introduced because for QM9 there is a ~10% probability that the coordinate generator won't converge)
     **kwargs : keyword arguments for the egc_with_coords procedure
     """
-    output = {}
+    output = {"coordinates": None, "nuclear_charges": None, "canon_rdkit_SMILES": None}
     cg = tp.egc.chemgraph
-    canon_rdkit_mol, _, _, canon_SMILES = chemgraph_to_canonical_rdkit(cg)
-    conformers = conformers_from_rdkit(
-        canon_rdkit_mol, n_confs=num_attempts, optimize=ff_type
-    )
-    output["canon_rdkit_SMILES"] = canon_SMILES
-    output["nuclear_charges"] = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
-    output["coordinates"] = conformers[1][np.argmin(conformers[2])]
+    canon_rdkit_mol, _, _, canon_rdkit_SMILES = chemgraph_to_canonical_rdkit(cg)
+    output["canon_rdkit_SMILES"] = canon_rdkit_SMILES
+    try:
+        conformers = conformers_from_rdkit(
+            canon_rdkit_mol, n_confs=num_attempts, optimize=ff_type
+        )
+    except ValueError:
+        return output
+
+    nuclear_charges = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
+    coordinates = conformers[1][np.argmin(conformers[2])]
 
     try:
-        coord_based_cg = chemgraph_from_ncharges_coords(
-            output["nuclear_charges"], output["coordinates"]
-        )
+        coord_based_cg = chemgraph_from_ncharges_coords(nuclear_charges, coordinates)
     except InvalidAdjMat:
-        raise FFInconsistent
+        return output
     if coord_based_cg != cg:
-        raise FFInconsistent
+        return output
+
+    output["coordinates"] = coordinates
+    output["nuclear_charges"] = nuclear_charges
 
     return output
 
