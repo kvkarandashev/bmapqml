@@ -18,7 +18,6 @@ from .periodic import (
     coord_num_hybrid,
 )
 from g2s.constants import periodic_table, atom_radii
-from sortedcontainers import SortedList
 
 
 try:
@@ -1300,6 +1299,7 @@ def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> tuple:
             adj_mat[i, last_h_id] = 1
             adj_mat[last_h_id, i] = 1
             last_h_id += 1
+
     return adj_mat, nuclear_charges
 
 

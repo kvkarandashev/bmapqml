@@ -32,10 +32,13 @@ pkl_store_dir = "/store/common/konst/chemxpl_related"
 
 xyz_list = dirs_xyz_list(QM9_xyz_dir)
 
+print("Creating tps.")
 tps = all_xyzs2tps(xyz_list)
+print("Finished.")
 
 
 def quant_est_wtp(tp, quant_estimate):
+    print("Calculating tp", tp)
     if tp is None:
         v = None
     else:
@@ -44,6 +47,7 @@ def quant_est_wtp(tp, quant_estimate):
 
 
 def est_stddev_vals(quant_estimate, tp_array):
+    print("Calculating values.")
     quant_vals_tps = embarrassingly_parallel(quant_est_wtp, tp_array, (quant_estimate,))
     quant_vals = []
     final_quant_vals = []
@@ -55,6 +59,7 @@ def est_stddev_vals(quant_estimate, tp_array):
         if tp_array[i] is not None:
             tp_array[i].calculated_data = copy.deepcopy(val_tp[1].calculated_data)
     final_quant_vals = np.array(final_quant_vals)
+    print("Finished calculations.")
     return np.std(final_quant_vals), quant_vals
 
 

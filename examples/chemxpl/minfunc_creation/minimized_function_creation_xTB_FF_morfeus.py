@@ -13,6 +13,7 @@ import numpy as np
 
 
 def xyz2tp(xyz_name):
+    print("#", xyz_name)
     try:
         egc = xyz2mol_extgraph(xyz_name)
         return TrajectoryPoint(egc=egc)
@@ -31,11 +32,13 @@ QM9_xyz_dir = os.environ["DATA"] + "/QM9_formatted"
 pkl_store_dir = "/store/common/konst/chemxpl_related"
 
 xyz_list = dirs_xyz_list(QM9_xyz_dir)
+xyz_list.sort()
 
 tps = all_xyzs2tps(xyz_list)
 
 
 def quant_est_wtp(tp, quant_estimate):
+    print("Calculating:", tp)
     if tp is None:
         v = None
     else:
