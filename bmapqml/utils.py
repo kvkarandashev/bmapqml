@@ -86,25 +86,26 @@ def loadpkl(filename):
     input_file.close()
     return obj
 
+
 def dump2tar(obj, filename):
     """
     Dump an object to a tar file.
     obj : object to be saved
     filename : name of the output file
     """
-    output_file = bz2.BZ2File(filename,'wb')
-    pickle.dump(obj,output_file)
+    output_file = bz2.BZ2File(filename, "wb")
+    pickle.dump(obj, output_file)
     output_file.close()
+
 
 def loadtar(filename):
     """
     Load an object from a tar file.
     """
-    input_file = bz2.BZ2File(filename,'rb')
+    input_file = bz2.BZ2File(filename, "rb")
     obj = pickle.load(input_file)
     input_file.close()
     return obj
-
 
 
 def mktmp(directory=False):
@@ -296,14 +297,29 @@ num_threads_var_names = [
 ]
 
 
-def default_num_procs(num_procs=None):
-    if num_procs is None:
+def checked_environ_val(
+    environ_name: str, expected_answer=None, default_answer=None, var_class=int
+):
+    """
+    Returns os.environ while checking for exceptions.
+    """
+    if expected_answer is None:
         try:
-            return int(os.environ[num_procs_name])
+            args = (os.environ[environ_name],)
         except LookupError:
-            return 1
+            if default_answer is None:
+                args = tuple()
+            else:
+                args = (default_answer,)
+        return var_class(*args)
     else:
-        return num_procs
+        return expected_answer
+
+
+def default_num_procs(num_procs=None):
+    return checked_environ_val(
+        num_procs_name, expected_answer=num_procs, default_answer=1
+    )
 
 
 def embarrassingly_parallel_no_thread_fix(

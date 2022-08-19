@@ -5,7 +5,7 @@ dump_directory="/store/common/konst/chemxpl_related/minimization_runs_xTB"
 
 min_func_directory="/store/common/konst/chemxpl_related"
 
-min_func_names=("xTB_MMFF_min_en_conf_electrolyte")
+min_func_names=("xTB_MMFF94_morfeus_electrolyte")
 
 job_name=$1
 
@@ -17,7 +17,7 @@ fi
 
 cur_directory=$(pwd)
 
-py_script=$cur_directory/MC_no_bias_2.py
+py_script=$cur_directory/MC_no_bias_3.py
 
 
 for min_func_name in ${min_func_names[@]}

@@ -5,14 +5,12 @@ from ..utils import (
     InvalidAdjMat,
     chemgraph_from_ncharges_coords,
 )
-from ...utils import NUCLEAR_CHARGE
+from ...utils import NUCLEAR_CHARGE, checked_environ_val
 from .xtb_quantity_estimates import FF_xTB_res_dict, FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 
 
-def morpheus_coord_info_from_tp(
-    tp, coords=None, num_attempts=1, ff_type="MMFF94", **dummy_kwargs
-):
+def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kwargs):
     """
     Coordinates corresponding to a TrajectoryPoint object
     tp : TrajectoryPoint object
@@ -23,9 +21,13 @@ def morpheus_coord_info_from_tp(
     cg = tp.egc.chemgraph
     canon_rdkit_mol, _, _, canon_rdkit_SMILES = chemgraph_to_canonical_rdkit(cg)
     output["canon_rdkit_SMILES"] = canon_rdkit_SMILES
+    # TODO: better place to check OMP_NUM_THREADS value?
     try:
         conformers = conformers_from_rdkit(
-            canon_rdkit_mol, n_confs=num_attempts, optimize=ff_type
+            canon_rdkit_mol,
+            n_confs=num_attempts,
+            optimize=ff_type,
+            n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1),
         )
     except ValueError:
         return output
