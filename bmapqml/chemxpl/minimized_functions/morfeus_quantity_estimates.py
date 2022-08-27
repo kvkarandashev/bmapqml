@@ -29,7 +29,9 @@ def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kw
             optimize=ff_type,
             n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1),
         )
-    except ValueError:
+    except Exception as ex:
+        if not isinstance(ex, ValueError):
+            print("#PROBLEMATIC_MORFEUS:", tp)
         return output
 
     nuclear_charges = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
