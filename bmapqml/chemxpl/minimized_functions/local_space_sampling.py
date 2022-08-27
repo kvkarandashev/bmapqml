@@ -1,4 +1,3 @@
-# If we explore diatomic molecule graph, this function will create chemgraph analogue of a double-well potential.
 import numpy as np
 from numpy.linalg import norm
 from ..utils import trajectory_point_to_canonical_rdkit
@@ -7,6 +6,91 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
+from bmapqml.chemxpl.minimized_functions import morfeus_quantity_estimates
+try:
+    import qml
+    from qml.representations import *
+except:
+    print("qml not installed")
+
+
+class sample_local_space_3d:
+    def __init__(
+        self,
+        X_init,
+        verbose=False,
+        epsilon=1.0,
+        sigma=1.0,
+        gamma=1,
+        reptype = "FCHL"
+    ):
+
+        self.reptype = reptype or None
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.gamma = gamma
+        self.X_init = X_init
+        self.verbose = verbose
+        #self.canonical_rdkit_output = {
+        #    "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        #}
+        self.morpheus_output = { "morpheus": morfeus_quantity_estimates }
+
+        self.potential = self.flat_parabola_potential    
+
+
+    def flat_parabola_potential(self, d):
+        """
+        Flat parabola potential. Allows sampling within a distance basin 
+        interval of I in [gamma, sigma]. epsilon determines depth of minima
+        and is typically set to epsilon = 5. The potential is given by:
+        """
+
+        if d < self.gamma:
+            return (d - self.gamma) ** 2 - self.epsilon
+        if self.gamma <= d <= self.sigma:
+            return -self.epsilon
+        if d > self.sigma:
+            return (d - self.sigma) ** 2 - self.epsilon
+
+
+    def gen_cm(self, crds,chgs, size=50):
+        
+        cm = generate_coulomb_matrix(chgs, crds,
+                                size=size, sorting="row-norm")
+        
+        return cm
+
+
+
+    def __call__(self, trajectory_point_in):
+
+
+        #try:
+        output = trajectory_point_in.calc_or_lookup(
+            self.morpheus_output
+        )["morpheus"]
+        #except:
+        #    print("Error in canonical SMILES, therefore skipping")
+        #    return None
+            
+        X_test = self.gen_cm(output[0], output[1])
+
+        d = norm(X_test - self.X_init)
+        V = self.potential(d)
+
+
+        return V
+
+
+
+
+
+
+
+
+
+
 
 class sample_local_space:
 
@@ -61,8 +145,6 @@ class sample_local_space:
         
 
     def get_largest_ring_size(self, SMILES):
-
-
         """ 
         Returns the size of the largest ring in the molecule.
         If ring too large (>7) reject that move and return large energy
@@ -111,7 +193,9 @@ class sample_local_space:
 
     def flat_parabola_potential(self, d):
         """
-        Flat parabola potential. The potential is given by:
+        Flat parabola potential. Allows sampling within a distance basin 
+        interval of I in [gamma, sigma]. epsilon determines depth of minima
+        and is typically set to epsilon = 5. The potential is given by:
         """
 
         if d < self.gamma:
@@ -189,11 +273,10 @@ class sample_local_space:
         Evaluate the function on a list of trajectory points
         """
 
-        # Aparently this is the fastest way to do this:
         values = []
         for trajectory_point in trajectory_points:
             values.append(self.evaluate_point(trajectory_point))
-        # Parallel(n_jobs=1)(delayed(self.evaluate_point)(tp_in) for tp_in in trajectory_points)
+        
         return np.array(values)
 
 class local_lipinski:
