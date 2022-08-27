@@ -1,4 +1,3 @@
-
 from bmapqml.utils import * 
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
@@ -22,6 +21,7 @@ warnings.filterwarnings('ignore')
 
 
 class Analyze:
+
     """
     Analysis of the results of the optimization.
 
@@ -32,19 +32,18 @@ class Analyze:
 
     path contains the path to the results of the optimization 
     given as restart files in the tar format.
-
     """
 
-    def __init__(self, path, verbose=False):
+    def __init__(self, path,full_traj=False ,verbose=False):
 
 
         self.path = path
-        #pdb.set_trace()
-        self.results = glob.glob(path)
+        self.results = glob.glob(path)[:500]
         self.verbose = verbose
+        self.full_traj = full_traj
+
 
     def parse_results(self):
-        
         if self.verbose:
             print("Parsing results...")
             Nsim = len(self.results)
@@ -53,21 +52,30 @@ class Analyze:
         ALL_HISTOGRAMS   = []
         ALL_TRAJECTORIES = []
         
-        for run in tqdm(self.results, disable= not self.verbose):
+        for run in tqdm(self.results, disable = not self.verbose):
 
-            obj = loadtar(run)
-            
+            try:
+                obj = loadtar(run)
+            except:
+                obj = loadpkl(run)
+
             HISTOGRAM = self.to_dataframe(obj["histogram"])
             ALL_HISTOGRAMS.append(HISTOGRAM)
-            traj = np.array(ordered_trajectory(obj["histogram"]))
-            CURR_TRAJECTORIES = []
-            for T in range(traj.shape[1]):
-                sel_temp = traj[:,T]
-                TRAJECTORY = self.to_dataframe(sel_temp)
-                CURR_TRAJECTORIES.append(TRAJECTORY)
-            ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+            if self.full_traj:
+                traj = np.array(ordered_trajectory(obj["histogram"]))
+                CURR_TRAJECTORIES = []
+                for T in range(traj.shape[1]):
+                    sel_temp = traj[:,T]
+                    TRAJECTORY = self.to_dataframe(sel_temp)
+                    CURR_TRAJECTORIES.append(TRAJECTORY)
+                ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+        
 
-        del obj, traj
+
+        if self.full_traj:
+            del obj, traj
+        
+        del obj
 
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
         self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
@@ -95,6 +103,50 @@ class Analyze:
             if self.verbose:
                 print("No Values could be extracted, only the SMILES were saved")
             return self.ALL_HISTOGRAMS,self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+
+
+    def load_parallel(self):
+        """
+        Load the results of the optimization in parallel using multiprocessing.
+        """
+
+        if self.verbose:
+            print("Loading results in parallel...")
+
+        from multiprocessing import Pool
+        pool = Pool(processes=12)
+        results = pool.map(loadtar, self.results)
+        pool.close()
+        pool.join()
+        return results
+
+
+
+    def process_object(self, obj):
+        HISTOGRAM = self.to_dataframe(obj["histogram"])
+        traj = np.array(ordered_trajectory(obj["histogram"]))
+        CURR_TRAJECTORIES = []
+        for T in range(traj.shape[1]):
+            sel_temp = traj[:,T]
+            TRAJECTORY = self.to_dataframe(sel_temp)
+            CURR_TRAJECTORIES.append(TRAJECTORY)
+
+
+        return HISTOGRAM, CURR_TRAJECTORIES
+
+    def parallel_process_all_objects(self):
+        """
+        Process all objects in parallel using multiprocessing
+        """
+        if self.verbose:
+            print("Processing in parallel...")
+
+        from multiprocessing import Pool
+        pool = Pool(processes=12)
+        results = pool.map(self.process_object, self.results_unpacked)
+        pool.close()
+        pool.join()
+        return results
 
 
     def export_csv(self, HISTOGRAM):
@@ -139,10 +191,140 @@ class Analyze:
         PARETO =  HISTOGRAM.iloc[np.array(inds)]
         if self.verbose:
             print("Pareto optimal solutions:")
-            print(PARETO.sort_values("xTB_MMFF_min_en_conf_electrolyte"))
+            print(PARETO.sort_values("xTB_MMFF94_morfeus_electrolyte"))
 
         return PARETO
 
+
+    def compute_representations(self, MOLS, nBits):
+        """
+        Compute the representations of all unique smiles in the random walk.
+        """
+
+        X = rdkit_descriptors.get_all_FP(MOLS,nBits=nBits, fp_type="MorganFingerprint")
+        return X
+
+    def compute_PCA(self, MOLS, nBits=4096):
+        """
+        Compute PCA
+        """
+
+        X = self.compute_representations(MOLS, nBits=nBits)
+        reducer = PCA(n_components=2)
+        reducer.fit(X)
+        X_2d = reducer.transform(X)
+        return X_2d
+
+    def to_dataframe(self, obj):
+        """
+        Convert the trajectory point object to a dataframe 
+        and extract xTB values if available.
+        """
+
+        df = pd.DataFrame()
+        SMILES = self.convert_to_smiles(obj)
+        df["SMILES"] = SMILES
+
+        try:
+            values, labels = self.extract_values(obj)
+            for l in labels:
+                df[l] = values[:,labels.index(l)]
+
+        except:
+            pass        
+
+        
+        df = df.dropna()
+        df = df.reset_index(drop=True)
+        return df
+
+
+    def convert_to_smiles(self, mols):
+        """
+        Convert the list of molecules to SMILES strings.
+        tp_list: list of molecudfles as trajectory points
+        smiles_mol: list of rdkit molecules
+        """
+
+        smiles_mol = []
+
+        for tp in mols:
+            try:
+                rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
+                smiles_mol.append(rdkit_obj[3])
+            except:
+                if self.verbose:
+                    print("Could not convert to smiles")        
+                pass
+                
+
+        smiles_mol = self.make_canon(smiles_mol)
+        return smiles_mol
+
+    def extract_values(self, mols):
+        """
+        Extract the values from the trajectory points.
+        tp_list: list of molecules as trajectory points
+        """
+
+        labels = [l for l in mols[0].calculated_data.keys()]
+        values = []
+        for tp in mols:
+            values.append(list(tp.calculated_data.values()))
+        
+        values = np.float_(np.array(values))
+
+        return values, labels
+
+    def make_canon(self,SMILES):
+        """
+        Convert to canonical smiles form.
+        """
+    
+        CANON_SMILES = []
+        for smi in SMILES:
+            
+            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
+            CANON_SMILES.append(can)
+
+
+        return CANON_SMILES
+
+
+    def count_shell(self, X_init, SMILES_sampled, dl, dh, nBits=4096):
+        """
+        Count the number of molecules in 
+        the shell of radius dl and dh.
+        """
+        darr = np.zeros(len(SMILES_sampled))
+        for i, s in  enumerate(SMILES_sampled):
+            darr[i] = np.linalg.norm(X_init - self.compute_representations([s], nBits=nBits))
+
+        in_interval = ((darr >= dl) & (darr <=  dh))
+        N = len(darr[in_interval])
+
+        try:
+            import mpmath
+            dV = self.volume_of_nsphere(nBits, dh) - self.volume_of_nsphere(nBits, dl)
+            logRDF =   float(mpmath.log(N/dV))
+            return N, logRDF
+
+        except ImportError:
+            print("mpmath not installed")
+            return N, None
+
+
+    def volume_of_nsphere(self,N, d):
+        """
+        Compute the volume of a n-sphere of radius d.
+        """
+
+        import mpmath
+        
+        N = mpmath.mpmathify(N)
+        d = mpmath.mpmathify(d)
+
+        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * d ** N
 
     def plot_trajectory_loss(self, ALL_TRAJECTORIES):
         """
@@ -166,7 +348,7 @@ class Analyze:
             cmap   = cm.coolwarm(np.linspace(0, 1, n_temps))
             for c, T in zip(cmap,range(n_temps)[:3]):
 
-                sel_temp = traj[T]["xTB_MMFF_min_en_conf_electrolyte"]
+                sel_temp = traj[T]["xTB_MMFF94_morfeus_electrolyte"]
                 N = np.arange(len(sel_temp))
                 ax1.scatter(N,sel_temp,s=5, color=c, alpha=0.5)
                 ax1.plot(N,sel_temp,"-", alpha=0.1)
@@ -204,7 +386,7 @@ class Analyze:
         fig,ax1= plt.subplots(figsize=(8,8))
         P1  = HISTOGRAM["Dipole"].values
         P2  = HISTOGRAM["HOMO_LUMO_gap"].values
-        summe = HISTOGRAM["xTB_MMFF_min_en_conf_electrolyte"].values
+        summe = HISTOGRAM["xTB_MMFF94_morfeus_electrolyte"].values
 
         sc = ax1.scatter(P1, P2,s = 4, c=summe)
         plt.xlabel("Dipole"  + " (a.u.)", fontsize=21)
@@ -321,29 +503,7 @@ class Analyze:
         plt.savefig("spread.pdf")
         plt.savefig("spread.png")
 
-    def compute_representations(self, MOLS, nBits):
-        """
-        Compute the representations of all unique smiles in the random walk.
-        """
-
-        X = rdkit_descriptors.get_all_FP(MOLS,nBits=nBits, fp_type="MorganFingerprint")
-        return X
-
-    def compute_PCA(self, MOLS, nBits=4096):
-        """
-        Compute PCA
-        """
-
-        X = self.compute_representations(MOLS, nBits=nBits)
-        reducer = PCA(n_components=2)
-        reducer.fit(X)
-        X_2d = reducer.transform(X)
-        return X_2d
-
-
-
-
-    def plot_chem_space(self, HISTOGRAM,  label="xTB_MMFF_min_en_conf_electrolyte"):
+    def plot_chem_space(self, HISTOGRAM,  label="xTB_MMFF94_morfeus_electrolyte"):
         """
         Make a PCA plot of the chemical space.
         """
@@ -400,109 +560,3 @@ class Analyze:
         plt.savefig("PCA.pdf")
         plt.savefig("PCA.png")
         plt.close("all")
-
-
-
-    def to_dataframe(self, obj):
-        """
-        Convert the object to a dataframe.
-        """
-
-        df = pd.DataFrame()
-        SMILES = self.convert_to_smiles(obj)
-        df["SMILES"] = SMILES
-
-        try:
-            values, labels = self.extract_values(obj)
-            for l in labels:
-                df[l] = values[:,labels.index(l)]
-
-        except:
-            pass
-        
-        df = df.dropna()
-        df = df.reset_index(drop=True)
-        return df
-
-
-    def convert_to_smiles(self, mols):
-        """
-        Convert the list of molecules to SMILES strings.
-        tp_list: list of molecudfles as trajectory points
-        smiles_mol: list of rdkit molecules
-        """
-
-        smiles_mol = []
-        for tp in mols:
-            rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
-            smiles_mol.append(rdkit_obj[3])
-
-        smiles_mol = self.make_canon(smiles_mol)
-        return smiles_mol
-
-    def extract_values(self, mols):
-        """
-        Extract the values from the trajectory points.
-        tp_list: list of molecules as trajectory points
-        """
-
-        labels = [l for l in mols[0].calculated_data.keys()]
-        values = []
-        for tp in mols:
-            values.append(list(tp.calculated_data.values()))
-        
-        values = np.float_(np.array(values))
-
-        return values, labels
-
-    def make_canon(self,SMILES):
-        """
-        Convert to canonical smiles form.
-        """
-    
-        CANON_SMILES = []
-        for smi in SMILES:
-            
-            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
-            CANON_SMILES.append(can)
-
-
-        return CANON_SMILES
-
-
-    def count_shell(self, X_init, X_sampled, dl, dh, nBits=4096):
-        """
-        Count the number of molecules in 
-        the shell of radius dl and dh.
-        """
-
-        darr = np.zeros(len(X_sampled))
-        for i, xs in  enumerate(X_sampled):
-            darr[i] = np.linalg.norm(X_init - xs)
-
-
-        in_interval = ((darr >= dl) & (darr <=  dh))
-        N = len(darr[in_interval])
-
-        try:
-            import mpmath
-            dV = self.volume_of_nsphere(nBits, dh) - self.volume_of_nsphere(nBits, dl)
-            logRDF =   float(mpmath.log(N/dV))
-            return N, logRDF
-
-        except ImportError:
-            print("mpmath not installed")
-            return N, None
-
-
-    def volume_of_nsphere(self,N, d):
-        """
-        Compute the volume of a n-sphere of radius d.
-        """
-
-        import mpmath
-        
-        N = mpmath.mpmathify(N)
-        d = mpmath.mpmathify(d)
-
-        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * d ** N
