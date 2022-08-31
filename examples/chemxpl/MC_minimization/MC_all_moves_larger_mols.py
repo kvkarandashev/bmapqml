@@ -52,9 +52,6 @@ init_cg = ChemGraph(
 
 negcs = len(betas)
 
-# All replicas will start in one position that in chemical space corresponds to the local minimum.
-# Note that the "greedy optimization" algorithm wouldn't be able to get to the global minimum on its own
-# as it is separated from the initial position by a ``transition state'' in chemical space.
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(negcs)]
 
 histogram = [[] for _ in range(negcs)]
@@ -72,9 +69,9 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="larger_mols_restart.pkl",
+    linear_storage=True,
 )
 for MC_step in range(num_MC_steps):
-    # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
     rw.global_random_change(**global_change_params)
     print(MC_step, rw.cur_tps)
 

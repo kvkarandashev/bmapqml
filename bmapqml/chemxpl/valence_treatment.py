@@ -555,20 +555,9 @@ class ChemGraph:
         )
 
     def unrepeated_atom_list(self):
-        #        for atom_id in range(self.nhatoms()):
-        #            self.check_equivalence_class([atom_id])
-        #        return self.equiv_class_examples(1, as_tuples=False)
-        # TODO I think the function can be rewritten more elegantly as above, but for now stays like this to not break any tests.
-        output = []
-        for i in range(self.nhatoms()):
-            unrepeated = True
-            for j in output:
-                if self.atom_pair_equivalent(i, j):
-                    unrepeated = False
-                    break
-            if unrepeated:
-                output.append(i)
-        return output
+        for atom_id in range(self.nhatoms()):
+            self.check_equivalence_class([atom_id])
+        return self.equiv_class_examples(1, as_tuples=False)
 
     # Coordination number including unconnected electronic pairs. TO-DO: make sure it does not count pairs that contribute to an aromatic system?
     def effective_coordination_number(self, hatom_id):

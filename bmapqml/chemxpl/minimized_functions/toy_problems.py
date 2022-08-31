@@ -68,6 +68,34 @@ class ZeroFunc:
         return 0.0
 
 
+class NumHAtoms:
+    """
+    Return number of heavy atoms.
+    """
+
+    def __init__(self, intervals=None):
+        self.call_counter = 0
+        self.intervals = intervals
+
+    def int_output(self, trajectory_point_in):
+        cur_nha = trajectory_point_in.egc.num_heavy_atoms()
+        if self.intervals is None:
+            return float(cur_nha)
+        else:
+            for interval_id, val_interval in enumerate(self.intervals):
+                if isinstance(val_interval, int):
+                    if cur_nha == val_interval:
+                        return interval_id
+                else:
+                    if cur_nha in val_interval:
+                        return interval_id
+            return None
+
+    def __call__(self, trajectory_point_in: TrajectoryPoint):
+        self.call_counter += 1
+        return float(self.int_output(trajectory_point_in))
+
+
 class ChargeSum(ZeroFunc):
     """
     Toy problem potential for minimizing sum of nuclear charges.
