@@ -6,7 +6,7 @@ from ..utils import (
     chemgraph_from_ncharges_coords,
 )
 from ...utils import NUCLEAR_CHARGE, checked_environ_val
-from .xtb_quantity_estimates import FF_xTB_res_dict, FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
+from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 
 
