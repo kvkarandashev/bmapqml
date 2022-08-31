@@ -1154,11 +1154,15 @@ class ChemGraph:
             self.comparison_list = list(itertools.chain(*iterators))
         return self.comparison_list
 
-    def copy_extra_data_to(self, other_cg):
-        self.copy_equivalence_info_to(other_cg)
+    def copy_extra_data_to(self, other_cg, linear_storage=False):
+        self.copy_equivalence_info_to(other_cg, linear_storage=linear_storage)
 
-    def copy_equivalence_info_to(self, other_cg):
-        for atom_set_length in range(1, 3):
+    def copy_equivalence_info_to(self, other_cg, linear_storage=False):
+        if linear_storage:
+            atom_set_length_ubound = 2
+        else:
+            atom_set_length_ubound = 3
+        for atom_set_length in range(1, atom_set_length_ubound):
             if self.equiv_arr(atom_set_length) is None:
                 continue
             else:

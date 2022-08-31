@@ -19,7 +19,7 @@ forbidden_bonds = [(7, 7), (8, 8), (9, 9), (7, 8), (7, 9), (8, 9)]
 ln2 = np.log(2.0)
 
 # For each beta defined here RandomWalk would create a replica that
-# These replicas interact with each other via parallel tempering and ``genetic temperting'' moves.
+# These replicas interact with each other via parallel tempering and ``genetic tempering'' moves.
 # None corresponds to a replica that undergoes greedy stochastic optimization.
 
 betas = [None, ln2, ln2 / 2.0, ln2 / 4.0]

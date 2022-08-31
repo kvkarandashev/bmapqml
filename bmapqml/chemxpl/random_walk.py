@@ -267,6 +267,13 @@ class TrajectoryPoint:
             change_valence: self.valence_change_possibilities,
         }
 
+    def clear_possibility_info(self):
+        self.chain_addition_possibilities = None
+        self.nuclear_charge_change_possibilities = None
+        self.atom_removal_possibilities = None
+        self.bond_order_change_possibilities = None
+        self.valence_change_possibilities = None
+
     def calc_or_lookup(self, func_dict, args_dict=None, kwargs_dict=None):
         output = {}
         for quant_name in func_dict.keys():
@@ -291,31 +298,34 @@ class TrajectoryPoint:
         else:
             return self.num_visits[replica_id]
 
-    def copy_extra_data_to(self, other_tp):
+    def copy_extra_data_to(self, other_tp, linear_storage=False):
         """
         Copy all calculated data from self to other_tp.
         """
         for quant_name in self.calculated_data:
             if quant_name not in other_tp.calculated_data:
                 other_tp.calculated_data[quant_name] = self.calculated_data[quant_name]
-        if self.bond_order_change_possibilities is not None:
-            if other_tp.bond_order_change_possibilities is None:
-                other_tp.bond_order_change_possibilities = deepcopy(
-                    self.bond_order_change_possibilities
-                )
-                other_tp.chain_addition_possibilities = deepcopy(
-                    self.chain_addition_possibilities
-                )
-                other_tp.nuclear_charge_change_possibilities = deepcopy(
-                    self.nuclear_charge_change_possibilities
-                )
-                other_tp.atom_removal_possibilities = deepcopy(
-                    self.atom_removal_possibilities
-                )
-                other_tp.valence_change_possibilities = deepcopy(
-                    self.valence_change_possibilities
-                )
-        self.egc.chemgraph.copy_extra_data_to(other_tp.egc.chemgraph)
+        # Dealing with making sure the order is preserved is too complicated.
+        # if self.bond_order_change_possibilities is not None:
+        #    if other_tp.bond_order_change_possibilities is None:
+        #        other_tp.bond_order_change_possibilities = deepcopy(
+        #            self.bond_order_change_possibilities
+        #        )
+        #        other_tp.chain_addition_possibilities = deepcopy(
+        #            self.chain_addition_possibilities
+        #        )
+        #        other_tp.nuclear_charge_change_possibilities = deepcopy(
+        #            self.nuclear_charge_change_possibilities
+        #        )
+        #        other_tp.atom_removal_possibilities = deepcopy(
+        #            self.atom_removal_possibilities
+        #        )
+        #        other_tp.valence_change_possibilities = deepcopy(
+        #            self.valence_change_possibilities
+        #        )
+        self.egc.chemgraph.copy_extra_data_to(
+            other_tp.egc.chemgraph, linear_storage=linear_storage
+        )
 
     def chemgraph(self):
         return self.egc.chemgraph
@@ -522,6 +532,7 @@ class RandomWalk:
         histogram_dump_file_prefix: str = "",
         track_histogram_size: bool = False,
         visit_num_count_acceptance: bool = False,
+        linear_storage: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -543,6 +554,7 @@ class RandomWalk:
         histogram_dump_file_prefix : sets the prefix from which the name of the pickle file where histogram is dumped if its maximal size is exceeded
         track_histogram_size : print current size of the histogram after each global MC step
         visit_num_count_acceptance : if True number of visit numbers (used in biasing potential) is counted during each accept_reject_move call rather than each global step
+        linear_storage : whether objects saved to the histogram contain data whose size scales more than linearly with molecule size.
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -564,6 +576,7 @@ class RandomWalk:
         self.keep_histogram = keep_histogram
         self.histogram_save_rejected = histogram_save_rejected
         self.visit_num_count_acceptance = visit_num_count_acceptance
+        self.linear_storage = linear_storage
 
         self.no_exploration = no_exploration
         if self.no_exploration:
@@ -725,11 +738,11 @@ class RandomWalk:
                 if self.virtual_beta_id(replica_id):
                     vnew_tot_pot_vals.append(new_tot_pot_val)
                     vprev_tot_pot_vals.append(prev_tot_pot_val)
-            return min(vnew_tot_pot_vals) < min(vprev_tot_pot_vals)
+            return min(vnew_tot_pot_vals) <= min(vprev_tot_pot_vals)
 
         delta_pot = prob_balance + sum(new_tot_pot_vals) - sum(prev_tot_pot_vals)
 
-        if delta_pot < 0.0:
+        if delta_pot <= 0.0:
             return True
         else:
             return random.random() < exp_wexceptions(-delta_pot)
@@ -1075,7 +1088,15 @@ class RandomWalk:
                     self.histogram.add(deepcopy(cur_tp))
                 cur_tp_index = self.histogram.index(cur_tp)
                 if tp_in_hist:
-                    cur_tp.copy_extra_data_to(self.histogram[cur_tp_index])
+                    cur_tp.copy_extra_data_to(
+                        self.histogram[cur_tp_index], linear_storage=self.linear_storage
+                    )
+                else:
+                    if self.linear_storage:
+                        self.histogram[cur_tp_index].clear_possibility_info()
+                        self.histogram[
+                            cur_tp_index
+                        ].egc.chemgraph.pair_equivalence_matrix = None
 
                 if self.histogram[cur_tp_index].first_MC_step_encounter is None:
                     self.histogram[
