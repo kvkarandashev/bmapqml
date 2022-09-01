@@ -6,6 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
+import math
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import morpheus_coord_info_from_tp
 import pdb
 try:
@@ -41,22 +42,29 @@ class sample_local_space_3d:
 
 
     def flat_parabola_potential(self, d):
+        
         """
         Flat parabola potential. Allows sampling within a distance basin 
         interval of I in [gamma, sigma]. epsilon determines depth of minima
-        and is typically set to epsilon = 5. The potential is given by:
+        The values as well as slope must be adjusted depending on the representation.
+        The potential is given by:
         """
 
         if d < self.gamma:
-            return (d - self.gamma) ** 2 - self.epsilon
+            return 0.05*(d - self.gamma) ** 2 - self.epsilon
         if self.gamma <= d <= self.sigma:
             return -self.epsilon
         if d > self.sigma:
-            return (d - self.sigma) ** 2 - self.epsilon
+            return 0.05*(d - self.sigma) ** 2 - self.epsilon
 
 
-    def gen_cm(self, crds,chgs, size=50):
-        
+    def gen_cm(self, crds,chgs, size=100):
+
+        """
+        Generate the coulomb matrix for a set 
+        of coordinates and their charges.
+        """
+
         cm = generate_coulomb_matrix(chgs, crds,
                                 size=size, sorting="row-norm")
         
@@ -68,7 +76,7 @@ class sample_local_space_3d:
 
 
         try:
-            print("calling", trajectory_point_in)
+            #print("calling", trajectory_point_in)
 
             output = trajectory_point_in.calc_or_lookup(
                 self.morpheus_output
@@ -77,15 +85,30 @@ class sample_local_space_3d:
             print("Error in 3d conformer sampling")
             return None
 
-        print("end calling")
-        coords, charges, canon_SMILES  = trajectory_point_in.calculated_data["morpheus"]["coordinates"], trajectory_point_in.calculated_data["morpheus"]["nuclear_charges"], trajectory_point_in.calculated_data["morpheus"]["canon_rdkit_SMILES"]
-        print("done reading data")
+        #print("end calling")
+
+        coords          = output["coordinates"]          #trajectory_point_in.calculated_data["morpheus"]["coordinates"]
+        charges         = output["nuclear_charges"]      #trajectory_point_in.calculated_data["morpheus"]["nuclear_charges"]
+        canon_SMILES    = output["canon_rdkit_SMILES"]   #trajectory_point_in.calculated_data["morpheus"]["canon_rdkit_SMILES"]
+
+        if coords is None:
+            print("Error in 3d conformer sampling")
+            return None
+
+        #print("done reading data")
         X_test = self.gen_cm(coords, charges)
 
-        d = norm(X_test - self.X_init)
-        V = self.potential(d)
+        distance = norm(X_test - self.X_init)
 
-        print("SMILE:", canon_SMILES, d, V)
+        if math.isnan(distance):
+            print("SMILE:", canon_SMILES, distance)
+            pdb.set_trace()
+            exit()
+
+
+        V = self.potential(distance)
+
+        print("SMILE:", canon_SMILES, distance, V)
         return V
 
 
