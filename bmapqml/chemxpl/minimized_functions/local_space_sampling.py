@@ -6,7 +6,8 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
-from bmapqml.chemxpl.minimized_functions import morfeus_quantity_estimates
+from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import morpheus_coord_info_from_tp
+import pdb
 try:
     import qml
     from qml.representations import *
@@ -34,7 +35,7 @@ class sample_local_space_3d:
         #self.canonical_rdkit_output = {
         #    "canonical_rdkit": trajectory_point_to_canonical_rdkit
         #}
-        self.morpheus_output = { "morpheus": morfeus_quantity_estimates }
+        self.morpheus_output = { "morpheus": morpheus_coord_info_from_tp }
 
         self.potential = self.flat_parabola_potential    
 
@@ -66,28 +67,27 @@ class sample_local_space_3d:
     def __call__(self, trajectory_point_in):
 
 
-        #try:
-        output = trajectory_point_in.calc_or_lookup(
-            self.morpheus_output
-        )["morpheus"]
-        #except:
-        #    print("Error in canonical SMILES, therefore skipping")
-        #    return None
-            
-        X_test = self.gen_cm(output[0], output[1])
+        try:
+            print("calling", trajectory_point_in)
+
+            output = trajectory_point_in.calc_or_lookup(
+                self.morpheus_output
+            )["morpheus"]
+        except:
+            print("Error in 3d conformer sampling")
+            return None
+
+        print("end calling")
+        coords, charges, canon_SMILES  = trajectory_point_in.calculated_data["morpheus"]["coordinates"], trajectory_point_in.calculated_data["morpheus"]["nuclear_charges"], trajectory_point_in.calculated_data["morpheus"]["canon_rdkit_SMILES"]
+        print("done reading data")
+        X_test = self.gen_cm(coords, charges)
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-
+        #if self.verbose:
+        print("SMILE:", canon_SMILES, d, V)
         return V
-
-
-
-
-
-
-
 
 
 
@@ -244,9 +244,8 @@ class sample_local_space:
         #        ring_error = 0
         #
         #    V += ring_error
-
-        if self.verbose:
-            print("SMILE:", canon_SMILES, d, V)
+        #if self.verbose:
+        #    print("SMILE:", canon_SMILES, d, V)
 
         return V
 

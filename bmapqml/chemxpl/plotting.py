@@ -1,3 +1,4 @@
+import pdb
 from bmapqml.utils import * 
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
@@ -38,7 +39,7 @@ class Analyze:
 
 
         self.path = path
-        self.results = glob.glob(path)[:500]
+        self.results = glob.glob(path) #[:10]
         self.verbose = verbose
         self.full_traj = full_traj
 
@@ -291,7 +292,7 @@ class Analyze:
         return CANON_SMILES
 
 
-    def count_shell(self, X_init, SMILES_sampled, dl, dh, nBits=4096):
+    def count_shell(self, X_init, SMILES_sampled, dl, dh, nBits=4096, return_mols=False):
         """
         Count the number of molecules in 
         the shell of radius dl and dh.
@@ -304,10 +305,14 @@ class Analyze:
         N = len(darr[in_interval])
 
         try:
+
             import mpmath
             dV = self.volume_of_nsphere(nBits, dh) - self.volume_of_nsphere(nBits, dl)
             logRDF =   float(mpmath.log(N/dV))
-            return N, logRDF
+            if return_mols == False:
+                return N, logRDF
+            else:
+                return N, logRDF, SMILES_sampled[in_interval][:1000]
 
         except ImportError:
             print("mpmath not installed")

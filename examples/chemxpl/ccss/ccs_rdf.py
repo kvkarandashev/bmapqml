@@ -12,11 +12,12 @@ from scipy.optimize import curve_fit
 from bmapqml.chemxpl.random_walk import RandomWalk
 from bmapqml.chemxpl import ExtGraphCompound
 from copy import deepcopy
-
+import pdb
 matplotlib.use('Agg')
 
 
-def mc_run(init_cg, min_func, label, respath):
+def mc_run(init_cg, min_func, label, respath,betas=[None, None, 4000, 4000/2, 4000/4, 4000/8],num_MC_steps = 5000 ):
+    
     """
     Perform as MC simulation
     """
@@ -28,11 +29,13 @@ def mc_run(init_cg, min_func, label, respath):
 
     possible_elements=["C", "O", "N", "F"]
     forbidden_bonds=None
-    ref_beta=4000
+    
     bias_coeff=0.25
     vbeta_bias_coeff=1.e-5
     bound_enforcing_coeff=1.0
-    betas=[None, None, ref_beta, ref_beta/2, ref_beta/4, ref_beta/8]
+    
+    #ref_beta=4000
+    #betas=[None, None, ref_beta, ref_beta/2, ref_beta/4, ref_beta/8]
 
     
 
@@ -41,7 +44,7 @@ def mc_run(init_cg, min_func, label, respath):
                                 "forbidden_bonds": forbidden_bonds}
     global_change_params     = {"num_parallel_tempering_tries" : 10, "num_genetic_tries" : 10, "prob_dict" : {"simple" : 0.5, "genetic" : 0.25, "tempering" : 0.25}}
 
-    num_MC_steps = 5000
+    
 
 
     negcs=len(betas)
@@ -97,7 +100,7 @@ class RDF_Plotter:
                 popt, _ = curve_fit(self.elbow_curve,np.arange(len(n_curr)) ,n_curr, p0=[n_curr[-1], 1])
                 print(popt)
                 a = popt[0]
-                if a < 90000:
+                if a < 1e15:
                     N_EXT.append(a)
                 else:
                     N_EXT.append(np.nan)
@@ -133,7 +136,7 @@ class RDF_Plotter:
         plt.rc('legend', fontsize=fs)   
         plt.rc('figure', titlesize=fs) 
 
-        fig, ax1 = plt.subplots(1, 1,figsize=(16,8))
+        fig, ax1 = plt.subplots(1, 1,figsize=(8,8))
         for a in [ax1]:
             a.spines['right'].set_color('none')
             a.spines['top'].set_color('none')
@@ -162,7 +165,7 @@ class RDF_Plotter:
 
 
 
-    def inner_loop(self, ALL_HISTOGRAMS, i1,i2, ana):
+    def inner_loop(self, ALL_HISTOGRAMS, i1,i2, ana, return_mols=False):
         random.shuffle(ALL_HISTOGRAMS)
         dh = self.D_HIGH[i1]
         dl = dh-self.d_int  
@@ -170,9 +173,15 @@ class RDF_Plotter:
         curr_h = pd.concat(ALL_HISTOGRAMS[:i2])
         curr_h = curr_h.drop_duplicates(subset=['SMILES'])
         SMILES = curr_h.values.flatten()
-        N, logRDF = ana.count_shell(self.X_init, SMILES, dl, dh, nBits=self.nBits)
-        
-        return N, logRDF
+
+        if return_mols==False:
+            N, logRDF = ana.count_shell(self.X_init, SMILES, dl, dh, nBits=self.nBits, return_mols=False)
+            return N, logRDF
+
+        else:
+            N, logRDF, SMILES = ana.count_shell(self.X_init, SMILES, dl, dh, nBits=self.nBits, return_mols=True)
+            return N, logRDF, SMILES
+
         
     def process_RDF(self):
         N_ALL, LOG_RDF = [], []
@@ -181,7 +190,7 @@ class RDF_Plotter:
             ana   = Analyze(f"/store/jan/trash/mc_sampling/rdf/{self.molecule}_{i1}_*.pkl", full_traj=False, verbose=True)
             ALL_HISTOGRAMS, _,_ = ana.parse_results()
 
-            rdf   = Parallel(n_jobs=self.ncpu, verbose=50)(delayed(self.inner_loop)(ALL_HISTOGRAMS,i1, i2, ana) for i2 in range(1, len(ALL_HISTOGRAMS)+1))
+            rdf   = Parallel(n_jobs=self.ncpu, verbose=50)(delayed(self.inner_loop)(ALL_HISTOGRAMS,i1, i2, ana, False) for i2 in range(1, len(ALL_HISTOGRAMS)+1))
             n_curr, log_rdf_curr = zip(*rdf)
             n_curr, log_rdf_curr = np.array(n_curr), np.array(log_rdf_curr)
 
@@ -190,6 +199,31 @@ class RDF_Plotter:
 
         N_ALL, LOG_RDF = np.array(N_ALL), np.array(LOG_RDF)
         return N_ALL, LOG_RDF
+
+
+    def get_samples(self):
+        D_ALL = []
+        D_MOL_SAMPLES = []
+        for i1 in range(len(self.D_HIGH)):
+            print(f"Distance {i1}")
+            ana   = Analyze(f"/store/jan/trash/mc_sampling/rdf/{self.molecule}_{i1}_*.pkl", full_traj=False, verbose=True)
+            ALL_HISTOGRAMS, _,_ = ana.parse_results()
+            _,_, SMILES = self.inner_loop(ALL_HISTOGRAMS,i1, len(ALL_HISTOGRAMS), ana, True)
+            
+            if len(SMILES)>0:
+                D_ALL.append([self.D_HIGH[i1]]*len(SMILES))
+                D_MOL_SAMPLES.append(SMILES)
+            else:
+                D_ALL.append([self.D_HIGH[i1]])
+                D_MOL_SAMPLES.append([np.nan])
+
+            
+                
+            
+            
+
+        return D_ALL, D_MOL_SAMPLES
+
 
 
     def sample_convergence_RDF(self):
@@ -201,7 +235,7 @@ class RDF_Plotter:
             N_SAMPLES.append(N_ALL)
             LOG_RDF_SAMPLES.append(LOG_RDF)
 
-
+        pdb.set_trace()
         N_SAMPLES,LOG_RDF_SAMPLES = np.array(N_SAMPLES), np.array(LOG_RDF_SAMPLES)
         N_MEAN, LOG_RDF_MEAN = np.nanmean(N_SAMPLES, axis=0), np.nanmean(LOG_RDF_SAMPLES, axis=0)
 
