@@ -85,7 +85,6 @@ class sample_local_space_3d:
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        #if self.verbose:
         print("SMILE:", canon_SMILES, d, V)
         return V
 
