@@ -720,6 +720,7 @@ class RandomWalk:
             self.tot_pot(new_tp, replica_id)
             for new_tp, replica_id in zip(new_tps, replica_ids)
         ]
+
         # Check we have not created any invalid molecules.
         if None in new_tot_pot_vals:
             return False
@@ -1039,6 +1040,17 @@ class RandomWalk:
     # Either evaluate minimized function or look it up.
     def eval_min_func(self, tp):
         output = tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
+
+        # If we are keeping track of the histogram make sure all calculated data is saved there.
+        # TODO combine things with update_histogram?
+        if self.keep_histogram:
+            tp_in_histogram = tp in self.histogram
+            if tp_in_histogram:
+                tp_index = self.histogram.index(tp)
+                tp.copy_extra_data_to(self.histogram[tp_index])
+            else:
+                self.histogram.add(deepcopy(tp))
+
         if self.delete_temp_data is not None:
             for dtd_identifier in self.delete_temp_data:
                 if dtd_identifier in tp.calculated_data:
