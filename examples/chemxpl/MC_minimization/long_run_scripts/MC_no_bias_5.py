@@ -27,7 +27,8 @@ possible_elements = ["C", "N", "O", "F"]
 forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9)]
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
-betas = [None, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.5]
+# There are two "greedy" replicas here to verify Guido's comment on checking they don't merge into one.
+betas = [None, None, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.5]
 
 make_restart_frequency = 2000
 num_MC_steps = 200000  # 500000
