@@ -533,6 +533,7 @@ class RandomWalk:
         track_histogram_size: bool = False,
         visit_num_count_acceptance: bool = False,
         linear_storage: bool = False,
+        compress_restart: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -554,7 +555,8 @@ class RandomWalk:
         histogram_dump_file_prefix : sets the prefix from which the name of the pickle file where histogram is dumped if its maximal size is exceeded
         track_histogram_size : print current size of the histogram after each global MC step
         visit_num_count_acceptance : if True number of visit numbers (used in biasing potential) is counted during each accept_reject_move call rather than each global step
-        linear_storage : whether objects saved to the histogram contain data whose size scales more than linearly with molecule size.
+        linear_storage : whether objects saved to the histogram contain data whose size scales more than linearly with molecule size
+        compress_restart : whether restart files are compressed by default
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -617,6 +619,7 @@ class RandomWalk:
         # Related to making restart files and checking for soft exit.
         self.restart_file = restart_file
         self.make_restart_frequency = make_restart_frequency
+        self.compress_restart = compress_restart
         self.soft_exit_check_frequency = soft_exit_check_frequency
         self.global_steps_since_last = {}
 
@@ -1223,7 +1226,9 @@ class RandomWalk:
                 self.make_restart()
                 raise SoftExitCalled
 
-    def make_restart(self, restart_file: str or None = None, tarball: bool = False):
+    def make_restart(
+        self, restart_file: str or None = None, tarball: bool or None = None
+    ):
         """
         Create a file containing all information needed to restart the simulation from the current point.
         restart_file : name of the file where the dump is created; if None self.restart_file is used
@@ -1245,10 +1250,12 @@ class RandomWalk:
             saved_data = {**saved_data, "histogram": self.histogram}
         if self.num_saved_candidates is not None:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
-        if tarball == False:
-            dump2pkl(saved_data, restart_file)
-        else:
+        if tarball is None:
+            tarball = self.compress_restart
+        if tarball:
             dump2tar(saved_data, restart_file)
+        else:
+            dump2pkl(saved_data, restart_file)
 
     def restart_from(self, restart_file: str or None = None):
         """
