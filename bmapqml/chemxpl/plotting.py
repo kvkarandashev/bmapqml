@@ -39,7 +39,7 @@ class Analyze:
 
 
         self.path = path
-        self.results = glob.glob(path) #[:10]
+        self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
 
@@ -61,6 +61,8 @@ class Analyze:
                 obj = loadpkl(run)
 
             HISTOGRAM = self.to_dataframe(obj["histogram"])
+
+            #pdb.set_trace()
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
                 traj = np.array(ordered_trajectory(obj["histogram"]))
@@ -216,15 +218,16 @@ class Analyze:
         X_2d = reducer.transform(X)
         return X_2d
 
-    def to_dataframe(self, obj):
+    def to_dataframe(self, obj ):
         """
         Convert the trajectory point object to a dataframe 
         and extract xTB values if available.
         """
 
         df = pd.DataFrame()
-        SMILES = self.convert_to_smiles(obj)
+        SMILES, VALUES = self.convert_to_smiles(obj)
         df["SMILES"] = SMILES
+        df["VALUES"] = VALUES
 
         try:
             values, labels = self.extract_values(obj)
@@ -240,7 +243,7 @@ class Analyze:
         return df
 
 
-    def convert_to_smiles(self, mols):
+    def convert_to_smiles(self, mols, mode="chemspacesampler_FP"):
         """
         Convert the list of molecules to SMILES strings.
         tp_list: list of molecudfles as trajectory points
@@ -248,26 +251,42 @@ class Analyze:
         """
 
         smiles_mol = []
-
+        values     = []
         for tp in mols:
             try:
-                rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
-                smiles_mol.append(rdkit_obj[3])
+
+                #if standard data from konstantin do this:
+                #rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
+                #smiles_mol.append(rdkit_obj[3])
+                #else for chemspacesampler do this:
+
+                #pdb.set_trace()
+                
+                curr_data = tp.calculated_data
+
+                if mode=="chemspacesampler_morpheus":
+                    smiles_mol.append(curr_data["morpheus"]["canon_rdkit_SMILES"])
+                    
+                
+                elif mode=="chemspacesampler_FP":
+                    smiles_mol.append(curr_data["canonical_rdkit"][-1])
+
+                values.append(curr_data["chemspacesampler"])
             except:
                 if self.verbose:
                     print("Could not convert to smiles")        
                 pass
                 
 
-        smiles_mol = self.make_canon(smiles_mol)
-        return smiles_mol
+        smiles_mol, values = self.make_canon(smiles_mol), np.array(values)
+        return smiles_mol, values
 
     def extract_values(self, mols):
         """
         Extract the values from the trajectory points.
         tp_list: list of molecules as trajectory points
         """
-
+        #pdb.set_trace()
         labels = [l for l in mols[0].calculated_data.keys()]
         values = []
         for tp in mols:
@@ -291,6 +310,14 @@ class Analyze:
 
         return CANON_SMILES
 
+
+    def count_shell_value(self, curr_h, epsilon,return_mols=False):
+        in_interval  = curr_h["VALUES"]==-epsilon
+
+        if return_mols:
+            return in_interval.sum(), curr_h["SMILES"][in_interval].values[:1000]
+        else:
+            return in_interval.sum()
 
     def count_shell(self, X_init, SMILES_sampled, dl, dh, nBits=4096, return_mols=False):
         """
