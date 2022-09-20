@@ -1,4 +1,6 @@
 # TODO For forward and backward probabilities, comment more on where different signs come from.
+# TODO 1. Account for statistical noise of input data. 2. Many theory levels?
+
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
 from .modify import (
