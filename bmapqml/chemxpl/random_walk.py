@@ -744,7 +744,17 @@ class RandomWalk:
                 if self.virtual_beta_id(replica_id):
                     vnew_tot_pot_vals.append(new_tot_pot_val)
                     vprev_tot_pot_vals.append(prev_tot_pot_val)
-            return min(vnew_tot_pot_vals) <= min(vprev_tot_pot_vals)
+            min_vnew = min(vnew_tot_pot_vals)
+            min_vprev = min(vprev_tot_pot_vals)
+            if min_vnew == min_vprev:
+                if (len(replica_ids) != 1) and all(self.betas_virtual(replica_ids)):
+                    max_vnew = max(vnew_tot_pot_vals)
+                    max_vprev = max(vprev_tot_pot_vals)
+                    if max_vnew != max_vprev:
+                        return max_vnew < max_vprev
+                # Otherwise the contribution from vnew_tot_pot_vals cancels out in the acceptance probability anyway.
+            else:
+                return min_vnew < min_vprev
 
         delta_pot = prob_balance + sum(new_tot_pot_vals) - sum(prev_tot_pot_vals)
 
@@ -754,13 +764,32 @@ class RandomWalk:
             return random.random() < exp_wexceptions(-delta_pot)
 
     def virtual_beta_present(self, beta_ids):
-        return any([self.virtual_beta_id(beta_id) for beta_id in beta_ids])
+        return any(self.betas_virtual(beta_ids))
+
+    def betas_virtual(self, beta_ids=None):
+        if beta_ids is None:
+            beta_ids = range(self.num_replicas)
+        return [self.virtual_beta_id(beta_id) for beta_id in beta_ids]
 
     def virtual_beta_id(self, beta_id):
         if self.betas is None:
             return False
         else:
             return self.betas[beta_id] is None
+
+    def all_betas_same(self):
+        if self.num_replicas == 1:
+            return True
+        betas_virtual = self.betas_virtual()
+        if any(betas_virtual):
+            return all(betas_virtual)
+        else:
+            return all(
+                [
+                    self.betas[i] == self.betas[i + 1]
+                    for i in range(self.num_replicas - 1)
+                ]
+            )
 
     def tot_pot(self, tp, replica_id, init_bias=0.0):
         """
@@ -956,9 +985,20 @@ class RandomWalk:
         return self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
-        if self.min_function is not None:
+        if (
+            (self.min_function is not None)
+            and (self.betas is not None)
+            and (not self.all_betas_same())
+        ):
             for _ in range(num_parallel_tempering_tries):
-                replica_ids = self.random_changed_replica_pair()
+                while True:
+                    replica_ids = self.random_changed_replica_pair()
+                    betas_virtual = self.betas_virtual(replica_ids)
+                    if not all(betas_virtual):
+                        if any(betas_virtual) or (
+                            self.betas[replica_ids[0]] != self.betas[replica_ids[1]]
+                        ):
+                            break
                 _ = self.parallel_tempering_swap(replica_ids)
 
     def global_change_dict(self):

@@ -22,7 +22,7 @@ ln2 = np.log(2.0)
 # These replicas interact with each other via parallel tempering and ``genetic tempering'' moves.
 # None corresponds to a replica that undergoes greedy stochastic optimization.
 
-betas = [None, ln2, ln2 / 2.0, ln2 / 4.0]
+betas = [None, None, ln2, ln2 / 2.0, ln2 / 4.0]
 
 num_MC_steps = 10000  # 100000
 

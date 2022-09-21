@@ -14,7 +14,7 @@ np.random.seed(1)
 
 possible_elements = ["C", "P"]
 
-forbidden_bonds = [(7, 7)]
+forbidden_bonds = [(15, 15)]
 
 ln2 = np.log(2.0)
 
@@ -24,9 +24,9 @@ ln2 = np.log(2.0)
 
 max_nhatoms = 4
 
-betas = [None, 2.0 * ln2, ln2]
+betas = [None, None, 2.0 * ln2, ln2, ln2 / 2.0]
 
-num_MC_steps = 10000  # 100000
+num_MC_steps = 40000  # 20000
 
 bias_coeff = None
 bound_enforcing_coeff = None

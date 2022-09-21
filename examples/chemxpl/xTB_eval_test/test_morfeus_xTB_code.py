@@ -21,6 +21,7 @@ SMILES_list = [
     "C(F)(F)(F)OC",
     "C(F)(F)(F)C",
     "CC(O)COC(O)(F)F",
+    "N#CC",
 ]
 
 num_attempts = 4
