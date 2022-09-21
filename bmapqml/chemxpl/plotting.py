@@ -35,13 +35,18 @@ class Analyze:
     given as restart files in the tar format.
     """
 
-    def __init__(self, path,full_traj=False ,verbose=False):
-
+    def __init__(self, path,full_traj=False ,verbose=False, mode="optimization"):
+        
+        """
+        mode : either optimization of dipole and gap = "optimization" or
+               sampling locally in chemical space = "sampling"
+        """
 
         self.path = path
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
+        self.mode=mode
 
 
     def parse_results(self):
@@ -61,8 +66,6 @@ class Analyze:
                 obj = loadpkl(run)
 
             HISTOGRAM = self.to_dataframe(obj["histogram"])
-
-            #pdb.set_trace()
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
                 traj = np.array(ordered_trajectory(obj["histogram"]))
@@ -225,76 +228,63 @@ class Analyze:
         """
 
         df = pd.DataFrame()
-        SMILES, VALUES = self.convert_to_smiles(obj)
-        df["SMILES"] = SMILES
-        df["VALUES"] = VALUES
 
-        try:
-            values, labels = self.extract_values(obj)
-            for l in labels:
-                df[l] = values[:,labels.index(l)]
+        if self.mode=="optimization":
+            SMILES,VALUES = self.convert_from_tps(obj)
+            df["SMILES"] = SMILES    
+            df["Dipole"] = VALUES[:,0]       
+            df["HOMO_LUMO_gap"] = VALUES[:,1]       
+            df["xTB_MMFF94_morfeus_electrolyte"] = VALUES[:,2]       
 
-        except:
-            pass        
+        elif self.mode=="sampling":
+            SMILES, VALUES = self.convert_from_tps(obj)
+            df["SMILES"] = SMILES
+            df["VALUES"] = VALUES 
 
-        
         df = df.dropna()
         df = df.reset_index(drop=True)
         return df
 
 
-    def convert_to_smiles(self, mols, mode="chemspacesampler_FP"):
+    def convert_from_tps(self, mols):
         """
-        Convert the list of molecules to SMILES strings.
+        Convert the list of trajectory points molecules to SMILES strings.
         tp_list: list of molecudfles as trajectory points
         smiles_mol: list of rdkit molecules
         """
 
-        smiles_mol = []
-        values     = []
-        for tp in mols:
-            try:
+        SMILES = []
+        VALUES     = []
 
-                #if standard data from konstantin do this:
-                #rdkit_obj = trajectory_point_to_canonical_rdkit(tp)
-                #smiles_mol.append(rdkit_obj[3])
-                #else for chemspacesampler do this:
-
-                #pdb.set_trace()
-                
-                curr_data = tp.calculated_data
-
-                if mode=="chemspacesampler_morpheus":
-                    smiles_mol.append(curr_data["morpheus"]["canon_rdkit_SMILES"])
-                    
-                
-                elif mode=="chemspacesampler_FP":
-                    smiles_mol.append(curr_data["canonical_rdkit"][-1])
-
-                values.append(curr_data["chemspacesampler"])
-            except:
-                if self.verbose:
-                    print("Could not convert to smiles")        
-                pass
+        if self.mode=="optimization":
+            for tp in mols:
+                try:
+                    curr_data = tp.calculated_data
+                    VALUES.append([float(curr_data["Dipole"]),float(curr_data["HOMO_LUMO_gap"]),float(curr_data["xTB_MMFF94_morfeus_electrolyte"]) ])
+                    SMILES.append(curr_data["coord_info"]["canon_rdkit_SMILES"])
+                except:
+                    if self.verbose:
+                        print("Could not convert to smiles")     
                 
 
-        smiles_mol, values = self.make_canon(smiles_mol), np.array(values)
-        return smiles_mol, values
+        elif self.mode=="sampling":
+            for tp in mols:
+                try:
+                    curr_data = tp.calculated_data
+                    SMILES.append(curr_data["canonical_rdkit"][-1])
+                    VALUES.append(curr_data["chemspacesampler"])
+                except:
+                    if self.verbose:
+                        print("Could not convert to smiles")        
+                    pass
 
-    def extract_values(self, mols):
-        """
-        Extract the values from the trajectory points.
-        tp_list: list of molecules as trajectory points
-        """
-        #pdb.set_trace()
-        labels = [l for l in mols[0].calculated_data.keys()]
-        values = []
-        for tp in mols:
-            values.append(list(tp.calculated_data.values()))
         
-        values = np.float_(np.array(values))
+        SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
 
-        return values, labels
+        return SMILES, VALUES
+
+
+
 
     def make_canon(self,SMILES):
         """
@@ -395,8 +385,8 @@ class Analyze:
         ax1.spines['left'].set_position(('axes', -0.05))
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        plt.savefig("loss.pdf")  
-        plt.savefig("loss.png")
+        #plt.savefig("loss.pdf")  
+        plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
 
@@ -448,8 +438,8 @@ class Analyze:
 
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        plt.savefig("pareto.pdf")  
-        plt.savefig("pareto.png")
+        #plt.savefig("pareto.pdf")  
+        plt.savefig("pareto.png", dpi=600)
         plt.close("all")      
 
 
@@ -489,8 +479,8 @@ class Analyze:
         ax1.spines['left'].set_position(('axes', -0.05))
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        plt.savefig("steps.pdf")  
-        plt.savefig("steps.png")  
+        #plt.savefig("steps.pdf")  
+        plt.savefig("steps.png", dpi=600)  
         plt.close("all")         
 
 
@@ -532,8 +522,8 @@ class Analyze:
         ax2.spines['left'].set_position(('axes', -0.05))
         plt.tight_layout()
 
-        plt.savefig("spread.pdf")
-        plt.savefig("spread.png")
+        #plt.savefig("spread.pdf")
+        plt.savefig("spread.png", dpi=600)
 
     def plot_chem_space(self, HISTOGRAM,  label="xTB_MMFF94_morfeus_electrolyte"):
         """
@@ -589,6 +579,6 @@ class Analyze:
         clb.set_label('Loss')
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        plt.savefig("PCA.pdf")
-        plt.savefig("PCA.png")
+        #plt.savefig("PCA.pdf")
+        plt.savefig("PCA.png", dpi=600)
         plt.close("all")
