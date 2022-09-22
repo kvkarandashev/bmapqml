@@ -1,7 +1,6 @@
 from morfeus.conformer import conformers_from_rdkit
 from ..utils import (
     chemgraph_to_canonical_rdkit,
-    FFInconsistent,
     InvalidAdjMat,
     chemgraph_from_ncharges_coords,
 )

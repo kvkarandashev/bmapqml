@@ -6,64 +6,73 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
-from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import morpheus_coord_info_from_tp
+from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
+    morpheus_coord_info_from_tp,
+)
 import pdb
+
 try:
     from qml.representations import *
     from qml.kernels import get_local_kernel
 except:
-    print("qml not installed")
+    print("local_space_sampling: qml not installed")
 
 try:
     from ase import Atoms
     from dscribe.descriptors import SOAP
 except:
-    print("ase or dscribe not installed")
+    print("local_space_sampling: ase or dscribe not installed")
 
-def gen_soap(crds,chgs):
-    #average output 
-    #https://singroup.github.io/dscribe/latest/tutorials/descriptors/soap.html
+
+def gen_soap(crds, chgs):
+    # average output
+    # https://singroup.github.io/dscribe/latest/tutorials/descriptors/soap.html
     """
-    Generate the average SOAP, i.e. the average of the SOAP vectors is 
+    Generate the average SOAP, i.e. the average of the SOAP vectors is
     a global of the molecule.
     """
     average_soap = SOAP(
-    rcut=6.0,
-    nmax=8,
-    lmax=6,
-    average="inner",
-    species=["H","C","N","O","F"],
-    sparse=False)
+        rcut=6.0,
+        nmax=8,
+        lmax=6,
+        average="inner",
+        species=["H", "C", "N", "O", "F"],
+        sparse=False,
+    )
 
     molecule = Atoms(numbers=chgs, positions=crds)
     return average_soap.create(molecule)[0]
 
-def gen_cm(crds,chgs, size=100):
+
+def gen_cm(crds, chgs, size=100):
     """
-    Generate the coulomb matrix for a set 
+    Generate the coulomb matrix for a set
     of coordinates and their charges.
     """
 
     return generate_coulomb_matrix(chgs, crds, size=size, sorting="row-norm")
 
-def gen_bob(crds,chgs, size=100):
+
+def gen_bob(crds, chgs, size=100):
     """
     Generate the Bag of Bonds representation for a set
     of coordinates and their charges.
     """
 
-    atomtypes = [1,6,7,8,9]
-    asize = {"H":30,"C":10,"N":10, "O":10,"F":10}
-    return generate_bob(chgs,crds,atomtypes,size=size,asize=asize)
+    atomtypes = [1, 6, 7, 8, 9]
+    asize = {"H": 30, "C": 10, "N": 10, "O": 10, "F": 10}
+    return generate_bob(chgs, crds, atomtypes, size=size, asize=asize)
 
-def gen_fchl(crds,chgs, size=100):
+
+def gen_fchl(crds, chgs, size=100):
     """
     Generate the FCHL representation for a set
     of coordinates and their charges.
     """
 
-    atomtypes = [1,6,7,8,9]
-    return generate_fchl_acsf(chgs,crds,elements=atomtypes,gradients=False,pad=size)
+    atomtypes = [1, 6, 7, 8, 9]
+    return generate_fchl_acsf(chgs, crds, elements=atomtypes, gradients=False, pad=size)
+
 
 class sample_local_space_3d:
     def __init__(
@@ -74,7 +83,7 @@ class sample_local_space_3d:
         epsilon=1.0,
         sigma=1.0,
         gamma=1,
-        repfct = gen_cm
+        repfct=gen_cm,
     ):
 
         self.repfct = repfct
@@ -84,21 +93,22 @@ class sample_local_space_3d:
         self.X_init = X_init
         self.Q_init = Q_init
         self.verbose = verbose
-        self.morpheus_output = { "morpheus": morpheus_coord_info_from_tp }
-        self.potential = self.flat_parabola_potential  
+        self.morpheus_output = {"morpheus": morpheus_coord_info_from_tp}
+        self.potential = self.flat_parabola_potential
 
+        if (
+            self.repfct.__name__ == "gen_cm"
+            or self.repfct.__name__ == "gen_bob"
+            or self.repfct.__name__ == "gen_soap"
+        ):
+            self.distfct = self.euclidean_distance
 
-        if self.repfct.__name__ == "gen_cm" or self.repfct.__name__ == "gen_bob" or self.repfct.__name__ == "gen_soap":
-            self.distfct  = self.euclidean_distance
-            
-        
         elif self.repfct.__name__ == "gen_fchl":
             self.distfct = self.fchl_distance
 
-
     def euclidean_distance(self, coords, charges):
         """
-        Compute the euclidean distance between the test 
+        Compute the euclidean distance between the test
         point and the initial point.
         """
         X_test = self.repfct(coords, charges)
@@ -109,27 +119,28 @@ class sample_local_space_3d:
         Compute the FCHL distance between the test
         point and the initial point.
         """
-        
-        X_test = self.repfct(coords, charges)
-        k = (get_local_kernel(np.array([X_test]), np.array([self.X_init]), [charges], [self.Q_init],sigma)[0][0])
-        return 500 - k   
 
+        X_test = self.repfct(coords, charges)
+        k = get_local_kernel(
+            np.array([X_test]), np.array([self.X_init]), [charges], [self.Q_init], sigma
+        )[0][0]
+        return 500 - k
 
     def flat_parabola_potential(self, d):
-        
+
         """
-        Flat parabola potential. Allows sampling within a distance basin 
+        Flat parabola potential. Allows sampling within a distance basin
         interval of I in [gamma, sigma]. epsilon determines depth of minima
         The values as well as slope must be adjusted depending on the representation.
         The potential is given by:
         """
 
         if d < self.gamma:
-            return 0.05*(d - self.gamma) ** 2 - self.epsilon
+            return 0.05 * (d - self.gamma) ** 2 - self.epsilon
         if self.gamma <= d <= self.sigma:
             return -self.epsilon
         if d > self.sigma:
-            return 0.05*(d - self.sigma) ** 2 - self.epsilon
+            return 0.05 * (d - self.sigma) ** 2 - self.epsilon
 
     def __call__(self, trajectory_point_in):
         """
@@ -137,18 +148,18 @@ class sample_local_space_3d:
         """
 
         try:
-            output = trajectory_point_in.calc_or_lookup(
-                self.morpheus_output
-            )["morpheus"]
+            output = trajectory_point_in.calc_or_lookup(self.morpheus_output)[
+                "morpheus"
+            ]
         except:
             print("Error in 3d conformer sampling")
             return None
 
-        coords          = output["coordinates"]
-        charges         = output["nuclear_charges"]
-        SMILES          = output["canon_rdkit_SMILES"]
-        
-        try: 
+        coords = output["coordinates"]
+        charges = output["nuclear_charges"]
+        SMILES = output["canon_rdkit_SMILES"]
+
+        try:
             distance = self.distfct(coords, charges)
             V = self.potential(distance)
             return V
@@ -160,6 +171,7 @@ class sample_local_space_3d:
             else:
                 print("sth else happened")
             return None
+
 
 class sample_local_space:
 
@@ -181,7 +193,7 @@ class sample_local_space:
         epsilon=1.0,
         sigma=1.0,
         gamma=1,
-        nbits = 4096
+        nbits=4096,
     ):
 
         self.fp_type = None or fp_type
@@ -212,7 +224,7 @@ class sample_local_space:
             self.potential = self.flat_parabola_potential
 
     def get_largest_ring_size(self, SMILES):
-        """ 
+        """
         Returns the size of the largest ring in the molecule.
         If ring too large (>7) reject that move and return large energy
         """
@@ -260,19 +272,17 @@ class sample_local_space:
 
     def flat_parabola_potential(self, d):
         """
-        Flat parabola potential. Allows sampling within a distance basin 
+        Flat parabola potential. Allows sampling within a distance basin
         interval of I in [gamma, sigma]. epsilon determines depth of minima
         and is typically set to epsilon = 5. The potential is given by:
         """
 
-
         if d < self.gamma:
-            return 0.05*(d - self.gamma) ** 2 - self.epsilon
+            return 0.05 * (d - self.gamma) ** 2 - self.epsilon
         if self.gamma <= d <= self.sigma:
             return -self.epsilon
         if d > self.sigma:
-            return 0.05*(d - self.sigma) ** 2 - self.epsilon
-
+            return 0.05 * (d - self.sigma) ** 2 - self.epsilon
 
     def buckingham_potential(self, d):
         """
@@ -300,7 +310,9 @@ class sample_local_space:
             print("Error in canonical SMILES, therefore skipping")
             return None
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
+        X_test = rdkit_descriptors.extended_get_single_FP(
+            canon_SMILES, self.fp_type, nBits=self.nbits
+        )
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
@@ -316,7 +328,9 @@ class sample_local_space:
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
+        X_test = rdkit_descriptors.extended_get_single_FP(
+            canon_SMILES, self.fp_type, nBits=self.nbits
+        )
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
@@ -330,19 +344,20 @@ class sample_local_space:
         values = []
         for trajectory_point in trajectory_points:
             values.append(self.evaluate_point(trajectory_point))
-        
+
         return np.array(values)
 
+
 class local_lipinski:
-        #if self.check_ring:
-        #    try:
-        #        ring_error = self.get_largest_ring_size(canon_SMILES)
-        #    except:
-        #        ring_error = 0
-        #
-        #    V += ring_error
-        #if self.verbose:
-        #print("SMILE:", canon_SMILES, d, V)
+    # if self.check_ring:
+    #    try:
+    #        ring_error = self.get_largest_ring_size(canon_SMILES)
+    #    except:
+    #        ring_error = 0
+    #
+    #    V += ring_error
+    # if self.verbose:
+    # print("SMILE:", canon_SMILES, d, V)
     def __init__(
         self,
         X_init,
@@ -365,24 +380,23 @@ class local_lipinski:
 
         self.potential = self.flat_parabola_potential
 
-
     def flat_parabola_potential(self, d):
         """
         Flat parabola potential. The potential is given by:
         """
 
         if d < self.gamma:
-            return 0.05*(d - self.gamma) ** 2 - self.epsilon
+            return 0.05 * (d - self.gamma) ** 2 - self.epsilon
         if self.gamma <= d <= self.sigma:
             return -self.epsilon
         if d > self.sigma:
-            return 0.05*(d - self.sigma) ** 2 - self.epsilon
+            return 0.05 * (d - self.sigma) ** 2 - self.epsilon
 
     def log_partition_coefficient(smiles):
-        '''
-        Returns the octanol-water partition coefficient given a molecule SMILES 
+        """
+        Returns the octanol-water partition coefficient given a molecule SMILES
         string
-        '''
+        """
         try:
             mol = Chem.MolFromSmiles(smiles)
         except:
@@ -392,33 +406,37 @@ class local_lipinski:
         return Crippen.MolLogP(mol)
 
     def lipinski_trial(self, smiles):
-        
-        '''
+
+        """
         Lipinski's rules are:
         Hydrogen bond donors <= 5
         Hydrogen bond acceptors <= 5
         Molecular weight < 500 daltons
         logP < 5
-        '''
+        """
 
-        
         mol = Chem.MolFromSmiles(smiles)
         num_hdonors = Lipinski.NumHDonors(mol)
         num_hacceptors = Lipinski.NumHAcceptors(mol)
         mol_weight = Descriptors.MolWt(mol)
         mol_logp = Crippen.MolLogP(mol)
-        mol_rot  = Lipinski.NumRotatableBonds(mol)
+        mol_rot = Lipinski.NumRotatableBonds(mol)
         mol_ring = Lipinski.RingCount(mol)
 
-        print(num_hdonors,num_hacceptors, mol_weight,mol_logp )
-        if num_hdonors <=5 and num_hacceptors <=5 and mol_weight < 500 and mol_logp <5 and mol_rot <=5 and mol_ring > 0:
+        print(num_hdonors, num_hacceptors, mol_weight, mol_logp)
+        if (
+            num_hdonors <= 5
+            and num_hacceptors <= 5
+            and mol_weight < 500
+            and mol_logp < 5
+            and mol_rot <= 5
+            and mol_ring > 0
+        ):
             return True
         else:
             return False
 
-
     def __call__(self, trajectory_point_in):
-
 
         try:
             _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
@@ -434,12 +452,10 @@ class local_lipinski:
             print("skipping because of Lipinski")
             return None
 
-
         X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
-
 
         if self.verbose:
             print("SMILE:", canon_SMILES, d, V)
@@ -448,8 +464,6 @@ class local_lipinski:
 
 
 class find_match:
-
-
     def __init__(self, X_target, verbose=False):
 
         self.X_target = X_target
