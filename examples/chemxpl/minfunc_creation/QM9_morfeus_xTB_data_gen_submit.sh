@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NPROCS=32
+NPROCS=40
 
 for solvent in water ether acetonitrile dmso thf
 do

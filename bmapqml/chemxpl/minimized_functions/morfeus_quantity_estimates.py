@@ -84,12 +84,13 @@ def morfeus_FF_xTB_code_quants(
         coord_info = morpheus_coord_info_from_tp(
             tp, num_attempts=num_conformers, ff_type=ff_type
         )
-        if coord_info is None:
+        coordinates = coord_info["coordinates"]
+        if coordinates is None:
             for quant in quantities:
                 quant_arrs[quant] = None
             break
         cur_results = xTB_results(
-            coord_info["coordinates"],
+            coordinates,
             nuclear_charges=coord_info["nuclear_charges"],
             quantities=quantities,
             **xTB_results_kwargs
