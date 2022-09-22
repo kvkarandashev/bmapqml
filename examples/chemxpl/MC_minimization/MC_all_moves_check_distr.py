@@ -26,7 +26,7 @@ max_nhatoms = 4
 
 betas = [None, None, 2.0 * ln2, ln2, ln2 / 2.0]
 
-num_MC_steps = 40000  # 20000
+num_MC_steps = 20000  # 20000
 
 bias_coeff = None
 bound_enforcing_coeff = None
