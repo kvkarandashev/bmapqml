@@ -7,7 +7,7 @@ from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import morpheus_coord_info_from_tp
-import pdb
+
 try:
     from qml.representations import *
     from qml.kernels import get_local_kernel
@@ -155,11 +155,13 @@ class sample_local_space_3d:
 
         except:
             if coords is None:
-                print(f"{SMILES} {distance} {V}")
+                print("No coordinates found")
+                print(f"{SMILES}")
                 print("Error in 3d conformer sampling")
+                return None
             else:
                 print("sth else happened")
-            return None
+                return None
 
 class sample_local_space:
 
@@ -293,6 +295,8 @@ class sample_local_space:
     def __call__(self, trajectory_point_in):
 
         try:
+            #also returns the rdkit object
+            ##
             _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
                 self.canonical_rdkit_output
             )["canonical_rdkit"]
