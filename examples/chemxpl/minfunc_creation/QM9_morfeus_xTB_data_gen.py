@@ -29,7 +29,7 @@ def xyz_data_extract(xyz_name):
         num_conformers=num_conformers,
         num_attempts=num_attempts,
         ff_type=forcefield,
-        quantities=["total_energy", "gap", "solvation_energy"],
+        quantities=["energy", "HOMO_LUMO_gap", "solvation_energy", "energy_no_solvent"],
         solvent=solvent,
     )
     return {**calc_data, **output, "chemgraph": str(tp)}

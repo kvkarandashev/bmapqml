@@ -25,6 +25,7 @@ conversion_coefficient = {
     "au_kcal": 627.50960803,
     "au_eV": 27.211399,
     "Angstrom_Bohr": 1.8897259886,
+    "au_Debye": 2.54175,
 }
 
 NUCLEAR_CHARGE = {

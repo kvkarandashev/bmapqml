@@ -28,7 +28,7 @@ num_attempts = 4
 
 num_conformers = 50
 
-min_func_quantities = ["solvation_energy", "gap"]
+min_func_quantities = ["solvation_energy", "HOMO_LUMO_gap"]
 
 min_func_coefficients = [1.0, -1.0]
 
@@ -41,30 +41,25 @@ for quant in min_func_quantities:
     all_vals[quant] = []
 
 print("PROPERTY CALCULATIONS")
-for geom_opt in ["crude", None]:
-    print("GEOMETRY OPTIMIZATION:", geom_opt)
-    for solvent in ["water", "ether", "dmso", None]:
-        print("SOLVENT", solvent, ":")
-        cur_quantities = ["total_energy", "gap"]
-        if solvent is not None:
-            cur_quantities.append("solvation_energy")
-        for SMILES in SMILES_list:
-            tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES))
-            res_dict = morfeus_FF_xTB_code_quants(
-                tp,
-                num_conformers=num_conformers,
-                num_attempts=num_attempts,
-                quantities=cur_quantities,
-                solvent=solvent,
-                geom_opt=geom_opt,
-            )
-            print("SMILES", SMILES, ":")
-            for quant in cur_quantities:
-                print(quant, ":", res_dict["mean"][quant], res_dict["std"][quant])
-                if quant in min_func_quantities:
-                    all_vals[quant].append(res_dict["mean"][quant])
-                    if quant == "solvation_energy":
-                        all_vals[quant][-1] /= tp.egc.num_heavy_atoms()
+for solvent in ["water", "ether", "dmso", None]:
+    print("SOLVENT", solvent, ":")
+    cur_quantities = ["energy", "HOMO_LUMO_gap", "solvation_energy", "dipole"]
+    for SMILES in SMILES_list:
+        tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES))
+        res_dict = morfeus_FF_xTB_code_quants(
+            tp,
+            num_conformers=num_conformers,
+            num_attempts=num_attempts,
+            quantities=cur_quantities,
+            solvent=solvent,
+        )
+        print("SMILES", SMILES, ":")
+        for quant in cur_quantities:
+            print(quant, ":", res_dict["mean"][quant], res_dict["std"][quant])
+            if quant in min_func_quantities:
+                all_vals[quant].append(res_dict["mean"][quant])
+                if quant == "solvation_energy":
+                    all_vals[quant][-1] /= tp.egc.num_heavy_atoms()
 
 for quant_id, quant in enumerate(min_func_quantities):
     min_func_coefficients[quant_id] /= np.std(all_vals[quant])
