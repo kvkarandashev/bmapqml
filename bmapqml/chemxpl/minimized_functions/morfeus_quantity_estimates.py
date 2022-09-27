@@ -9,7 +9,9 @@ from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 
 
-def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kwargs):
+def morpheus_coord_info_from_tp(
+    tp, num_attempts=1, ff_type="MMFF94", return_rdkit_obj=False, **dummy_kwargs
+):
     """
     Coordinates corresponding to a TrajectoryPoint object
     tp : TrajectoryPoint object
@@ -20,6 +22,8 @@ def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kw
     cg = tp.egc.chemgraph
     canon_rdkit_mol, _, _, canon_rdkit_SMILES = chemgraph_to_canonical_rdkit(cg)
     output["canon_rdkit_SMILES"] = canon_rdkit_SMILES
+    if return_rdkit_obj:
+        output["canon_rdkit_mol"] = canon_rdkit_mol
     # TODO: better place to check OMP_NUM_THREADS value?
     try:
         conformers = conformers_from_rdkit(
@@ -30,6 +34,7 @@ def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kw
             print("#PROBLEMATIC_MORFEUS:", tp)
         return output
 
+    min_en_id = np.argmin(conformers[2])
     nuclear_charges = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
     coordinates = conformers[1][np.argmin(conformers[2])]
 
@@ -42,6 +47,7 @@ def morpheus_coord_info_from_tp(tp, num_attempts=1, ff_type="MMFF94", **dummy_kw
 
     output["coordinates"] = coordinates
     output["nuclear_charges"] = nuclear_charges
+    output["rdkit_energy"] = conformers[2][min_en_id]
 
     return output
 

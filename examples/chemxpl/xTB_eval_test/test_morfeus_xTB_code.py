@@ -5,6 +5,8 @@ from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     LinComb_Morfeus_xTB_code,
 )
 from bmapqml.chemxpl.minimized_functions.toy_problems import NumHAtoms
+from bmapqml.chemxpl.minimized_functions.quantity_estimates import ConstrainedQuant
+from bmapqml.chemxpl.minimized_functions.mol_constraints import NoProtonation
 import numpy as np
 
 SMILES_list = [
@@ -68,7 +70,7 @@ print("MINIMIZED FUNCTION CALCULATIONS")
 
 for solvent in ["water", "ether", "dmso"]:
     print("SOLVENT:", solvent)
-    min_func = LinComb_Morfeus_xTB_code(
+    min_func_true = LinComb_Morfeus_xTB_code(
         quantities=min_func_quantities,
         solvent=solvent,
         coefficients=min_func_coefficients,
@@ -76,6 +78,10 @@ for solvent in ["water", "ether", "dmso"]:
         num_conformers=num_conformers,
         add_mult_funcs=min_func_add_mults,
         add_mult_func_powers=min_func_add_mult_powers,
+    )
+
+    min_func = ConstrainedQuant(
+        min_func_true, "morfeus_lin_comb", [NoProtonation([8, 9])]
     )
 
     for SMILES in SMILES_list:

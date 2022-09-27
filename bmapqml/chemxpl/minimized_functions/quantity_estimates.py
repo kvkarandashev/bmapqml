@@ -32,6 +32,25 @@ class LinearCombination:
         return output
 
 
+class ConstrainedQuant:
+    def __init__(self, function, function_name, constraints=[]):
+        """
+        Combines a function with some constraints (see mol_constraints.py).
+        """
+        self.call_counter = 0
+        self.function_name = function_name
+        self.function_dict = {self.function_name: function}
+        self.constraints = constraints
+
+    def __call__(self, trajectory_point_in):
+        self.call_counter += 1
+        for constraint in self.constraints:
+            if not constraint(trajectory_point_in):
+                return None
+        func_val_dict = trajectory_point_in.calc_or_lookup(self.function_dict)
+        return func_val_dict[self.function_name]
+
+
 class QM9_properties:
 
     """
