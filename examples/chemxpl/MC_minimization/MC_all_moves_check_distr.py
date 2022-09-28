@@ -1,6 +1,4 @@
-# The script uses a toy "Diatomic_barrier" potential (see class description for the idea behind it)
-# to demonstrate how RandomWalk class can be used to Monte Carlo optimization.
-
+# The script verifies that Monte Carlo trajectories generated with RandomWalk objects follow the correct distribution when no bias is applied.
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.random_walk import RandomWalk
 import random
@@ -12,24 +10,30 @@ from copy import deepcopy
 random.seed(1)
 np.random.seed(1)
 
+# Constraints on chemical space - molecules with only C and P heavy atoms, maximum 4 heavy atoms large,
+# bonds between two phosphorus atoms are forbidden.
 possible_elements = ["C", "P"]
 
 forbidden_bonds = [(7, 7)]
 
-ln2 = np.log(2.0)
-
-# For each beta defined here RandomWalk would create a replica that
-# These replicas interact with each other via parallel tempering and ``genetic tempering'' moves.
-# None corresponds to a replica that undergoes greedy stochastic optimization.
-
 max_nhatoms = 4
+
+# Define the minimized function, which is in this case defined to return 0, 1, or 2 if the molecule contains 1 or 2, 3, or 4 heavy atoms.
+intervals = [[1, 2], 3, 4]
+
+min_func = NumHAtoms(intervals=intervals)
+
+# The simulation is run for several replicas at once, each having a different beta value.
+# If the beta value is set to "None", the corresponding replica undergoes greedy stochastic minimization of min_func;
+# if global minimum of min_func is not unique all global minima should be represented with equal probability.
+# For each real beta value the MC trajectory generates ensemble corresponding to probability density exp(-beta*min_func);
+# these unsembles are used to decrease the probability that greedy optimization returns a local minimum rather than a global one.
+ln2 = np.log(2.0)
 
 betas = [None, 2.0 * ln2, ln2]
 
 num_MC_steps = 10000  # 100000
 
-bias_coeff = None
-bound_enforcing_coeff = None
 
 randomized_change_params = {
     "max_fragment_num": 1,
@@ -39,43 +43,42 @@ randomized_change_params = {
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
 }
+
+# "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.
 global_change_params = {
     "num_parallel_tempering_tries": 5,
     "num_genetic_tries": 5,
     "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
 }
 
+# Initial point for all replicas is CC#CC.
 init_cg = str2ChemGraph("6#1@1:6@2:6@3:6#1")
 
-negcs = len(betas)
+init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(len(betas))]
 
-init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(negcs)]
-
-histogram = [[] for _ in range(negcs)]
-histogram_labels = [[] for _ in range(negcs)]
-
-intervals = [[1, 2], 3, 4]
-
-min_func = NumHAtoms(intervals=intervals)
+# Create objects that runs the simulation.
 
 rw = RandomWalk(
     bias_coeff=bias_coeff,
+    vbeta_bias_coeff=vbeta_bias_coeff,
     randomized_change_params=randomized_change_params,
-    bound_enforcing_coeff=bound_enforcing_coeff,
     betas=betas,
     min_function=min_func,
     init_egcs=init_egcs,
     keep_histogram=True,
     keep_full_trajectory=True,
-    restart_file="larger_mols_restart.pkl",
+    restart_file="restart.pkl",
     linear_storage=True,
+    make_restart_frequency=1000,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
     print(MC_step, rw.cur_tps)
 
+# How to make a restart file in the end. (Unnecessary with make_restart_frequency set.)
 rw.make_restart()
 
+# The following is a short analysis for easy verification that the distribution is the correct one.
 num_intervals = len(intervals)
 
 mol_nums = np.zeros((num_intervals,), dtype=int)
@@ -101,11 +104,12 @@ for beta_id, beta in enumerate(betas):
         distr2_vals[val_id] += cur_num_visits**2
 
     averages = []
-    for visited_mol_num, mol_num, distr, distr2 in zip(
-        visited_mol_nums, mol_nums, distr_vals, distr2_vals
+    for val_id, (visited_mol_num, mol_num, distr, distr2) in enumerate(
+        zip(visited_mol_nums, mol_nums, distr_vals, distr2_vals)
     ):
         av = float(distr) / mol_num
         av2 = float(distr2) / mol_num
+        print("Function value:", val_id)
         print("Number of visited molecules:", visited_mol_num)
         print("Average:", av)
         print("Standard deviation:", np.sqrt((av2 - av**2) / mol_num))
