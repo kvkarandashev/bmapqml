@@ -1,9 +1,12 @@
 from morfeus.conformer import conformers_from_rdkit
 from ..utils import (
     chemgraph_to_canonical_rdkit,
+    FFInconsistent,
     InvalidAdjMat,
     chemgraph_from_ncharges_coords,
 )
+from ...interfaces.xtb_interface import xTB_results
+
 from ...utils import NUCLEAR_CHARGE, checked_environ_val
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
@@ -27,8 +30,11 @@ def morfeus_coord_info_from_tp(
     # TODO: better place to check OMP_NUM_THREADS value?
     try:
         conformers = conformers_from_rdkit(
-            canon_rdkit_mol, n_confs=num_attempts, optimize=ff_type
-        )  # n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1)
+            canon_rdkit_mol,
+            n_confs=num_attempts,
+            optimize=ff_type,
+            n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1),
+        )
     except Exception as ex:
         if not isinstance(ex, ValueError):
             print("#PROBLEMATIC_MORFEUS:", tp)
@@ -66,94 +72,13 @@ def morfeus_FF_xTB_dipole(**kwargs):
     return FF_xTB_dipole(**xTB_quant_morfeus_kwargs, **kwargs)
 
 
-# from ...interfaces.xtb_interface import xTB_results
-from xtb.libxtb import VERBOSITY_MUTED, VERBOSITY_MINIMAL, VERBOSITY_FULL
-from xtb.interface import Calculator
-from xtb.utils import get_method, get_solvent
-from ...utils import any_element_in_list
-from ...data import conversion_coefficient
-
-
-verbosity_dict = {
-    "MUTED": VERBOSITY_MUTED,
-    "MINIMAL": VERBOSITY_MINIMAL,
-    "FULL": VERBOSITY_FULL,
-}
-
-
-def xTB_singlepoint_res(
-    coordinates,
-    nuclear_charges,
-    accuracy=None,
-    verbosity="MUTED",
-    parametrization="gfn2-xtb",
-    solvent=None,
-    max_iterations=None,
-    electronic_temperature=None,
-):
-    calc_obj = Calculator(
-        get_method(parametrization),
-        nuclear_charges,
-        coordinates * conversion_coefficient["Angstrom_Bohr"],
-    )
-    if accuracy is not None:
-        calc_obj.set_accuracy(accuracy)
-    if max_iterations is not None:
-        calc_obj.set_max_iterations(max_iterations)
-    if electronic_temperature is not None:
-        calc_obj.set_electronic_temperature(electronic_temperature)
-    if solvent is not None:
-        calc_obj.set_solvent(get_solvent(solvent))
-    calc_obj.set_verbosity(verbosity_dict[verbosity])
-
-    return calc_obj.singlepoint()
-
-
-def xTB_quants(
-    coordinates,
-    nuclear_charges,
-    quantities=[],
-    solvent=None,
-    **other_xTB_singlepoint_res
-):
-    res = xTB_singlepoint_res(
-        coordinates, nuclear_charges, **other_xTB_singlepoint_res, solvent=solvent
-    )
-
-    output = {}
-    output["energy"] = res.get_energy()
-
-    if any_element_in_list(quantities, "HOMO_energy", "LUMO_energy", "HOMO_LUMO_gap"):
-        orbital_energies = res.get_orbital_eigenvalues()
-        orbital_occupations = res.get_orbital_occupations()
-        HOMO_energy = max(orbital_energies[np.where(orbital_occupations > 0.1)])
-        LUMO_energy = min(orbital_energies[np.where(orbital_occupations < 0.1)])
-        output["HOMO_energy"] = HOMO_energy
-        output["LUMO_energy"] = LUMO_energy
-        output["HOMO_LUMO_gap"] = LUMO_energy - HOMO_energy
-
-    if "dipole" in quantities:
-        dipole_vec = res.get_dipole()
-        output["dipole"] = np.sqrt(np.sum(dipole_vec**2))
-
-    if any_element_in_list(quantities, "solvation_energy", "energy_no_solvent"):
-        res_nosolvent = xTB_singlepoint_res(
-            coordinates, nuclear_charges, **other_xTB_singlepoint_res, solvent=None
-        )
-        en_nosolvent = res_nosolvent.get_energy()
-        output["energy_no_solvent"] = en_nosolvent
-        output["solvation_energy"] = output["energy"] - en_nosolvent
-
-    return output
-
-
 def morfeus_FF_xTB_code_quants(
     tp,
     num_conformers=1,
     num_attempts=1,
     ff_type="MMFF94",
     quantities=[],
-    **xTB_quants_args
+    **xTB_results_kwargs
 ):
     """
     Use morfeus-ml FF coordinates with Grimme lab's xTB code to calculate some quantities.
@@ -166,19 +91,18 @@ def morfeus_FF_xTB_code_quants(
         coord_info = morfeus_coord_info_from_tp(
             tp, num_attempts=num_conformers, ff_type=ff_type
         )
-        coordinates = coord_info["coordinates"]
-        if coordinates is None:
+        if coord_info is None:
             for quant in quantities:
                 quant_arrs[quant] = None
             break
-        res = xTB_quants(
-            coordinates,
-            coord_info["nuclear_charges"],
+        cur_results = xTB_results(
+            coord_info["coordinates"],
+            nuclear_charges=coord_info["nuclear_charges"],
             quantities=quantities,
-            **xTB_quants_args
+            **xTB_results_kwargs
         )
-        for quant in quantities:
-            quant_arrs[quant][i] = res[quant]
+        for quant, val in cur_results.items():
+            quant_arrs[quant][i] = val
 
     output = {"arrs": quant_arrs}
     output["mean"] = {}

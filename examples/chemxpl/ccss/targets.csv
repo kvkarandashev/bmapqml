@@ -1,7 +1,10 @@
 name,smiles
+hexane,CCCCCC
 ibuprofen,CC(C)CC1=CC=C(C=C1)C(C)C(=O)O
 theobromine,CN1C=NC2=C1C(=O)NC(=O)N2C
-benzene,C1=CC=CC=C1
 oxazine,C1=CNOC=C1
-hexane,CCCCCC
 butane,CCCC
+naphthalene,C1=CC=C2C=CC=CC2=C1
+anthracene,C1=CC=C2C=C3C=CC=CC3=CC2=C1
+pyrene,C1=CC2=C3C(=C1)C=CC1=CC=CC(=C13)C=C2
+benzene,C1=CC=CC=C1

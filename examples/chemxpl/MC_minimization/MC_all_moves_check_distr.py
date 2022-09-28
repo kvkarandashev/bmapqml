@@ -14,7 +14,7 @@ np.random.seed(1)
 # bonds between two phosphorus atoms are forbidden.
 possible_elements = ["C", "P"]
 
-forbidden_bonds = [(15, 15)]
+forbidden_bonds = [(7, 7)]
 
 max_nhatoms = 4
 
@@ -30,15 +30,9 @@ min_func = NumHAtoms(intervals=intervals)
 # these unsembles are used to decrease the probability that greedy optimization returns a local minimum rather than a global one.
 ln2 = np.log(2.0)
 
-betas = [None, None, 2.0 * ln2, ln2, ln2 / 2.0]
+betas = [None, 2.0 * ln2, ln2]
 
-# We are not using bias in this script, but if one want the biasing coefficients mentioned in my notes can be defined as follows.
-bias_coeff = None
-
-vbeta_bias_coeff = None
-
-# Simulation parameters.
-num_MC_steps = 20000  # 20000
+num_MC_steps = 10000  # 100000
 
 
 randomized_change_params = {

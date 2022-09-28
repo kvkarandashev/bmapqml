@@ -29,8 +29,6 @@ from joblib import Parallel, delayed
 from .data import NUCLEAR_CHARGE
 import numpy as np
 
-# Some auxiliary functions.
-
 # For resizing numpy arrays:
 def np_resize(np_arr, new_size):
     new_arr = np_arr
@@ -46,13 +44,6 @@ def np_resize(np_arr, new_size):
         if cur_dim > new_dim:
             new_arr = np.delete(new_arr, slice(new_dim, cur_dim), dim_id)
     return new_arr
-
-
-def any_element_in_list(list_input, *els):
-    for el in els:
-        if el in list_input:
-            return True
-    return False
 
 
 def canonical_atomtype(atomtype):

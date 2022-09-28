@@ -29,7 +29,7 @@ num_attempts = 4
 
 num_conformers = 50
 
-min_func_quantities = ["solvation_energy", "HOMO_LUMO_gap"]
+min_func_quantities = ["solvation_energy", "gap"]
 
 min_func_coefficients = [1.0, -1.0]
 
