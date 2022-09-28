@@ -13,7 +13,9 @@ function pip_package_check () {
     if [[ "\$(pip show \$package 2>&1)" == WARNING:* ]]
     then
         echo "Failed to find '\$package' package used to format committed \$language code."
-        echo "Can be installed with 'pip install \$package'."
+        echo "Taking the liberty to attempt installing \$package'."
+        pip install \$package
+        echo "Please re-attempt commit."
         exit 1
     fi
 }

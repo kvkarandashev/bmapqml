@@ -9,7 +9,7 @@ from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 
 
-def morpheus_coord_info_from_tp(
+def morfeus_coord_info_from_tp(
     tp, num_attempts=1, ff_type="MMFF94", return_rdkit_obj=False, **dummy_kwargs
 ):
     """
@@ -52,18 +52,18 @@ def morpheus_coord_info_from_tp(
     return output
 
 
-xTB_quant_morpheus_kwargs = {
+xTB_quant_morfeus_kwargs = {
     "coord_calculation_type": "morfeus",
-    "coord_info_from_tp_func": morpheus_coord_info_from_tp,
+    "coord_info_from_tp_func": morfeus_coord_info_from_tp,
 }
 
 
 def morfeus_FF_xTB_HOMO_LUMO_gap(**kwargs):
-    return FF_xTB_HOMO_LUMO_gap(**xTB_quant_morpheus_kwargs, **kwargs)
+    return FF_xTB_HOMO_LUMO_gap(**xTB_quant_morfeus_kwargs, **kwargs)
 
 
 def morfeus_FF_xTB_dipole(**kwargs):
-    return FF_xTB_dipole(**xTB_quant_morpheus_kwargs, **kwargs)
+    return FF_xTB_dipole(**xTB_quant_morfeus_kwargs, **kwargs)
 
 
 # from ...interfaces.xtb_interface import xTB_results
@@ -163,7 +163,7 @@ def morfeus_FF_xTB_code_quants(
         quant_arrs[quant] = np.empty((num_attempts,))
 
     for i in range(num_attempts):
-        coord_info = morpheus_coord_info_from_tp(
+        coord_info = morfeus_coord_info_from_tp(
             tp, num_attempts=num_conformers, ff_type=ff_type
         )
         coordinates = coord_info["coordinates"]

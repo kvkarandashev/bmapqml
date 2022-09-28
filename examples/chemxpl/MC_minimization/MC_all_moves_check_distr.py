@@ -100,8 +100,11 @@ for beta_id, beta in enumerate(betas):
     distr2_vals = np.zeros((num_intervals,), dtype=int)
     visited_mol_nums = np.zeros((num_intervals,), dtype=int)
 
+    # Cycle over all graphs visited during the simulation.
     for cur_tp in rw.histogram:
-        cur_num_visits = cur_tp.visit_num(beta_id)
+        cur_num_visits = cur_tp.visit_num(
+            beta_id
+        )  # visit_num(beta_id) gives number of times graph was visited by replica with id beta_id.
         val_id = min_func.int_output(cur_tp)
         if cur_num_visits != 0:
             visited_mol_nums[val_id] += 1

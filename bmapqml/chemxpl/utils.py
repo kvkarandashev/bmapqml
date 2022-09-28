@@ -439,7 +439,7 @@ def RDKit_FF_optimize_coords(
             converged = coord_optimizer(mol)
         except ValueError:
             raise FFInconsistent
-        if converged == 0:
+        if converged != 1:
             return
     raise FFInconsistent
 
