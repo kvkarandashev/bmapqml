@@ -14,13 +14,13 @@ try:
     from qml.representations import *
     from qml.kernels import get_local_kernel
 except:
-    print("qml not installed")
+    print("local_space_sampling: qml not installed")
 
 try:
     from ase import Atoms
     from dscribe.descriptors import SOAP
 except:
-    print("ase or dscribe not installed")
+    print("local_space_sampling: ase or dscribe not installed")
 
 
 def gen_soap(crds, chgs):
@@ -188,7 +188,6 @@ class sample_local_space:
         self,
         X_init,
         verbose=False,
-        check_ring=False,
         pot_type="harmonic",
         fp_type=None,
         epsilon=1.0,
@@ -199,7 +198,6 @@ class sample_local_space:
 
         self.fp_type = None or fp_type
         self.epsilon = epsilon
-        self.check_ring = None or check_ring
         self.sigma = sigma
         self.gamma = gamma
         self.X_init = X_init
@@ -304,9 +302,7 @@ class sample_local_space:
     def __call__(self, trajectory_point_in):
 
         try:
-            # also returns the rdkit object
-            ##
-            _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
                 self.canonical_rdkit_output
             )["canonical_rdkit"]
         except:
@@ -314,12 +310,14 @@ class sample_local_space:
             return None
 
         X_test = rdkit_descriptors.extended_get_single_FP(
-            canon_SMILES, self.fp_type, nBits=self.nbits
+            rdkit_mol, self.fp_type, nBits=self.nbits
         )
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
+        # if self.verbose:
+        #    print(f"{canon_SMILES} {d} {V}")
         return V
 
     def evaluate_point(self, trajectory_point_in):
@@ -327,12 +325,12 @@ class sample_local_space:
         Evaluate the function on a list of trajectory points
         """
 
-        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
         X_test = rdkit_descriptors.extended_get_single_FP(
-            canon_SMILES, self.fp_type, nBits=self.nbits
+            rdkit_mol, self.fp_type, nBits=self.nbits
         )
         d = norm(X_test - self.X_init)
         V = self.potential(d)
@@ -442,7 +440,7 @@ class local_lipinski:
     def __call__(self, trajectory_point_in):
 
         try:
-            _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
                 self.canonical_rdkit_output
             )["canonical_rdkit"]
         except:
@@ -455,7 +453,7 @@ class local_lipinski:
             print("skipping because of Lipinski")
             return None
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type)
+        X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type)
 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
@@ -477,11 +475,11 @@ class find_match:
 
     def __call__(self, trajectory_point_in):
 
-        _, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
-        X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, "both")
+        X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "both")
         d = norm(X_test - self.X_target)
 
         if self.verbose:
