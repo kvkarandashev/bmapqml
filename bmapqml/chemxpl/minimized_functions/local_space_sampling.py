@@ -486,3 +486,5 @@ class find_match:
             print("SMILE:", canon_SMILES, "Prediction: ", d)
 
             return np.exp(d)
+
+    print("fancy vs code")
