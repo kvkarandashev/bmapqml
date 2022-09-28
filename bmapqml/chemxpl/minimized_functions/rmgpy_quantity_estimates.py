@@ -1,7 +1,6 @@
 # from .morfeus_quantity_estimates import morfeus_coord_info_from_tp
 from ..utils import coord_info_from_tp
 
-# from rmgpy import settings
 from rmgpy.rmg.main import Species
 from rmgpy.data.solvation import SolvationDatabase
 from rmgpy import settings
