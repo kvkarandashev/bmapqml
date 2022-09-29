@@ -29,13 +29,7 @@ num_attempts = 4
 
 num_conformers = 50
 
-min_func_quantities = ["solvation_energy", "gap"]
-
-min_func_coefficients = [1.0, -1.0]
-
-min_func_add_mults = [NumHAtoms(), None]
-
-min_func_add_mult_powers = [-1, 1]
+min_func_quantities = ["solvation_energy", "HOMO_LUMO_gap"]
 
 all_vals = {"normalized_solvation_energy": []}
 for quant in min_func_quantities:
@@ -62,9 +56,6 @@ for solvent in ["water", "ether", "dmso", None]:
         all_vals["normalized_solvation_energy"].append(
             all_vals["solvation_energy"][-1] / tp.egc.num_heavy_atoms()
         )
-
-for quant_id, quant in enumerate(min_func_quantities):
-    min_func_coefficients[quant_id] /= np.std(all_vals[quant])
 
 print("MINIMIZED FUNCTION CALCULATIONS")
 
