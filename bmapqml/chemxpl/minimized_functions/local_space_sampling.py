@@ -146,10 +146,8 @@ class sample_local_space_3d:
         Compute the potential energy of a trajectory point.
         """
 
-        try:                  
-            output = trajectory_point_in.calc_or_lookup(self.morpheus_output)[
-                "morpheus"
-            ]
+        try:
+            output = trajectory_point_in.calc_or_lookup(self.morfeus_output)["morfeus"]
         except:
             print("Error in 3d conformer sampling")
             return None
@@ -301,15 +299,12 @@ class sample_local_space:
 
         return self.epsilon * np.exp(-self.sigma * d)
 
-
-    def double_well_potential(self,d):
+    def double_well_potential(self, d):
         """
-        Double well potential with barrier height epsilon 
+        Double well potential with barrier height epsilon
         """
         fc = 0.7
-        return self.epsilon*((fc*d-1)**4 - 2*(fc*d-1)**2 + 1)
-
-
+        return self.epsilon * ((fc * d - 1) ** 4 - 2 * (fc * d - 1) ** 2 + 1)
 
     def __call__(self, trajectory_point_in):
 
