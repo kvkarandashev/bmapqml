@@ -5,10 +5,10 @@ from ccs_rdf import loadXYZ
 from bmapqml.chemxpl.utils import xyz_list2mols_extgraph
 from qml.utils.alchemy import *
 molecule="benzene"
-chgs, crds, _ = loadXYZ("./xyz/benzene.xyz")
+chgs, crds, _ = loadXYZ("benzene.xyz")
 chgs = np.array([NUCLEAR_CHARGE[q] for q in chgs])
 
-output = xyz_list2mols_extgraph([f"./xyz/benzene.xyz"])
+output = xyz_list2mols_extgraph([f"benzene.xyz"])
 X_init = local_space_sampling.gen_soap(crds,chgs) # gen_fchl(crds, chgs) #gen_bob(crds, chgs)
 
 dl, dh = 450, 500
