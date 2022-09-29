@@ -7,7 +7,7 @@ from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
-    morfeus_coord_info_from_tp,
+    morpheus_coord_info_from_tp
 )
 
 try:
@@ -92,7 +92,7 @@ class sample_local_space_3d:
         self.X_init = X_init
         self.Q_init = Q_init
         self.verbose = verbose
-        self.morfeus_output = {"morfeus": morfeus_coord_info_from_tp}
+        self.morfeus_output = {"morfeus": morpheus_coord_info_from_tp}
         self.potential = self.flat_parabola_potential
 
         if (
@@ -147,9 +147,11 @@ class sample_local_space_3d:
         """
 
         try:                  
-            output = trajectory_point_in.calc_or_lookup(self.morpheus_output)[
-                "morpheus"
+            output = trajectory_point_in.calc_or_lookup(self.morfeus_output,
+            kwargs_dict={"num_attempts":100, "ff_type" : "MMFF94","return_rdkit_obj":False})[
+                "morfeus"
             ]
+            print(output)
         except:
             print("Error in 3d conformer sampling")
             return None
