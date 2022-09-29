@@ -92,7 +92,7 @@ class sample_local_space_3d:
         self.X_init = X_init
         self.Q_init = Q_init
         self.verbose = verbose
-        self.morfeus_output = {"morfeus": morpheus_coord_info_from_tp}
+        self.morfeus_output = {"morfeus": morfeus_coord_info_from_tp}
         self.potential = self.flat_parabola_potential
 
         if (
