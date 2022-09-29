@@ -146,8 +146,10 @@ class sample_local_space_3d:
         Compute the potential energy of a trajectory point.
         """
 
-        try:
-            output = trajectory_point_in.calc_or_lookup(self.morfeus_output)["morfeus"]
+        try:                  
+            output = trajectory_point_in.calc_or_lookup(self.morpheus_output)[
+                "morpheus"
+            ]
         except:
             print("Error in 3d conformer sampling")
             return None
@@ -219,6 +221,8 @@ class sample_local_space:
             self.potential = self.sharp_parabola_potential
         elif self.pot_type == "flat_parabola":
             self.potential = self.flat_parabola_potential
+        elif self.pot_type == "double_well":
+            self.potential = self.double_well_potential
 
     def get_largest_ring_size(self, SMILES):
         """
@@ -297,6 +301,16 @@ class sample_local_space:
 
         return self.epsilon * np.exp(-self.sigma * d)
 
+
+    def double_well_potential(self,d):
+        """
+        Double well potential with barrier height epsilon 
+        """
+        fc = 0.7
+        return self.epsilon*((fc*d-1)**4 - 2*(fc*d-1)**2 + 1)
+
+
+
     def __call__(self, trajectory_point_in):
 
         try:
@@ -314,8 +328,9 @@ class sample_local_space:
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        # if self.verbose:
-        #    print(f"{canon_SMILES} {d} {V}")
+        if self.verbose:
+            print(f"{canon_SMILES} {d} {V}")
+
         return V
 
     def evaluate_point(self, trajectory_point_in):
@@ -484,5 +499,3 @@ class find_match:
             print("SMILE:", canon_SMILES, "Prediction: ", d)
 
             return np.exp(d)
-
-    print("fancy vs code")
