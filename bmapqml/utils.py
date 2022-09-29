@@ -50,6 +50,13 @@ def canonical_atomtype(atomtype):
     return atomtype[0].upper() + atomtype[1:].lower()
 
 
+def any_element_in_list(list_in, *els):
+    for el in els:
+        if el in list_in:
+            return True
+    return False
+
+
 ELEMENTS = None
 
 

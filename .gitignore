@@ -93,6 +93,8 @@ ENV/
 *.chkfile
 *.pkl
 
+# Occasionally temporary *.xyz files are created.
+*.xyz
 
 # Other tmp files.
 *.tmp

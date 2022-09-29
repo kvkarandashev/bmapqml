@@ -10,6 +10,8 @@ chars = ["mean", "std"]
 
 arrs = {}
 
+xyzs = []
+
 for char in chars:
     arrs[char] = []
 
@@ -26,6 +28,8 @@ for quant in quantities:
             cur_val = entry_dict[char][quant]
             if cur_val is not None:
                 arrs[char].append(cur_val)
+                if (char == chars[0]) and (quant == quantities[0]):
+                    xyzs.append(entry_dict["xyz"])
     print()
     print("Quantity", quant)
 
@@ -42,4 +46,4 @@ for quant in quantities:
         print("STD", np.std(arr))
 
         for f, i in extrema[char].items():
-            print("FULL EXTREMA DATA " + f, arrs["mean"][i], arrs["std"][i])
+            print("FULL EXTREMA DATA " + f, arrs["mean"][i], arrs["std"][i], xyzs[i])

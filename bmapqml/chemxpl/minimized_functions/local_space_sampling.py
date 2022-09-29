@@ -7,7 +7,7 @@ from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
-    morpheus_coord_info_from_tp,
+    morfeus_coord_info_from_tp,
 )
 
 try:
@@ -92,7 +92,7 @@ class sample_local_space_3d:
         self.X_init = X_init
         self.Q_init = Q_init
         self.verbose = verbose
-        self.morpheus_output = {"morpheus": morpheus_coord_info_from_tp}
+        self.morfeus_output = {"morfeus": morfeus_coord_info_from_tp}
         self.potential = self.flat_parabola_potential
 
         if (
