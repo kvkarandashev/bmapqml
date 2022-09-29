@@ -7,7 +7,7 @@ from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
-    morpheus_coord_info_from_tp
+    morfeus_coord_info_from_tp,
 )
 
 try:
@@ -303,15 +303,12 @@ class sample_local_space:
 
         return self.epsilon * np.exp(-self.sigma * d)
 
-
-    def double_well_potential(self,d):
+    def double_well_potential(self, d):
         """
-        Double well potential with barrier height epsilon 
+        Double well potential with barrier height epsilon
         """
         fc = 0.7
-        return self.epsilon*((fc*d-1)**4 - 2*(fc*d-1)**2 + 1)
-
-
+        return self.epsilon * ((fc * d - 1) ** 4 - 2 * (fc * d - 1) ** 2 + 1)
 
     def __call__(self, trajectory_point_in):
 
