@@ -1,5 +1,5 @@
 # from .morfeus_quantity_estimates import morfeus_coord_info_from_tp
-from ..utils import coord_info_from_tp
+from ..utils import coord_info_from_tp, trajectory_point_to_canonical_rdkit
 
 from rmgpy.rmg.main import Species
 from rmgpy.data.solvation import SolvationDatabase
@@ -37,13 +37,18 @@ class RMGSolvation:
     #        solvationDatabase.load(os.path.join(settings['database.directory'], 'solvation'))
     def __call__(self, trajectory_point_in):
         # Sanity check: verify that RdKit can generate coordinates for this chemical graph.
-        coord_info = trajectory_point_in.calc_or_lookup(
-            self.coord_func_dict, kwargs_dict=self.coord_func_kwargs
-        )[self.coord_info_name]
-        if coord_info["coordinates"] is None:
-            return None
+        if self.num_attempts != 0:
+            coord_info = trajectory_point_in.calc_or_lookup(
+                self.coord_func_dict, kwargs_dict=self.coord_func_kwargs
+            )[self.coord_info_name]
+            if coord_info["coordinates"] is None:
+                return None
+            SMILES = coord_info["canon_rdkit_SMILES"]
+        else:
+            SMILES = trajectory_point_to_canonical_rdkit(
+                trajectory_point_in, SMILES_only=True
+            )
         # As a byproduct we get the SMILES.
-        SMILES = coord_info["canon_rdkit_SMILES"]
         # Calculate the solvation energy.
         solute_spc = Species().from_smiles(SMILES)
         solute_spc.generate_resonance_structures()
