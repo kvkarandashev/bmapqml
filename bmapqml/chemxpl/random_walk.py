@@ -539,6 +539,7 @@ class RandomWalk:
     ):
         """
         Class that generates a trajectory over chemical space.
+        init_egcs : initial positions of the simulation, in ExtGraphCompound format.
         betas : values of beta used in the extended tempering ensemble; "None" corresponds to a virtual beta (greedily minimized replica).
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
@@ -568,6 +569,8 @@ class RandomWalk:
             else:
                 if isinstance(init_egcs, list):
                     self.num_replicas = len(init_egcs)
+                else:
+                    self.num_replicas = 1
 
         self.keep_full_trajectory = keep_full_trajectory
 

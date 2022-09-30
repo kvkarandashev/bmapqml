@@ -1,6 +1,6 @@
 import numpy as np
 from bmapqml.utils import loadpkl
-from bmapqml.chemxpl.valence_treatment import InvalidAdjMat, str2ChemGraph
+from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.minimized_functions.mol_constraints import NoProtonation
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
 import sys

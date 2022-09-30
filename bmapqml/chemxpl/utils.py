@@ -411,8 +411,8 @@ def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
     return mol, heavy_atom_index, hydrogen_connection, canon_SMILES
 
 
-def trajectory_point_to_canonical_rdkit(tp_in):
-    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph)
+def trajectory_point_to_canonical_rdkit(tp_in, SMILES_only=False):
+    return chemgraph_to_canonical_rdkit(tp_in.egc.chemgraph, SMILES_only=SMILES_only)
 
 
 # Different optimizers available for rdkit.
