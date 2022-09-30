@@ -146,15 +146,16 @@ class sample_local_space_3d:
         Compute the potential energy of a trajectory point.
         """
 
-        try:                  
-            output = trajectory_point_in.calc_or_lookup(self.morfeus_output,
-            kwargs_dict={"num_attempts":100, "ff_type" : "MMFF94","return_rdkit_obj":False})[
-                "morfeus"
-            ]
-            print(output)
-        except:
-            print("Error in 3d conformer sampling")
-            return None
+        output = trajectory_point_in.calc_or_lookup(
+            self.morfeus_output,
+            kwargs_dict={
+                "morfeus": {
+                    "num_attempts": 100,
+                    "ff_type": "MMFF94",
+                    "return_rdkit_obj": False,
+                }
+            },
+        )["morfeus"]
 
         coords = output["coordinates"]
         charges = output["nuclear_charges"]
@@ -164,7 +165,6 @@ class sample_local_space_3d:
             distance = self.distfct(coords, charges)
             V = self.potential(distance)
             return V
-
         except:
             if coords is None:
                 print("No coordinates found")
