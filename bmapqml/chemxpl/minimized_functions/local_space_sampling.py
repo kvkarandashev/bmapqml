@@ -327,8 +327,8 @@ class sample_local_space:
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        if self.verbose:
-            print(f"{canon_SMILES} {d} {V}")
+        #if self.verbose:
+        #    print(f"{canon_SMILES} {d} {V}")
 
         return V
 
