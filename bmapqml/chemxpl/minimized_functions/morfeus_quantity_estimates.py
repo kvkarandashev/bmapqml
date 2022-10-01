@@ -10,7 +10,7 @@ import numpy as np
 
 
 def morfeus_coord_info_from_tp(
-    tp, num_attempts=1, ff_type="MMFF94", return_rdkit_obj=False, **dummy_kwargs
+    tp, num_attempts=1, ff_type="MMFF94", return_rdkit_obj=False, all_confs=False, **dummy_kwargs
 ):
     """
     Coordinates corresponding to a TrajectoryPoint object
@@ -37,8 +37,10 @@ def morfeus_coord_info_from_tp(
             print("#PROBLEMATIC_MORFEUS:", tp)
         return output
 
-    min_en_id = np.argmin(conformers[2])
     nuclear_charges = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
+    output["nuclear_charges"] = nuclear_charges
+
+    min_en_id = np.argmin(conformers[2])
     coordinates = conformers[1][min_en_id]
 
     try:
@@ -48,9 +50,12 @@ def morfeus_coord_info_from_tp(
     if coord_based_cg != cg:
         return output
 
-    output["coordinates"] = coordinates
-    output["nuclear_charges"] = nuclear_charges
-    output["rdkit_energy"] = conformers[2][min_en_id]
+    if all_confs:
+        output["coordinates"]=conformers[1]
+        output["rdkit_energy"]=conformers[2]
+    else:
+        output["coordinates"] = coordinates
+        output["rdkit_energy"] = conformers[2][min_en_id]
 
     return output
 
