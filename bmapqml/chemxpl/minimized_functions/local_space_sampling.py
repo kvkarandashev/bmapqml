@@ -22,6 +22,9 @@ try:
 except:
     print("local_space_sampling: ase or dscribe not installed")
 
+#value of boltzmann constant in kcal/mol/K
+kcal_per_mol_per_K = 1.987204259 * 1e-3
+
 def gen_soap(crds, chgs):
     # average output
     # https://singroup.github.io/dscribe/latest/tutorials/descriptors/soap.html
@@ -41,9 +44,6 @@ def gen_soap(crds, chgs):
     molecule = Atoms(numbers=chgs, positions=crds)
     return average_soap.create(molecule)[0]
 
-
-#value of boltzmann constant in kcal/mol/K
-kcal_per_mol_per_K = 1.987204259 * 1e-3
 
 def get_boltzmann_weights(energies, T=300):
 
