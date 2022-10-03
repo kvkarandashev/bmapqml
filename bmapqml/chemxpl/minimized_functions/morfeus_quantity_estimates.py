@@ -4,7 +4,13 @@ from ..utils import (
     InvalidAdjMat,
     chemgraph_from_ncharges_coords,
 )
-from ...utils import NUCLEAR_CHARGE, checked_environ_val
+from ...utils import (
+    NUCLEAR_CHARGE,
+    checked_environ_val,
+    repeated_dict,
+    all_None_dict,
+    any_element_in_list,
+)
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 
@@ -81,9 +87,8 @@ def morfeus_FF_xTB_dipole(**kwargs):
 
 # from ...interfaces.xtb_interface import xTB_results
 from xtb.libxtb import VERBOSITY_MUTED, VERBOSITY_MINIMAL, VERBOSITY_FULL
-from xtb.interface import Calculator
+from xtb.interface import Calculator, XTBException
 from xtb.utils import get_method, get_solvent
-from ...utils import any_element_in_list
 from ...data import conversion_coefficient
 
 
@@ -171,9 +176,7 @@ def morfeus_FF_xTB_code_quants(
     """
     Use morfeus-ml FF coordinates with Grimme lab's xTB code to calculate some quantities.
     """
-    quant_arrs = {}
-    for quant in quantities:
-        quant_arrs[quant] = np.empty((num_attempts,))
+    quant_arrs = repeated_dict(quantities, np.empty((num_attempts,)))
 
     for i in range(num_attempts):
         coord_info = morfeus_coord_info_from_tp(
@@ -181,15 +184,19 @@ def morfeus_FF_xTB_code_quants(
         )
         coordinates = coord_info["coordinates"]
         if coordinates is None:
-            for quant in quantities:
-                quant_arrs[quant] = None
+            quant_arrs = all_None_dict(quantities)
             break
-        res = xTB_quants(
-            coordinates,
-            coord_info["nuclear_charges"],
-            quantities=quantities,
-            **xTB_quants_args
-        )
+        try:
+            res = xTB_quants(
+                coordinates,
+                coord_info["nuclear_charges"],
+                quantities=quantities,
+                **xTB_quants_args
+            )
+        except XTBException:
+            print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
+            quant_arrs = all_None_dict(quantities)
+            break
         for quant in quantities:
             quant_arrs[quant][i] = res[quant]
 

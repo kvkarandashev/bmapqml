@@ -29,8 +29,11 @@ from joblib import Parallel, delayed
 from .data import NUCLEAR_CHARGE
 import numpy as np
 
-# For resizing numpy arrays:
+# Some auxiliary functions.
 def np_resize(np_arr, new_size):
+    """
+    Expand or cut a NumPy array.
+    """
     new_arr = np_arr
     for dim_id, new_dim in enumerate(new_size):
         cur_dim = new_arr.shape[dim_id]
@@ -55,6 +58,17 @@ def any_element_in_list(list_in, *els):
         if el in list_in:
             return True
     return False
+
+
+def repeated_dict(labels, repeated_el):
+    output = {}
+    for l in labels:
+        output[l] = repeated_el
+    return output
+
+
+def all_None_dict(labels):
+    return repeated_dict(labels, None)
 
 
 ELEMENTS = None
