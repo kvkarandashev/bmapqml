@@ -55,4 +55,4 @@ print("Mean:", np.mean(vals))
 print("Standard deviation:", std)
 
 finalized_quant = LinearCombination([constr_func], [1.0 / std], "ConstrainedSolvation")
-dump2pkl(finalized_quant, "NormalizedSolvation_" + str(num_attempts) + ".pkl")
+dump2pkl(finalized_quant, "RMGNormalizedSolvation_" + str(num_attempts) + ".pkl")

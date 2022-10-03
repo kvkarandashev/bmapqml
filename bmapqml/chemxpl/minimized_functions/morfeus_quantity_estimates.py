@@ -10,7 +10,12 @@ import numpy as np
 
 
 def morfeus_coord_info_from_tp(
-    tp, num_attempts=1, ff_type="MMFF94", return_rdkit_obj=False, all_confs=False, **dummy_kwargs
+    tp,
+    num_attempts=1,
+    ff_type="MMFF94",
+    return_rdkit_obj=False,
+    all_confs=False,
+    **dummy_kwargs
 ):
     """
     Coordinates corresponding to a TrajectoryPoint object
@@ -51,8 +56,8 @@ def morfeus_coord_info_from_tp(
         return output
 
     if all_confs:
-        output["coordinates"]=conformers[1]
-        output["rdkit_energy"]=conformers[2]
+        output["coordinates"] = conformers[1]
+        output["rdkit_energy"] = conformers[2]
     else:
         output["coordinates"] = coordinates
         output["rdkit_energy"] = conformers[2][min_en_id]
@@ -255,7 +260,10 @@ class LinComb_Morfeus_xTB_code:
             self.add_mult_funcs,
             self.add_mult_func_powers,
         ):
-            cur_add = xTB_res_dict["mean"][quant] * coeff
+            cur_val = xTB_res_dict["mean"][quant]
+            if cur_val is None:
+                return None
+            cur_add = cur_val * coeff
             if add_mult is not None:
                 cur_add *= add_mult(trajectory_point_in) ** add_mult_power
             result += cur_add

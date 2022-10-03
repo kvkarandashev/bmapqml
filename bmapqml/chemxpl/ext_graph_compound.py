@@ -2,7 +2,6 @@
 # TO-DO: Store the graph of sigma bonds (without order) in "sigma graph" with the default graph generated from default adjacency matrix?
 #           Otherwise we'll have to call readjust_graph each time we change a molecule.
 
-from xyz2mol import int_atom
 from g2s import GraphCompound
 from g2s.utils import calculate_distances
 import numpy as np
@@ -370,6 +369,8 @@ class ExtGraphCompound(GraphCompound):
         return self.chemgraph > egc2.chemgraph
 
     def __eq__(self, egc2):
+        if not isinstance(egc2, ExtGraphCompound):
+            return False
         return self.chemgraph == egc2.chemgraph
 
     def __str__(self):
