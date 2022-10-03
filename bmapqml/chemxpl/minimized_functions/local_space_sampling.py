@@ -22,6 +22,8 @@ try:
 except:
     print("local_space_sampling: ase or dscribe not installed")
 
+#value of boltzmann constant in kcal/mol/K
+kcal_per_mol_per_K = 1.987204259 * 1e-3
 
 def gen_soap(crds, chgs):
     # average output
@@ -43,6 +45,59 @@ def gen_soap(crds, chgs):
     return average_soap.create(molecule)[0]
 
 
+def get_boltzmann_weights(energies, T=300):
+
+    """
+    Calculate the boltzmann weights for a set of energies at a given temperature.
+    Parameters
+    ----------
+    energies : np.array
+        Array of energies
+    T : float
+        Temperature in Kelvin
+        default: 300 K
+    Returns
+    -------
+    boltzmann_weights : np.array
+        Array of boltzmann weights
+    """
+
+    beta = 1/(kcal_per_mol_per_K * T)
+    boltzmann_weights = np.exp(-energies * beta)
+    # normalize weights
+    boltzmann_weights /= np.sum(boltzmann_weights)
+    return boltzmann_weights
+
+
+
+def fml_rep(COORDINATES, NUC_CHARGES, ENERGIES,repfct=gen_soap):
+    """
+    Calculate the FML representation = boltzmann weighted representation
+    Parameters
+    ----------
+    NUC_CHARGES : np.array
+        Array of nuclear charges
+    COORDINATES : np.array
+        Array of coordinates
+    ENERGIES : np.array
+        Array of energies
+    repfct : function of representation
+        default: local_space_sampling.gen_soap
+    Returns
+    ------- 
+    fml_rep : np.array
+        Array of FML representation 
+    """
+
+    X = []
+    for i in range(len(COORDINATES)):
+        X.append(repfct(COORDINATES[i], NUC_CHARGES))
+    X = np.array(X)
+    X = np.average(X, axis=0, weights=get_boltzmann_weights(ENERGIES))
+    return X
+
+
+
 def gen_cm(crds, chgs, size=100):
     """
     Generate the coulomb matrix for a set
@@ -56,6 +111,19 @@ def gen_bob(crds, chgs, size=100):
     """
     Generate the Bag of Bonds representation for a set
     of coordinates and their charges.
+    Parameters
+    ----------
+    crds : np.array
+        Array of coordinates
+    chgs : np.array
+        Array of nuclear charges
+    size : int 
+        Size of the representation
+        default: 100
+    Returns
+    -------
+    bob : np.array
+        Array of Bag of Bonds representation
     """
 
     atomtypes = [1, 6, 7, 8, 9]
@@ -67,6 +135,19 @@ def gen_fchl(crds, chgs, size=100):
     """
     Generate the FCHL representation for a set
     of coordinates and their charges.
+    Parameters
+    ----------
+    crds : np.array
+        Array of coordinates
+    chgs : np.array
+        Array of nuclear charges
+    size : int
+        Size of the representation
+        default: 100
+    Returns
+    -------
+    fchl : np.array
+        Array of FCHL representation
     """
 
     atomtypes = [1, 6, 7, 8, 9]
@@ -104,6 +185,13 @@ class sample_local_space_3d:
 
         elif self.repfct.__name__ == "gen_fchl":
             self.distfct = self.fchl_distance
+        elif self.repfct.__name__ == "fml_rep":
+            self.distfct = self.fml_distance
+
+    def fml_distance(self,coords,charges,energies):
+        X_test = self.repfct(coords, charges,energies)
+        return norm(X_test - self.X_init)
+
 
     def euclidean_distance(self, coords, charges):
         """
@@ -151,19 +239,25 @@ class sample_local_space_3d:
             kwargs_dict={
                 "morfeus": {
                     "num_attempts": 100,
-                    "ff_type": "MMFF94",
+                    "ff_type": "MMFF94s",
                     "return_rdkit_obj": False,
+                    "all_confs": True
                 }
             },
         )["morfeus"]
-
+        
         coords = output["coordinates"]
         charges = output["nuclear_charges"]
         SMILES = output["canon_rdkit_SMILES"]
-
+        
+        
         try:
-            distance = self.distfct(coords, charges)
+            energies = output["rdkit_energy"]
+            distance = self.distfct(coords, charges,energies)
             V = self.potential(distance)
+
+            if self.verbose:
+                print(SMILES, distance, V)
             return V
         except:
             if coords is None:
@@ -327,8 +421,8 @@ class sample_local_space:
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        if self.verbose:
-            print(f"{canon_SMILES} {d} {V}")
+        #if self.verbose:
+        #    print(f"{canon_SMILES} {d} {V}")
 
         return V
 
