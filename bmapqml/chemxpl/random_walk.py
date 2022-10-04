@@ -1250,6 +1250,8 @@ class RandomWalk:
             "global_steps_since_last": self.global_steps_since_last,
             "numpy_rng_state": np.random.get_state(),
             "random_rng_state": random.getstate(),
+            "min_function_name": self.min_function_name,
+            "betas": self.betas,
         }
         if self.keep_histogram:
             saved_data = {**saved_data, "histogram": self.histogram}
