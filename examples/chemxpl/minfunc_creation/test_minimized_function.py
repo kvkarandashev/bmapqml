@@ -10,7 +10,18 @@ if nargs < 2:
     quit()
 
 possible_test_SMILES = {
-    "FLUORINATION": ["C", "CF", "FCF", "FC(F)F", "FC(F)(F)F", "CO", "COC"]
+    "FLUORINATION": [
+        "C",
+        "CF",
+        "FCF",
+        "FC(F)F",
+        "FC(F)(F)F",
+        "CO",
+        "COC",
+        "OCO",
+        "C=C",
+        "OC=C",
+    ]
 }
 
 if nargs < 3:
@@ -22,4 +33,4 @@ min_func = loadpkl(sys.argv[1])
 
 for SMILES in test_SMILES:
     tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES))
-    print(min_func(tp))
+    print(SMILES, min_func(tp))

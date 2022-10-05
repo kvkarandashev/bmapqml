@@ -5,7 +5,7 @@ from bmapqml.chemxpl.minimized_functions.quantity_estimates import (
     LinearCombination,
 )
 from bmapqml.chemxpl.utils import xyz2mol_extgraph, InvalidAdjMat
-from bmapqml.utils import dump2pkl  # , embarrassingly_parallel
+from bmapqml.utils import dump2pkl, embarrassingly_parallel
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
 from bmapqml.test_utils import dirs_xyz_list
 import sys
@@ -13,12 +13,17 @@ import numpy as np
 
 QM9_dir = "/data/konst/QM9_formatted"
 
-xyzs = sorted(dirs_xyz_list(QM9_dir))
+xyzs = dirs_xyz_list(QM9_dir)
 
 if len(sys.argv) == 1:
     num_attempts = 0
 else:
     num_attempts = int(sys.argv[1])
+
+if len(sys.argv) == 3:
+    NPROCS = int(sys.argv[2])
+else:
+    NPROCS = 1
 
 forcefield = "MMFF"
 
@@ -28,25 +33,30 @@ true_func = RMGSolvation(
     num_attempts=num_attempts, ff_type=forcefield, solvent_label=solvent
 )
 
-constraints = [NoProtonation(restricted_ncharges=[8, 9])]
+restricted_ncharges = []  # [8, 9]
+
+constraints = [NoProtonation(restricted_ncharges=restricted_ncharges)]
 
 constr_func = ConstrainedQuant(true_func, "RMGSolvation", constraints=constraints)
 
-vals = []
-
 cur_id = 0
 
-for xyz in xyzs:
+
+def xyz_val(xyz):
     try:
         egc = xyz2mol_extgraph(xyz)
     except InvalidAdjMat:
-        continue
+        return None
     tp = TrajectoryPoint(egc=egc)
-    cur_val = constr_func(tp)
+    return constr_func(tp)
+
+
+all_vals = embarrassingly_parallel(xyz_val, xyzs, (), num_procs=NPROCS)
+
+vals = []
+for cur_val in all_vals:
     if cur_val is not None:
-        cur_id += 1
         vals.append(cur_val)
-        print(cur_id, egc.chemgraph.nhatoms(), egc)
 
 std = np.std(vals)
 
