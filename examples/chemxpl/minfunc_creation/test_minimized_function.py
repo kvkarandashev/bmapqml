@@ -16,18 +16,27 @@ possible_test_SMILES = {
         "FCF",
         "FC(F)F",
         "FC(F)(F)F",
-        "CO",
-        "COC",
-        "OCO",
+    ],
+    "ENOLS": [
+        "C1=CC=CC=C1",
+        "C1=CC=C(O)C=C1",
+        "C=O",
         "C=C",
         "OC=C",
-    ]
+        "OCO",
+        "N1C(O)=C(O)C(O)=C(O)1",
+        "N1C=CC=C1",
+    ],
 }
 
 if nargs < 3:
     test_SMILES = possible_test_SMILES["FLUORINATION"]
 else:
-    test_SMILES = possible_test_SMILES[sys.argv[2]]
+    if nargs == 3:
+        test_SMILES = possible_test_SMILES[sys.argv[2]]
+    else:
+        if sys.argv[2] == "--SMILES":
+            test_SMILES = [sys.argv[3]]
 
 min_func = loadpkl(sys.argv[1])
 

@@ -16,13 +16,14 @@ tp_str = "tp"
 
 
 def xyz_data_gen(xyz_name):
-    print(xyz_name)
     output = {"xyz": xyz_name}
     try:
         tp = TrajectoryPoint(egc=xyz2mol_extgraph(xyz_name))
     except InvalidAdjMat:
+        print(xyz_name, None)
         return output
     quant_val = quant(tp)
+    print(xyz_name, quant_val)
     return {val_str: quant_val, tp_str: tp, **output}
 
 

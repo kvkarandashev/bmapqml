@@ -46,15 +46,17 @@ def xyz_val(xyz):
     try:
         egc = xyz2mol_extgraph(xyz)
     except InvalidAdjMat:
-        return None
+        return (xyz, None)
     tp = TrajectoryPoint(egc=egc)
-    return constr_func(tp)
+    return (xyz, constr_func(tp))
 
 
 all_vals = embarrassingly_parallel(xyz_val, xyzs, (), num_procs=NPROCS)
 
+dump2pkl(all_vals, "calc_data.pkl")
+
 vals = []
-for cur_val in all_vals:
+for (cur_xyz, cur_val) in all_vals:
     if cur_val is not None:
         vals.append(cur_val)
 
