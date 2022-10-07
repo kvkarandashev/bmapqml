@@ -207,7 +207,7 @@ class HeavyAtom:
             return val_list
 
     # Procedures for ordering.
-    def comparison_iterator(self):
+    def comparison_list(self):
         if self.ncharge == 0:
             s = -1
             p = -1
@@ -217,7 +217,9 @@ class HeavyAtom:
             p = p_int[self.ncharge]
             per = period_int[self.ncharge]
 
-        return iter([self.valence - self.nhydrogens, s, p, per, self.valence_val_id()])
+        return [self.valence - self.nhydrogens, s, p, per, self.valence_val_id()]
+    def comparison_iterator(self):
+        return iter(self.comparison_list())
 
     def __lt__(self, ha2):
         return triple_gt_witer(self, ha2) is False
@@ -1128,19 +1130,17 @@ class ChemGraph:
 
     def get_comparison_list(self):
         if self.comparison_list is None:
-            iterators = [iter([self.nhatoms()])]
             self.init_canonical_permutation()
-            iterators.append(
-                [self.hatoms[hatom_id] for hatom_id in self.inv_canonical_permutation]
-            )
-            for hatom_id in self.inv_canonical_permutation:
-                neighbor_permuted_list = [
-                    self.canonical_permutation[neigh_id]
-                    for neigh_id in self.neighbors(hatom_id)
-                ]
-                iterators.append(iter([len(neighbor_permuted_list)]))
-                iterators.append(iter(sorted(neighbor_permuted_list)))
-            self.comparison_list = list(itertools.chain(*iterators))
+            self.comparison_list=[]
+            for perm_hatom_id, hatom_id in enumerate(self.inv_canonical_permutation):
+                self.comparison_list+=self.hatoms[hatom_id].comparison_list()
+                perm_neighs=[]
+                for neigh_id in self.neighbors(hatom_id):
+                    perm_id=self.canonical_permutation[neigh_id]
+                    if perm_id > perm_hatom_id:
+                        perm_neighs.append(perm_id)
+                self.comparison_list+=sorted(perm_neighs)
+                self.comparison_list.append(len(perm_neighs))
         return self.comparison_list
 
     def copy_extra_data_to(self, other_cg, linear_storage=False):
