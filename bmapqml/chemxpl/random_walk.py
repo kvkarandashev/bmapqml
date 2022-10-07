@@ -1384,3 +1384,17 @@ def average_wait_number_from_traj_ids(traj_ids):
         prev_ids = cur_ids
 
     return output / traj_ids.shape[0]
+
+
+# For temperature choice.
+def temperature_array(num_greedy_replicas, max_real_beta, real_beta_step=None):
+    output = [None for _ in range(num_greedy_replicas)]
+    if real_beta_step is None:
+        num_betas = 1
+    else:
+        num_betas = int(max_real_beta / real_beta_step - 0.05) + 1
+    cur_beta = max_real_beta
+    for _ in range(num_betas):
+        output.append(cur_beta)
+        cur_beta -= real_beta_step
+    return output
