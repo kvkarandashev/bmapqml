@@ -267,12 +267,19 @@ def xbgf2gc(xbgf_file):
 #   Some procedures that often appear in scripts.
 
 
-def egc2xyz_string(egc):
-    return xyz_string(egc.coordinates, nuclear_charges=egc.nuclear_charges)
+def egc2xyz_string(egc, extra_string=""):
+    return xyz_string(
+        egc.coordinates, nuclear_charges=egc.nuclear_charges, extra_string=extra_string
+    )
 
 
-def write_egc2xyz(egc, xyz_file_name):
-    write_xyz_file(egc.coordinates, xyz_file_name, nuclear_charges=egc.nuclear_charges)
+def write_egc2xyz(egc, xyz_file_name, extra_string=""):
+    write_xyz_file(
+        egc.coordinates,
+        xyz_file_name,
+        nuclear_charges=egc.nuclear_charges,
+        extra_string=extra_string,
+    )
 
 
 def all_egc_from_tar(tarfile_name):

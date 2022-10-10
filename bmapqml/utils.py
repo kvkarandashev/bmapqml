@@ -172,7 +172,7 @@ def write_compound_to_xyz_file(compound, xyz_file_name):
     write_xyz_file(compound.coordinates, xyz_file_name, elements=compound.atomtypes)
 
 
-def xyz_string(coordinates, elements=None, nuclear_charges=None):
+def xyz_string(coordinates, elements=None, nuclear_charges=None, extra_string=""):
     """
     Create an xyz-formatted string from coordinates and elements or nuclear charges.
     coordinates : coordinate array
@@ -181,7 +181,7 @@ def xyz_string(coordinates, elements=None, nuclear_charges=None):
     """
     if elements is None:
         elements = [str_atom_corr(charge) for charge in nuclear_charges]
-    output = str(len(coordinates)) + "\n"
+    output = str(len(coordinates)) + "\n" + extra_string
     for atom_coords, element in zip(coordinates, elements):
         output += (
             "\n"
@@ -192,10 +192,17 @@ def xyz_string(coordinates, elements=None, nuclear_charges=None):
     return output
 
 
-def write_xyz_file(coordinates, xyz_file_name, elements=None, nuclear_charges=None):
+def write_xyz_file(
+    coordinates, xyz_file_name, elements=None, nuclear_charges=None, extra_string=""
+):
     xyz_file = open(xyz_file_name, "w")
     xyz_file.write(
-        xyz_string(coordinates, elements=elements, nuclear_charges=nuclear_charges)
+        xyz_string(
+            coordinates,
+            elements=elements,
+            nuclear_charges=nuclear_charges,
+            extra_string=extra_string,
+        )
     )
     xyz_file.close()
 

@@ -348,9 +348,14 @@ class TrajectoryPoint:
         return str(self)
 
 
-# Auxiliary class for more convenient maintenance of candidate compound list.
 class CandidateCompound:
-    def __init__(self, tp, func_val):
+    def __init__(self, tp: TrajectoryPoint, func_val: float):
+        """
+        Auxiliary class for more convenient maintenance of candidate compound list.
+        NOTE: The comparison operators are not strictly transitive (?), but work well enough for maintaining a candidate list.
+        tp : Trajectory point object.
+        func_val : value of the minimized function.
+        """
         self.tp = tp
         self.func_val = func_val
 
