@@ -13,6 +13,7 @@ from ...utils import (
 )
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
+import copy, os
 
 
 def morfeus_coord_info_from_tp(
@@ -90,6 +91,37 @@ from xtb.libxtb import VERBOSITY_MUTED, VERBOSITY_MINIMAL, VERBOSITY_FULL
 from xtb.interface import Calculator, XTBException
 from xtb.utils import get_method, get_solvent
 from ...data import conversion_coefficient
+import os
+from ...utils import loadpkl, dump2pkl
+
+atom_energy_filename = os.path.dirname(__file__) + "/atomization_energies.pkl"
+
+if os.path.isfile(atom_energy_filename):
+    atom_energies = loadpkl(atom_energy_filename)
+else:
+    atom_energies = {}
+
+
+def xTB_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
+    res = xTB_singlepoint_res(
+        np.array([[0.0, 0.0, 0.0]]),
+        np.array([ncharge]),
+        parametrization=parametrization,
+        solvent=solvent,
+    )
+    return res.get_energy()
+
+
+def atom_energy_check(
+    ncharge, parametrization="gfn2-xtb", solvent=None, **dummy_kwargs
+):
+    check_tuple = (ncharge, parametrization, solvent)
+    if check_tuple not in atom_energies:
+        atom_energies[check_tuple] = xTB_atom_energy(
+            ncharge, parametrization=parametrization, solvent=solvent
+        )
+        dump2pkl(atom_energies, atom_energy_filename)
+    return atom_energies[check_tuple]
 
 
 verbosity_dict = {
@@ -135,7 +167,7 @@ def xTB_quants(
     **other_xTB_singlepoint_res
 ):
     res = xTB_singlepoint_res(
-        coordinates, nuclear_charges, **other_xTB_singlepoint_res, solvent=solvent
+        coordinates, nuclear_charges, solvent=solvent, **other_xTB_singlepoint_res
     )
 
     output = {}
@@ -161,7 +193,75 @@ def xTB_quants(
         en_nosolvent = res_nosolvent.get_energy()
         output["energy_no_solvent"] = en_nosolvent
         output["solvation_energy"] = output["energy"] - en_nosolvent
+    if any_element_in_list(
+        quantities, "atomization_energy", "normalized_atomization_energy"
+    ):
+        atom_en_sum = sum(
+            atom_energy_check(nc, solvent=solvent, **other_xTB_singlepoint_res)
+            for nc in nuclear_charges
+        )
+        output["atomization_energy"] = output["energy"] - atom_en_sum
 
+    return output
+
+
+def smooth_cut_weight(en, en_min, delta_en):
+    if en - en_min >= delta_en:
+        return None
+    else:
+        return (en_min - en + delta_en) ** 2 / delta_en**2
+
+
+def en_weights(ens, delta_en=None):
+    if delta_en is None:
+        min_en_id = np.argmin(ens)
+        weights = [None for _ in range(len(ens))]
+        weights[min_en_id] = 1.0
+    else:
+        min_en = min(ens)
+        weights = [smooth_cut_weight(en, min_en, delta_en) for en in ens]
+    norm_const = 0.0
+    for w in weights:
+        if w is not None:
+            norm_const += w
+    for w_id, w in enumerate(weights):
+        if w is not None:
+            weights[w_id] /= norm_const
+    return weights
+
+
+def morfeus_FF_xTB_code_quants_weighted(
+    tp,
+    num_conformers=1,
+    ff_type="MMFF94",
+    quantities=[],
+    delta_en=None,
+    **xTB_quants_kwargs
+):
+    coord_info = morfeus_coord_info_from_tp(
+        tp, num_attempts=num_conformers, ff_type=ff_type, all_confs=True
+    )
+    coordinates = coord_info["coordinates"]
+    if coordinates is None:
+        return None
+    conf_weights = en_weights(coord_info["rdkit_energy"], delta_en=delta_en)
+    ncharges = coord_info["nuclear_charges"]
+    output = repeated_dict(quantities, 0.0)
+    for conf_coords, weight in zip(coord_info["coordinates"], conf_weights):
+        if weight is not None:
+            try:
+                res = xTB_quants(
+                    conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
+                )
+                if "normalized_atomization_energy" in quantities:
+                    res["normalized_atomization_energy"] = (
+                        res["atomization_energy"] / tp.egc.chemgraph.tot_ncovpairs()
+                    )
+            except XTBException:
+                print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
+                return None
+            for quant in quantities:
+                output[quant] += weight * res[quant]
     return output
 
 
@@ -171,34 +271,28 @@ def morfeus_FF_xTB_code_quants(
     num_attempts=1,
     ff_type="MMFF94",
     quantities=[],
-    **xTB_quants_args
+    delta_en=None,
+    **xTB_quants_kwargs
 ):
     """
     Use morfeus-ml FF coordinates with Grimme lab's xTB code to calculate some quantities.
     """
-    quant_arrs = repeated_dict(quantities, np.empty((num_attempts,)))
+    quant_arrs = repeated_dict(quantities, np.zeros((num_attempts,)), copy_needed=True)
 
     for i in range(num_attempts):
-        coord_info = morfeus_coord_info_from_tp(
-            tp, num_attempts=num_conformers, ff_type=ff_type
+        av_res = morfeus_FF_xTB_code_quants_weighted(
+            tp,
+            num_conformers=num_conformers,
+            ff_type=ff_type,
+            quantities=quantities,
+            delta_en=delta_en,
+            **xTB_quants_kwargs
         )
-        coordinates = coord_info["coordinates"]
-        if coordinates is None:
-            quant_arrs = all_None_dict(quantities)
-            break
-        try:
-            res = xTB_quants(
-                coordinates,
-                coord_info["nuclear_charges"],
-                quantities=quantities,
-                **xTB_quants_args
-            )
-        except XTBException:
-            print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
+        if av_res is None:
             quant_arrs = all_None_dict(quantities)
             break
         for quant in quantities:
-            quant_arrs[quant][i] = res[quant]
+            quant_arrs[quant][i] = av_res[quant]
 
     output = {"arrs": quant_arrs}
     output["mean"] = {}
@@ -230,6 +324,9 @@ class LinComb_Morfeus_xTB_code:
         self,
         quantities=[],
         coefficients=[],
+        constr_quants=[],
+        cq_upper_bounds=None,
+        cq_lower_bounds=None,
         add_mult_funcs=None,
         add_mult_func_powers=None,
         xTB_res_dict_name="xTB_res",
@@ -237,6 +334,16 @@ class LinComb_Morfeus_xTB_code:
     ):
         self.quantities = quantities
         self.coefficients = coefficients
+
+        self.constr_quants = constr_quants
+        self.cq_upper_bounds = cq_upper_bounds
+        self.cq_lower_bounds = cq_lower_bounds
+
+        self.needed_quantities = copy.copy(self.quantities)
+        for quant in constr_quants:
+            if quant not in self.needed_quantities:
+                self.needed_quantities.append(quant)
+
         if add_mult_funcs is None:
             self.add_mult_funcs = [None for _ in range(len(quantities))]
         else:
@@ -255,11 +362,25 @@ class LinComb_Morfeus_xTB_code:
             kwargs_dict={
                 self.xTB_res_dict_name: {
                     **self.xTB_related_kwargs,
-                    "quantities": self.quantities,
+                    "quantities": self.needed_quantities,
                 }
             },
         )[self.xTB_res_dict_name]
         result = 0.0
+        for quant_id, quant in enumerate(self.constr_quants):
+            cur_val = xTB_res_dict["mean"][quant]
+            if cur_val is None:
+                return None
+            if self.cq_upper_bounds is not None:
+                if (self.cq_upper_bounds[quant_id] is not None) and (
+                    cur_val > self.cq_upper_bounds[quant_id]
+                ):
+                    return None
+            if self.cq_lower_bounds is not None:
+                if (self.cq_lower_bounds[quant_id] is not None) and (
+                    cur_val < self.cq_lower_bounds[quant_id]
+                ):
+                    return None
         self.call_counter += 1
         for quant, coeff, add_mult, add_mult_power in zip(
             self.quantities,

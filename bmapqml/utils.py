@@ -22,7 +22,7 @@
 
 
 # Miscellaneous functions and classes used throughout the code.
-import pickle, subprocess, os
+import pickle, subprocess, os, copy
 import bz2
 from joblib import Parallel, delayed
 
@@ -60,10 +60,13 @@ def any_element_in_list(list_in, *els):
     return False
 
 
-def repeated_dict(labels, repeated_el):
+def repeated_dict(labels, repeated_el, copy_needed=False):
     output = {}
     for l in labels:
-        output[l] = repeated_el
+        if copy_needed:
+            output[l] = copy.deepcopy(repeated_el)
+        else:
+            output[l] = repeated_el
     return output
 
 

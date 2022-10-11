@@ -711,6 +711,10 @@ class RandomWalk:
                         tp_index = self.histogram.index(new_tp)
                         new_tp.copy_extra_data_to(self.histogram[tp_index])
                     else:
+                        new_tp.first_MC_step_encounter = self.MC_step_counter
+                        new_tp.first_global_MC_step_encounter = (
+                            self.global_MC_step_counter
+                        )
                         self.histogram.add(new_tp)
 
         if self.num_saved_candidates is not None:

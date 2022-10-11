@@ -20,20 +20,22 @@ best_candidates = SortedList()
 
 
 for entry in cur_data["histogram"]:
-    if (entry.first_global_MC_step_encounter is not None) and (
-        entry.first_global_MC_step_encounter <= traj_ncut
-    ):
-        cur_cc = CandidateCompound(entry, entry.calculated_data[min_func_name])
-        best_candidates.add(cur_cc)
-        while len(best_candidates) > num_best_candidates:
-            del best_candidates[-1]
+    if entry.first_global_MC_step_encounter <= traj_ncut:
+        cur_val = entry.calculated_data[min_func_name]
+        if cur_val is not None:
+            cur_cc = CandidateCompound(entry, entry.calculated_data[min_func_name])
+            best_candidates.add(cur_cc)
+            while len(best_candidates) > num_best_candidates:
+                del best_candidates[-1]
 
 for cand_id, cand in enumerate(best_candidates):
     xyz_name = "best_candidate_" + str(cand_id) + ".xyz"
+    extra_string = ""
+    for val_name, val in cand.tp.calculated_data.items():
+        if isinstance(val, float):
+            extra_string += val_name + "=" + str(val) + " "
     try:
         egc_wcoords = egc_with_coords(cand.tp.egc)
-        write_egc2xyz(
-            egc_wcoords, xyz_name, extra_string=min_func_name + "=" + str(cand.func_val)
-        )
+        write_egc2xyz(egc_wcoords, xyz_name, extra_string=extra_string[:-1])
     except FFInconsistent:
         print(cand_id, cand.tp, cand.func_val)

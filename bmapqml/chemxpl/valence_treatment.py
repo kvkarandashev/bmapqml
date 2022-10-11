@@ -118,7 +118,6 @@ def list2colors(obj_list):
     return colors
 
 
-
 # Auxiliary class mainly used to keep valences in check.
 class HeavyAtom:
     def __init__(
@@ -134,7 +133,7 @@ class HeavyAtom:
         self.changed()
 
     def changed(self):
-        self.comparison_list=None
+        self.comparison_list = None
 
     # Valence-related.
     def avail_val_list(self):
@@ -204,7 +203,13 @@ class HeavyAtom:
                 s = s_int[self.ncharge]
                 p = p_int[self.ncharge]
                 per = period_int[self.ncharge]
-            self.comparison_list=[self.valence - self.nhydrogens, s, p, per, self.valence_val_id()]
+            self.comparison_list = [
+                self.valence - self.nhydrogens,
+                s,
+                p,
+                per,
+                self.valence_val_id(),
+            ]
 
         return self.comparison_list
 
@@ -632,6 +637,10 @@ class ChemGraph:
     def tot_nhydrogens(self):
         return sum([hatom.nhydrogens for hatom in self.hatoms])
 
+    # Total number of binding electron pairs.
+    def tot_ncovpairs(self):
+        return self.tot_nhydrogens() + sum(self.bond_orders.values())
+
     # Dirty inheritance:
     def neighbors(self, hatom_id):
         return self.graph.neighbors(hatom_id)
@@ -1018,7 +1027,7 @@ class ChemGraph:
             modified_atom_id, new_valence - self.hatoms[modified_atom_id].valence
         )
         self.hatoms[modified_atom_id].valence = new_valence
-        
+
         self.changed()
 
     # Output properties that include hydrogens.
@@ -1120,15 +1129,15 @@ class ChemGraph:
     def get_comparison_list(self):
         if self.comparison_list is None:
             self.init_canonical_permutation()
-            self.comparison_list=[]
+            self.comparison_list = []
             for perm_hatom_id, hatom_id in enumerate(self.inv_canonical_permutation):
-                self.comparison_list+=self.hatoms[hatom_id].get_comparison_list()
-                perm_neighs=[]
+                self.comparison_list += self.hatoms[hatom_id].get_comparison_list()
+                perm_neighs = []
                 for neigh_id in self.neighbors(hatom_id):
-                    perm_id=self.canonical_permutation[neigh_id]
+                    perm_id = self.canonical_permutation[neigh_id]
                     if perm_id > perm_hatom_id:
                         perm_neighs.append(perm_id)
-                self.comparison_list+=sorted(perm_neighs)
+                self.comparison_list += sorted(perm_neighs)
                 self.comparison_list.append(len(perm_neighs))
         return self.comparison_list
 
