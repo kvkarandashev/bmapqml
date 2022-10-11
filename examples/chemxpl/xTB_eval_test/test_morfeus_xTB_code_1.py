@@ -43,6 +43,7 @@ res_dict = morfeus_FF_xTB_code_quants(
     tp,
     num_conformers=num_conformers,
     num_attempts=num_attempts,
+    remaining_rho=0.95,
     quantities=quantities,
     solvent=solvent,
 )

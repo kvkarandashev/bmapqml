@@ -1,4 +1,4 @@
-from morfeus.conformer import conformers_from_rdkit
+from morfeus.conformer import ConformerEnsemble
 from ..utils import (
     chemgraph_to_canonical_rdkit,
     InvalidAdjMat,
@@ -14,6 +14,7 @@ from ...utils import (
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 import copy, os
+from ...data import room_T
 
 
 def morfeus_coord_info_from_tp(
@@ -22,6 +23,7 @@ def morfeus_coord_info_from_tp(
     ff_type="MMFF94",
     return_rdkit_obj=False,
     all_confs=False,
+    temperature=room_T,
     **dummy_kwargs
 ):
     """
@@ -38,7 +40,7 @@ def morfeus_coord_info_from_tp(
         output["canon_rdkit_mol"] = canon_rdkit_mol
     # TODO: better place to check OMP_NUM_THREADS value?
     try:
-        conformers = conformers_from_rdkit(
+        conformers = ConformerEnsemble.from_rdkit(
             canon_rdkit_mol,
             n_confs=num_attempts,
             optimize=ff_type,
@@ -48,23 +50,30 @@ def morfeus_coord_info_from_tp(
         if not isinstance(ex, ValueError):
             print("#PROBLEMATIC_MORFEUS:", tp)
         return output
-
-    nuclear_charges = np.array([NUCLEAR_CHARGE[el] for el in conformers[0]])
+    if all_confs:
+        conformers.prune_rmsd()
+    all_coordinates = conformers.get_coordinates()
+    rel_energies = conformers.get_energies()
+    nuclear_charges = np.array(conformers.elements)
     output["nuclear_charges"] = nuclear_charges
 
-    min_en_id = np.argmin(conformers[2])
-    coordinates = conformers[1][min_en_id]
+    min_en_id = np.argmin(rel_energies)
+    min_coordinates = all_coordinates[min_en_id]
 
     try:
-        coord_based_cg = chemgraph_from_ncharges_coords(nuclear_charges, coordinates)
+        coord_based_cg = chemgraph_from_ncharges_coords(
+            nuclear_charges, min_coordinates
+        )
     except InvalidAdjMat:
         return output
     if coord_based_cg != cg:
         return output
 
     if all_confs:
-        output["coordinates"] = conformers[1]
-        output["rdkit_energy"] = conformers[2]
+        output["coordinates"] = all_coordinates
+        output["rdkit_energy"] = rel_energies
+        output["rdkit_degeneracies"] = conformers.get_degeneracies()
+        output["rdkit_Boltzmann"] = conformers.boltzmann_weights()
     else:
         output["coordinates"] = coordinates
         output["rdkit_energy"] = conformers[2][min_en_id]
@@ -92,7 +101,7 @@ from xtb.interface import Calculator, XTBException
 from xtb.utils import get_method, get_solvent
 from ...data import conversion_coefficient
 import os
-from ...utils import loadpkl, dump2pkl
+from ...utils import loadpkl, dump2pkl, weighted_array
 
 atom_energy_filename = os.path.dirname(__file__) + "/atomization_energies.pkl"
 
@@ -205,28 +214,26 @@ def xTB_quants(
     return output
 
 
-def smooth_cut_weight(en, en_min, delta_en):
-    if en - en_min >= delta_en:
-        return None
-    else:
-        return (en_min - en + delta_en) ** 2 / delta_en**2
+class weighted_index:
+    def __init__(self, entry_id, w):
+        self.entry_id = entry_id
+        self.rho = w
 
 
-def en_weights(ens, delta_en=None):
-    if delta_en is None:
-        min_en_id = np.argmin(ens)
-        weights = [None for _ in range(len(ens))]
+def cut_weights(bweights, remaining_rho=None):
+    weights = [None for _ in range(len(bweights))]
+    if remaining_rho is None:
+        min_en_id = np.argmax(bweights)
         weights[min_en_id] = 1.0
     else:
-        min_en = min(ens)
-        weights = [smooth_cut_weight(en, min_en, delta_en) for en in ens]
-    norm_const = 0.0
-    for w in weights:
-        if w is not None:
-            norm_const += w
-    for w_id, w in enumerate(weights):
-        if w is not None:
-            weights[w_id] /= norm_const
+        bweights_list = weighted_array(
+            [weighted_index(w_id, w) for w_id, w in enumerate(bweights)]
+        )
+        bweights_list.normalize_sort_rhos()
+        bweights_list.cutoff_minor_weights(remaining_rho=remaining_rho)
+        for wi in bweights_list:
+            weights[wi.entry_id] = wi.rho
+
     return weights
 
 
@@ -235,7 +242,7 @@ def morfeus_FF_xTB_code_quants_weighted(
     num_conformers=1,
     ff_type="MMFF94",
     quantities=[],
-    delta_en=None,
+    remaining_rho=None,
     **xTB_quants_kwargs
 ):
     coord_info = morfeus_coord_info_from_tp(
@@ -244,7 +251,9 @@ def morfeus_FF_xTB_code_quants_weighted(
     coordinates = coord_info["coordinates"]
     if coordinates is None:
         return None
-    conf_weights = en_weights(coord_info["rdkit_energy"], delta_en=delta_en)
+    conf_weights = cut_weights(
+        coord_info["rdkit_Boltzmann"], remaining_rho=remaining_rho
+    )
     ncharges = coord_info["nuclear_charges"]
     output = repeated_dict(quantities, 0.0)
     for conf_coords, weight in zip(coord_info["coordinates"], conf_weights):
@@ -271,7 +280,7 @@ def morfeus_FF_xTB_code_quants(
     num_attempts=1,
     ff_type="MMFF94",
     quantities=[],
-    delta_en=None,
+    remaining_rho=None,
     **xTB_quants_kwargs
 ):
     """
@@ -285,7 +294,7 @@ def morfeus_FF_xTB_code_quants(
             num_conformers=num_conformers,
             ff_type=ff_type,
             quantities=quantities,
-            delta_en=delta_en,
+            remaining_rho=remaining_rho,
             **xTB_quants_kwargs
         )
         if av_res is None:
