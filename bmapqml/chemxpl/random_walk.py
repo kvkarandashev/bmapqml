@@ -18,13 +18,14 @@ from .modify import (
     egc_valid_wrt_change_params,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl, loadpkl, dump2tar, loadtar
+from ..utils import dump2pkl, loadpkl, pkl_compress_ending
 from .valence_treatment import sorted_tuple, connection_forbidden, ChemGraph
 from .periodic import element_name
 import random, os
 from copy import deepcopy
 import numpy as np
 
+# To make overflows during acceptance step are handled correctly.
 np.seterr(all="raise")
 
 
@@ -393,15 +394,6 @@ def tidy_forbidden_bonds(forbidden_bonds):
     for fb in forbidden_bonds:
         output.add(sorted_tuple(*fb))
     return output
-
-
-def has_forbidden_bonds(egc, forbidden_bonds=None):
-    adjmat = egc.true_adjmat()
-    for i1, nc1 in enumerate(egc.nuclear_charges[: egc.num_heavy_atoms()]):
-        for i2, nc2 in enumerate(egc.nuclear_charges[:i1]):
-            if adjmat[i1, i2] != 0:
-                if connection_forbidden(nc1, nc2, forbidden_bonds):
-                    return True
 
 
 mol_egc_converter = {"rdkit": (rdkit_to_egc, egc_to_rdkit)}
@@ -1268,10 +1260,7 @@ class RandomWalk:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
         if tarball is None:
             tarball = self.compress_restart
-        if tarball:
-            dump2tar(saved_data, restart_file)
-        else:
-            dump2pkl(saved_data, restart_file)
+        dump2pkl(saved_data, restart_file, compress=tarball)
 
     def restart_from(self, restart_file: str or None = None):
         """
@@ -1280,7 +1269,7 @@ class RandomWalk:
         """
         if restart_file is None:
             restart_file = self.restart_file
-        recovered_data = loadpkl(restart_file)
+        recovered_data = loadpkl(restart_file, compress=self.compress_restart)
         self.cur_tps = recovered_data["cur_tps"]
         self.MC_step_counter = recovered_data["MC_step_counter"]
         self.global_MC_step_counter = recovered_data["global_MC_step_counter"]
@@ -1299,7 +1288,7 @@ class RandomWalk:
         np.random.set_state(recovered_data["numpy_rng_state"])
         random.setstate(recovered_data["random_rng_state"])
 
-    def histogram2pkl(self):
+    def histogram2file(self):
         """
         Dump a histogram to a dump file with a yet unoccupied name.
         """
@@ -1308,19 +1297,23 @@ class RandomWalk:
         while os.path.isfile(dump_name):
             dump_id += 1
             dump_name = self.histogram_pkl_dump(dump_id)
-        dump2pkl(self.histogram, dump_name)
+        dump2pkl(self.histogram, dump_name, compress=self.compress_restart)
         self.cur_tps = deepcopy(self.cur_tps)
         if self.num_saved_candidates is not None:
             self.saved_candidates = deepcopy(self.saved_candidates)
         self.histogram.clear()
         self.cur_tps = self.hist_checked_tps(self.cur_tps)
 
-    def histogram_pkl_dump(self, dump_id: int):
+    def histogram_file_dump(self, dump_id: int):
         """
         Returns name of the histogram dump file for a given dump_id.
         dump_id : int id of the dump
         """
-        return self.histogram_dump_file_prefix + str(dump_id) + ".pkl"
+        return (
+            self.histogram_dump_file_prefix
+            + str(dump_id)
+            + pkl_compress_ending[self.compress_restart]
+        )
 
 
 def merge_random_walks(*rw_list):

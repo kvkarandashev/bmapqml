@@ -88,45 +88,29 @@ def str_atom_corr(ncharge):
 
 # def str_atom_corr(ncharge):
 #    return canonical_atomtype(str_atom(ncharge))
+compress_fileopener = {True: bz2.BZ2File, False: open}
+pkl_compress_ending = {True: ".pkl.bz2", False: ".pkl"}
 
 
-def dump2pkl(obj, filename):
+def dump2pkl(obj, filename: str, compress: bool = False):
     """
     Dump an object to a pickle file.
     obj : object to be saved
     filename : name of the output file
+    compress : whether bz2 library is used for compressing the file.
     """
-    output_file = open(filename, "wb")
+    output_file = compress_fileopener[compress](filename, "wb")
     pickle.dump(obj, output_file)
     output_file.close()
 
 
-def loadpkl(filename):
+def loadpkl(filename: str, compress: bool = False):
     """
     Load an object from a pickle file.
+    filename : name of the imported file
+    compress : whether bz2 compression was used in creating the loaded file.
     """
-    input_file = open(filename, "rb")
-    obj = pickle.load(input_file)
-    input_file.close()
-    return obj
-
-
-def dump2tar(obj, filename):
-    """
-    Dump an object to a tar file.
-    obj : object to be saved
-    filename : name of the output file
-    """
-    output_file = bz2.BZ2File(filename, "wb")
-    pickle.dump(obj, output_file)
-    output_file.close()
-
-
-def loadtar(filename):
-    """
-    Load an object from a tar file.
-    """
-    input_file = bz2.BZ2File(filename, "rb")
+    input_file = compress_fileopener[compress](filename, "rb")
     obj = pickle.load(input_file)
     input_file.close()
     return obj

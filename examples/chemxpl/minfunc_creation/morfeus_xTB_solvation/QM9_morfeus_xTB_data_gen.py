@@ -37,6 +37,7 @@ def xyz_data_extract(xyz_name):
         ff_type=forcefield,
         remaining_rho=remaining_rho,
         quantities=[
+            "dipole",
             "energy",
             "HOMO_LUMO_gap",
             "solvation_energy",

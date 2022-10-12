@@ -14,7 +14,7 @@ np.random.seed(1)
 # bonds between two phosphorus atoms are forbidden.
 possible_elements = ["C", "P"]
 
-forbidden_bonds = [(7, 7)]
+forbidden_bonds = None  # [(15, 15)]
 
 max_nhatoms = 4
 
