@@ -5,7 +5,6 @@ from ..utils import (
     chemgraph_from_ncharges_coords,
 )
 from ...utils import (
-    NUCLEAR_CHARGE,
     checked_environ_val,
     repeated_dict,
     all_None_dict,
@@ -73,11 +72,12 @@ def morfeus_coord_info_from_tp(
         output["coordinates"] = all_coordinates
         output["rdkit_energy"] = rel_energies
         output["rdkit_degeneracies"] = conformers.get_degeneracies()
-        output["rdkit_Boltzmann"] = conformers.boltzmann_weights()
+        output["rdkit_Boltzmann"] = conformers.boltzmann_weights(
+            temperature=temperature
+        )
     else:
-        output["coordinates"] = coordinates
-        output["rdkit_energy"] = conformers[2][min_en_id]
-
+        output["coordinates"] = all_coordinates[min_en_id]
+        output["rdkit_energy"] = rel_energies[min_en_id]
     return output
 
 
@@ -103,7 +103,7 @@ from ...data import conversion_coefficient
 import os
 from ...utils import loadpkl, dump2pkl, weighted_array
 
-atom_energy_filename = os.path.dirname(__file__) + "/atomization_energies.pkl"
+atom_energy_filename = os.path.dirname(__file__) + "/atom_energies.pkl"
 
 if os.path.isfile(atom_energy_filename):
     atom_energies = loadpkl(atom_energy_filename)
@@ -121,16 +121,30 @@ def xTB_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
     return res.get_energy()
 
 
-def atom_energy_check(
-    ncharge, parametrization="gfn2-xtb", solvent=None, **dummy_kwargs
-):
+def gen_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
     check_tuple = (ncharge, parametrization, solvent)
     if check_tuple not in atom_energies:
         atom_energies[check_tuple] = xTB_atom_energy(
             ncharge, parametrization=parametrization, solvent=solvent
         )
         dump2pkl(atom_energies, atom_energy_filename)
-    return atom_energies[check_tuple]
+
+
+def gen_atom_energies(ncharges, parametrization="gfn2-xtb", solvent=None):
+    for ncharge in ncharges:
+        gen_atom_energy(ncharge, parametrization=parametrization, solvent=solvent)
+
+
+def atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None, **dummy_kwargs):
+    check_tuple = (ncharge, parametrization, solvent)
+    if check_tuple in atom_energies:
+        return atom_energies[check_tuple]
+    else:
+        raise Exception(
+            "Atom energy unavailable:",
+            check_tuple,
+            "; try running gen_atom_energy to add it to database.",
+        )
 
 
 verbosity_dict = {
@@ -206,7 +220,7 @@ def xTB_quants(
         quantities, "atomization_energy", "normalized_atomization_energy"
     ):
         atom_en_sum = sum(
-            atom_energy_check(nc, solvent=solvent, **other_xTB_singlepoint_res)
+            atom_energy(nc, solvent=solvent, **other_xTB_singlepoint_res)
             for nc in nuclear_charges
         )
         output["atomization_energy"] = output["energy"] - atom_en_sum
@@ -233,8 +247,10 @@ def cut_weights(bweights, remaining_rho=None):
         bweights_list.cutoff_minor_weights(remaining_rho=remaining_rho)
         for wi in bweights_list:
             weights[wi.entry_id] = wi.rho
-
     return weights
+
+
+num_eval_name = "num_evals"
 
 
 def morfeus_FF_xTB_code_quants_weighted(
@@ -262,15 +278,18 @@ def morfeus_FF_xTB_code_quants_weighted(
                 res = xTB_quants(
                     conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
                 )
-                if "normalized_atomization_energy" in quantities:
-                    res["normalized_atomization_energy"] = (
-                        res["atomization_energy"] / tp.egc.chemgraph.tot_ncovpairs()
-                    )
             except XTBException:
                 print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
                 return None
+            if "normalized_atomization_energy" in quantities:
+                res["normalized_atomization_energy"] = (
+                    res["atomization_energy"] / tp.egc.chemgraph.tot_ncovpairs()
+                )
             for quant in quantities:
-                output[quant] += weight * res[quant]
+                if quant == num_eval_name:
+                    output[quant] += 1.0
+                else:
+                    output[quant] += weight * res[quant]
     return output
 
 

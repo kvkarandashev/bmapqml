@@ -37,13 +37,14 @@ quantities = [
     "dipole",
     "atomization_energy",
     "normalized_atomization_energy",
+    "num_evals",
 ]
 tp = TrajectoryPoint(egc=egc)
 res_dict = morfeus_FF_xTB_code_quants(
     tp,
     num_conformers=num_conformers,
     num_attempts=num_attempts,
-    remaining_rho=0.95,
+    remaining_rho=0.9,
     quantities=quantities,
     solvent=solvent,
 )
