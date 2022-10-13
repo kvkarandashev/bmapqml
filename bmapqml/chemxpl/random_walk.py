@@ -1389,14 +1389,37 @@ def average_wait_number_from_traj_ids(traj_ids):
 
 
 # For temperature choice.
-def temperature_array(num_greedy_replicas, max_real_beta, real_beta_step=None):
+def gen_beta_array(num_greedy_replicas, max_real_beta, *args):
     output = [None for _ in range(num_greedy_replicas)]
-    if real_beta_step is None:
-        num_betas = 1
+    if len(args) == 0:
+        num_intervals = 1
     else:
-        num_betas = int(max_real_beta / real_beta_step - 0.05) + 1
-    cur_beta = max_real_beta
-    for _ in range(num_betas):
-        output.append(cur_beta)
-        cur_beta -= real_beta_step
+        if len(args) % 2 == 0:
+            raise Exception("Wrong gen_beta_array arguments")
+        num_intervals = (len(args) + 1) // 2
+    for interval_id in range(num_intervals):
+        if interval_id == 0:
+            cur_max_rb = max_real_beta
+        else:
+            cur_max_rb = args[interval_id * 2 - 1]
+        if interval_id == num_intervals - 1:
+            cur_min_rb = 0.0
+        else:
+            cur_min_rb = args[interval_id * 2 + 1]
+        if len(args) == 0:
+            num_frac_betas = 0
+        else:
+            cur_beta_delta = args[interval_id * 2]
+            num_frac_betas = max(
+                int(
+                    (float(cur_max_rb) - float(cur_min_rb)) / float(cur_beta_delta)
+                    - 0.01
+                ),
+                0,
+            )
+        added_beta = float(cur_max_rb)
+        output.append(added_beta)
+        for _ in range(num_frac_betas):
+            added_beta -= cur_beta_delta
+            output.append(added_beta)
     return output
