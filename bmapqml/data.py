@@ -27,6 +27,8 @@ conversion_coefficient = {
     "Angstrom_Bohr": 1.8897259886,
 }
 
+room_T = 298.15
+
 NUCLEAR_CHARGE = {
     "H": 1,
     "He": 2,

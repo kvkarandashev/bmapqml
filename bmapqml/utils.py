@@ -22,15 +22,18 @@
 
 
 # Miscellaneous functions and classes used throughout the code.
-import pickle, subprocess, os
+import pickle, subprocess, os, copy
 import bz2
 from joblib import Parallel, delayed
 
 from .data import NUCLEAR_CHARGE
 import numpy as np
 
-# For resizing numpy arrays:
+# Some auxiliary functions.
 def np_resize(np_arr, new_size):
+    """
+    Expand or cut a NumPy array.
+    """
     new_arr = np_arr
     for dim_id, new_dim in enumerate(new_size):
         cur_dim = new_arr.shape[dim_id]
@@ -57,6 +60,20 @@ def any_element_in_list(list_in, *els):
     return False
 
 
+def repeated_dict(labels, repeated_el, copy_needed=False):
+    output = {}
+    for l in labels:
+        if copy_needed:
+            output[l] = copy.deepcopy(repeated_el)
+        else:
+            output[l] = repeated_el
+    return output
+
+
+def all_None_dict(labels):
+    return repeated_dict(labels, None)
+
+
 ELEMENTS = None
 
 
@@ -71,45 +88,29 @@ def str_atom_corr(ncharge):
 
 # def str_atom_corr(ncharge):
 #    return canonical_atomtype(str_atom(ncharge))
+compress_fileopener = {True: bz2.BZ2File, False: open}
+pkl_compress_ending = {True: ".pkl.bz2", False: ".pkl"}
 
 
-def dump2pkl(obj, filename):
+def dump2pkl(obj, filename: str, compress: bool = False):
     """
     Dump an object to a pickle file.
     obj : object to be saved
     filename : name of the output file
+    compress : whether bz2 library is used for compressing the file.
     """
-    output_file = open(filename, "wb")
+    output_file = compress_fileopener[compress](filename, "wb")
     pickle.dump(obj, output_file)
     output_file.close()
 
 
-def loadpkl(filename):
+def loadpkl(filename: str, compress: bool = False):
     """
     Load an object from a pickle file.
+    filename : name of the imported file
+    compress : whether bz2 compression was used in creating the loaded file.
     """
-    input_file = open(filename, "rb")
-    obj = pickle.load(input_file)
-    input_file.close()
-    return obj
-
-
-def dump2tar(obj, filename):
-    """
-    Dump an object to a tar file.
-    obj : object to be saved
-    filename : name of the output file
-    """
-    output_file = bz2.BZ2File(filename, "wb")
-    pickle.dump(obj, output_file)
-    output_file.close()
-
-
-def loadtar(filename):
-    """
-    Load an object from a tar file.
-    """
-    input_file = bz2.BZ2File(filename, "rb")
+    input_file = compress_fileopener[compress](filename, "rb")
     obj = pickle.load(input_file)
     input_file.close()
     return obj
@@ -158,7 +159,7 @@ def write_compound_to_xyz_file(compound, xyz_file_name):
     write_xyz_file(compound.coordinates, xyz_file_name, elements=compound.atomtypes)
 
 
-def xyz_string(coordinates, elements=None, nuclear_charges=None):
+def xyz_string(coordinates, elements=None, nuclear_charges=None, extra_string=""):
     """
     Create an xyz-formatted string from coordinates and elements or nuclear charges.
     coordinates : coordinate array
@@ -167,7 +168,7 @@ def xyz_string(coordinates, elements=None, nuclear_charges=None):
     """
     if elements is None:
         elements = [str_atom_corr(charge) for charge in nuclear_charges]
-    output = str(len(coordinates)) + "\n"
+    output = str(len(coordinates)) + "\n" + extra_string
     for atom_coords, element in zip(coordinates, elements):
         output += (
             "\n"
@@ -178,10 +179,17 @@ def xyz_string(coordinates, elements=None, nuclear_charges=None):
     return output
 
 
-def write_xyz_file(coordinates, xyz_file_name, elements=None, nuclear_charges=None):
+def write_xyz_file(
+    coordinates, xyz_file_name, elements=None, nuclear_charges=None, extra_string=""
+):
     xyz_file = open(xyz_file_name, "w")
     xyz_file.write(
-        xyz_string(coordinates, elements=elements, nuclear_charges=nuclear_charges)
+        xyz_string(
+            coordinates,
+            elements=elements,
+            nuclear_charges=nuclear_charges,
+            extra_string=extra_string,
+        )
     )
     xyz_file.close()
 
@@ -460,3 +468,38 @@ def safe_array_func_eval(
                     failure_placeholder=failure_placeholder,
                 )
             return output
+
+
+class weighted_array(list):
+    def normalize_rhos(self, normalization_constant=None):
+        if normalization_constant is None:
+            normalization_constant = sum(el.rho for el in self)
+        for i in range(len(self)):
+            self[i].rho /= normalization_constant
+
+    def sort_rhos(self):
+        self.sort(key=lambda x: x.rho, reverse=True)
+
+    def normalize_sort_rhos(self):
+        self.normalize_rhos()
+        self.sort_rhos()
+
+    def cutoff_minor_weights(self, remaining_rho=None):
+        if (remaining_rho is not None) and (len(self) > 1):
+            ignored_rhos = 0.0
+            for remaining_length in range(len(self), 0, -1):
+                upper_cutoff = self[remaining_length - 1].rho
+                cut_rho = upper_cutoff * remaining_length + ignored_rhos
+                if cut_rho > (1.0 - remaining_rho):
+                    density_cut = (
+                        1.0 - remaining_rho - ignored_rhos
+                    ) / remaining_length
+                    break
+                else:
+                    ignored_rhos += upper_cutoff
+            del self[remaining_length:]
+            for el_id in range(remaining_length):
+                self[el_id].rho = max(
+                    0.0, self[el_id].rho - density_cut
+                )  # max was introduced in case there is some weird numerical noise.
+            self.normalize_rhos()

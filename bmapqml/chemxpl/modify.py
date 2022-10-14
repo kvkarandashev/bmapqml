@@ -622,6 +622,22 @@ def randomized_cross_coupling(
     return new_cg_pair, -np.log(tot_choice_prob_ratio)
 
 
+def no_forbidden_bonds(egc: ExtGraphCompound, forbidden_bonds: None or list = None):
+    """
+    Check that an ExtGraphCompound object has no covalent bonds whose nuclear charge tuple is inside forbidden_bonds.
+    egc : checked ExtGraphCompound object
+    forbidden_bonds : list of sorted nuclear charge tuples.
+    """
+    if forbidden_bonds is not None:
+        for bond_tuple in egc.chemgraph.bond_orders.keys():
+            nc_tuple = sorted_tuple(
+                *[egc.chemgraph.hatoms[i].ncharge for i in bond_tuple]
+            )
+            if nc_tuple in forbidden_bonds:
+                return False
+    return True
+
+
 def egc_valid_wrt_change_params(
     egc,
     nhatoms_range=None,
@@ -635,13 +651,8 @@ def egc_valid_wrt_change_params(
     nhatoms_range : range of possible numbers of heavy atoms
     forbidden_bonds : ordered tuples of nuclear charges corresponding to elements that are forbidden to have bonds.
     """
-    if forbidden_bonds is not None:
-        for bond_tuple in egc.chemgraph.bond_orders.keys():
-            nc_tuple = sorted_tuple(
-                *[egc.chemgraph.hatoms[i].ncharge for i in bond_tuple]
-            )
-            if nc_tuple in forbidden_bonds:
-                return False
+    if not no_forbidden_bonds(egc, forbidden_bonds=forbidden_bonds):
+        return False
     if nhatoms_range is not None:
         nhas = egc.chemgraph.nhatoms()
         if (nhas < nhatoms_range[0]) or (nhas > nhatoms_range[1]):

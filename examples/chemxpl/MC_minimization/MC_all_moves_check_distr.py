@@ -14,7 +14,7 @@ np.random.seed(1)
 # bonds between two phosphorus atoms are forbidden.
 possible_elements = ["C", "P"]
 
-forbidden_bonds = [(7, 7)]
+forbidden_bonds = None  # [(15, 15)]
 
 max_nhatoms = 4
 
@@ -59,8 +59,8 @@ init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(len(be
 # Create objects that runs the simulation.
 
 rw = RandomWalk(
-    bias_coeff=bias_coeff,
-    vbeta_bias_coeff=vbeta_bias_coeff,
+    bias_coeff=None,
+    vbeta_bias_coeff=None,
     randomized_change_params=randomized_change_params,
     betas=betas,
     min_function=min_func,

@@ -118,24 +118,6 @@ def list2colors(obj_list):
     return colors
 
 
-# To auxiliary "augmented" gt functions helpful for defining sorting inside a list.
-def triple_gt(obj1, obj2):
-    if obj1 == obj2:
-        return None
-    else:
-        return bool(
-            (obj1 > obj2)
-        )  # To make sure it's bool and not, for example, numpy.bool_.
-
-
-def triple_gt_witer(obj1, obj2):
-    for i1, i2 in zip(obj1.comparison_iterator(), obj2.comparison_iterator()):
-        output = triple_gt(i1, i2)
-        if output is not None:
-            return output
-    return None
-
-
 # Auxiliary class mainly used to keep valences in check.
 class HeavyAtom:
     def __init__(
@@ -148,6 +130,10 @@ class HeavyAtom:
             )
         self.valence = valence
         self.nhydrogens = nhydrogens
+        self.changed()
+
+    def changed(self):
+        self.comparison_list = None
 
     # Valence-related.
     def avail_val_list(self):
@@ -207,26 +193,34 @@ class HeavyAtom:
             return val_list
 
     # Procedures for ordering.
-    def comparison_iterator(self):
-        if self.ncharge == 0:
-            s = -1
-            p = -1
-            per = -1
-        else:
-            s = s_int[self.ncharge]
-            p = p_int[self.ncharge]
-            per = period_int[self.ncharge]
+    def get_comparison_list(self):
+        if self.comparison_list is None:
+            if self.ncharge == 0:
+                s = -1
+                p = -1
+                per = -1
+            else:
+                s = s_int[self.ncharge]
+                p = p_int[self.ncharge]
+                per = period_int[self.ncharge]
+            self.comparison_list = [
+                self.valence - self.nhydrogens,
+                s,
+                p,
+                per,
+                self.valence_val_id(),
+            ]
 
-        return iter([self.valence - self.nhydrogens, s, p, per, self.valence_val_id()])
+        return self.comparison_list
 
     def __lt__(self, ha2):
-        return triple_gt_witer(self, ha2) is False
+        return self.get_comparison_list() < ha2.get_comparison_list()
 
     def __gt__(self, ha2):
-        return triple_gt_witer(self, ha2) is True
+        return self.get_comparison_list() > ha2.get_comparison_list()
 
     def __eq__(self, ha2):
-        return triple_gt_witer(self, ha2) is None
+        return self.get_comparison_list() == ha2.get_comparison_list()
 
     # Procedures for printing.
     def __str__(self):
@@ -643,6 +637,10 @@ class ChemGraph:
     def tot_nhydrogens(self):
         return sum([hatom.nhydrogens for hatom in self.hatoms])
 
+    # Total number of binding electron pairs.
+    def tot_ncovpairs(self):
+        return self.tot_nhydrogens() + sum(self.bond_orders.values())
+
     # Dirty inheritance:
     def neighbors(self, hatom_id):
         return self.graph.neighbors(hatom_id)
@@ -675,6 +673,7 @@ class ChemGraph:
 
     def change_hydrogen_number(self, atom_id, hydrogen_number_change):
         self.hatoms[atom_id].nhydrogens += hydrogen_number_change
+        self.hatoms[atom_id].changed()
         if self.hatoms[atom_id].nhydrogens < 0:
             raise InvalidChange
 
@@ -1028,6 +1027,7 @@ class ChemGraph:
             modified_atom_id, new_valence - self.hatoms[modified_atom_id].valence
         )
         self.hatoms[modified_atom_id].valence = new_valence
+
         self.changed()
 
     # Output properties that include hydrogens.
@@ -1128,19 +1128,17 @@ class ChemGraph:
 
     def get_comparison_list(self):
         if self.comparison_list is None:
-            iterators = [iter([self.nhatoms()])]
             self.init_canonical_permutation()
-            iterators.append(
-                [self.hatoms[hatom_id] for hatom_id in self.inv_canonical_permutation]
-            )
-            for hatom_id in self.inv_canonical_permutation:
-                neighbor_permuted_list = [
-                    self.canonical_permutation[neigh_id]
-                    for neigh_id in self.neighbors(hatom_id)
-                ]
-                iterators.append(iter([len(neighbor_permuted_list)]))
-                iterators.append(iter(sorted(neighbor_permuted_list)))
-            self.comparison_list = list(itertools.chain(*iterators))
+            self.comparison_list = []
+            for perm_hatom_id, hatom_id in enumerate(self.inv_canonical_permutation):
+                self.comparison_list += self.hatoms[hatom_id].get_comparison_list()
+                perm_neighs = []
+                for neigh_id in self.neighbors(hatom_id):
+                    perm_id = self.canonical_permutation[neigh_id]
+                    if perm_id > perm_hatom_id:
+                        perm_neighs.append(perm_id)
+                self.comparison_list += sorted(perm_neighs)
+                self.comparison_list.append(len(perm_neighs))
         return self.comparison_list
 
     def copy_extra_data_to(self, other_cg, linear_storage=False):

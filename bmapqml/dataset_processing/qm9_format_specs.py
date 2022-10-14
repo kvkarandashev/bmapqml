@@ -1,8 +1,12 @@
 # IMPORTANT: Note that for the QM9 total potential energy results what was actually predicted was internal energy at 0K with
 # total potential energy used as baseline in the Delta-ML scheme.
 
-from ..orb_ml.oml_compound import OML_compound
 from ..utils import checked_input_readlines, xyz_file_stochiometry
+
+try:
+    from ..orb_ml.oml_compound import OML_compound
+except:
+    pass
 
 try:
     from ..chemxpl.utils import SMILES_to_egc, xyz2mol_extgraph, RdKitFailure

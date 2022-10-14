@@ -28,7 +28,7 @@ do
     if [[ \$f == *.py ]]
     then
         pip_package_check black Python
-        if ! \$(black \$f --check -q)
+        if ! \$(python \$(which black) \$f --check -q)
         then
             echo "Reformatting \$f."
             black \$f

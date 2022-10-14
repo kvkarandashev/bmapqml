@@ -18,13 +18,14 @@ from .modify import (
     egc_valid_wrt_change_params,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl, loadpkl, dump2tar, loadtar
+from ..utils import dump2pkl, loadpkl, pkl_compress_ending
 from .valence_treatment import sorted_tuple, connection_forbidden, ChemGraph
 from .periodic import element_name
 import random, os
 from copy import deepcopy
 import numpy as np
 
+# To make overflows during acceptance step are handled correctly.
 np.seterr(all="raise")
 
 
@@ -348,9 +349,14 @@ class TrajectoryPoint:
         return str(self)
 
 
-# Auxiliary class for more convenient maintenance of candidate compound list.
 class CandidateCompound:
-    def __init__(self, tp, func_val):
+    def __init__(self, tp: TrajectoryPoint, func_val: float):
+        """
+        Auxiliary class for more convenient maintenance of candidate compound list.
+        NOTE: The comparison operators are not strictly transitive (?), but work well enough for maintaining a candidate list.
+        tp : Trajectory point object.
+        func_val : value of the minimized function.
+        """
         self.tp = tp
         self.func_val = func_val
 
@@ -388,15 +394,6 @@ def tidy_forbidden_bonds(forbidden_bonds):
     for fb in forbidden_bonds:
         output.add(sorted_tuple(*fb))
     return output
-
-
-def has_forbidden_bonds(egc, forbidden_bonds=None):
-    adjmat = egc.true_adjmat()
-    for i1, nc1 in enumerate(egc.nuclear_charges[: egc.num_heavy_atoms()]):
-        for i2, nc2 in enumerate(egc.nuclear_charges[:i1]):
-            if adjmat[i1, i2] != 0:
-                if connection_forbidden(nc1, nc2, forbidden_bonds):
-                    return True
 
 
 mol_egc_converter = {"rdkit": (rdkit_to_egc, egc_to_rdkit)}
@@ -706,6 +703,10 @@ class RandomWalk:
                         tp_index = self.histogram.index(new_tp)
                         new_tp.copy_extra_data_to(self.histogram[tp_index])
                     else:
+                        new_tp.first_MC_step_encounter = self.MC_step_counter
+                        new_tp.first_global_MC_step_encounter = (
+                            self.global_MC_step_counter
+                        )
                         self.histogram.add(new_tp)
 
         if self.num_saved_candidates is not None:
@@ -1250,6 +1251,8 @@ class RandomWalk:
             "global_steps_since_last": self.global_steps_since_last,
             "numpy_rng_state": np.random.get_state(),
             "random_rng_state": random.getstate(),
+            "min_function_name": self.min_function_name,
+            "betas": self.betas,
         }
         if self.keep_histogram:
             saved_data = {**saved_data, "histogram": self.histogram}
@@ -1257,10 +1260,7 @@ class RandomWalk:
             saved_data = {**saved_data, "saved_candidates": self.saved_candidates}
         if tarball is None:
             tarball = self.compress_restart
-        if tarball:
-            dump2tar(saved_data, restart_file)
-        else:
-            dump2pkl(saved_data, restart_file)
+        dump2pkl(saved_data, restart_file, compress=tarball)
 
     def restart_from(self, restart_file: str or None = None):
         """
@@ -1269,7 +1269,7 @@ class RandomWalk:
         """
         if restart_file is None:
             restart_file = self.restart_file
-        recovered_data = loadpkl(restart_file)
+        recovered_data = loadpkl(restart_file, compress=self.compress_restart)
         self.cur_tps = recovered_data["cur_tps"]
         self.MC_step_counter = recovered_data["MC_step_counter"]
         self.global_MC_step_counter = recovered_data["global_MC_step_counter"]
@@ -1288,7 +1288,7 @@ class RandomWalk:
         np.random.set_state(recovered_data["numpy_rng_state"])
         random.setstate(recovered_data["random_rng_state"])
 
-    def histogram2pkl(self):
+    def histogram2file(self):
         """
         Dump a histogram to a dump file with a yet unoccupied name.
         """
@@ -1297,19 +1297,23 @@ class RandomWalk:
         while os.path.isfile(dump_name):
             dump_id += 1
             dump_name = self.histogram_pkl_dump(dump_id)
-        dump2pkl(self.histogram, dump_name)
+        dump2pkl(self.histogram, dump_name, compress=self.compress_restart)
         self.cur_tps = deepcopy(self.cur_tps)
         if self.num_saved_candidates is not None:
             self.saved_candidates = deepcopy(self.saved_candidates)
         self.histogram.clear()
         self.cur_tps = self.hist_checked_tps(self.cur_tps)
 
-    def histogram_pkl_dump(self, dump_id: int):
+    def histogram_file_dump(self, dump_id: int):
         """
         Returns name of the histogram dump file for a given dump_id.
         dump_id : int id of the dump
         """
-        return self.histogram_dump_file_prefix + str(dump_id) + ".pkl"
+        return (
+            self.histogram_dump_file_prefix
+            + str(dump_id)
+            + pkl_compress_ending[self.compress_restart]
+        )
 
 
 def merge_random_walks(*rw_list):
@@ -1382,3 +1386,40 @@ def average_wait_number_from_traj_ids(traj_ids):
         prev_ids = cur_ids
 
     return output / traj_ids.shape[0]
+
+
+# For temperature choice.
+def gen_beta_array(num_greedy_replicas, max_real_beta, *args):
+    output = [None for _ in range(num_greedy_replicas)]
+    if len(args) == 0:
+        num_intervals = 1
+    else:
+        if len(args) % 2 == 0:
+            raise Exception("Wrong gen_beta_array arguments")
+        num_intervals = (len(args) + 1) // 2
+    for interval_id in range(num_intervals):
+        if interval_id == 0:
+            cur_max_rb = max_real_beta
+        else:
+            cur_max_rb = args[interval_id * 2 - 1]
+        if interval_id == num_intervals - 1:
+            cur_min_rb = 0.0
+        else:
+            cur_min_rb = args[interval_id * 2 + 1]
+        if len(args) == 0:
+            num_frac_betas = 0
+        else:
+            cur_beta_delta = args[interval_id * 2]
+            num_frac_betas = max(
+                int(
+                    (float(cur_max_rb) - float(cur_min_rb)) / float(cur_beta_delta)
+                    - 0.01
+                ),
+                0,
+            )
+        added_beta = float(cur_max_rb)
+        output.append(added_beta)
+        for _ in range(num_frac_betas):
+            added_beta -= cur_beta_delta
+            output.append(added_beta)
+    return output
