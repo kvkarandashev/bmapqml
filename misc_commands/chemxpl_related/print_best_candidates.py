@@ -1,4 +1,8 @@
-from bmapqml.chemxpl.utils import write_egc2xyz, egc_with_coords, FFInconsistent
+from bmapqml.chemxpl.utils import FFInconsistent
+from bmapqml.utils import write_xyz_file
+from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
+    morfeus_coord_info_from_tp,
+)
 from bmapqml.chemxpl.random_walk import CandidateCompound
 from bmapqml.utils import loadpkl
 from sortedcontainers import SortedList
@@ -31,11 +35,17 @@ for entry in cur_data["histogram"]:
 for cand_id, cand in enumerate(best_candidates):
     xyz_name = "best_candidate_" + str(cand_id) + ".xyz"
     extra_string = ""
-    for val_name, val in cand.tp.calculated_data.items():
+    tp = cand.tp
+    for val_name, val in tp.calculated_data.items():
         if isinstance(val, float):
             extra_string += val_name + "=" + str(val) + " "
     try:
-        egc_wcoords = egc_with_coords(cand.tp.egc)
-        write_egc2xyz(egc_wcoords, xyz_name, extra_string=extra_string[:-1])
+        coord_info = morfeus_coord_info_from_tp(tp)
+        write_xyz_file(
+            coord_info["coordinates"],
+            xyz_name,
+            nuclear_charges=coord_info["nuclear_charges"],
+            extra_string=extra_string[:-1],
+        )
     except FFInconsistent:
-        print(cand_id, cand.tp, cand.func_val)
+        print(cand_id, tp, cand.func_val)

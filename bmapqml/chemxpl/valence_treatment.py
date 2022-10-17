@@ -918,6 +918,7 @@ class ChemGraph:
         self, atom1, atom2, bond_order_change, resonance_structure_id=0
     ):
         if bond_order_change != 0:
+            # TODO a way to avoid calling len here?
             if len(self.aa_all_bond_orders(atom1, atom2)) != 1:
                 # Make sure that the correct resonance structure is used as initial one.
                 resonance_structure_region = self.resonance_structure_map[
@@ -934,7 +935,6 @@ class ChemGraph:
 
             self.changed()
 
-    #
     def adjust_resonance_valences(
         self, resonance_structure_region, resonance_structure_id
     ):
@@ -977,6 +977,11 @@ class ChemGraph:
         self.bond_orders = new_bond_orders
         del self.hatoms[atom_id]
         self.changed()
+
+    def remove_heavy_atoms(self, atom_ids):
+        sorted_atom_ids = sorted(atom_ids, reverse=True)
+        for atom_id in sorted_atom_ids:
+            self.remove_heavy_atom(atom_id)
 
     def add_heavy_atom_chain(
         self,

@@ -1,5 +1,7 @@
 # TODO For forward and backward probabilities, comment more on where different signs come from.
 # TODO 1. Account for statistical noise of input data. 2. Many theory levels?
+# TODO Somehow unify all instances where simulation histogram is modified.
+# !!!TODO!!! check that delete_temp_data functions properly after the recent changes.
 
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
@@ -19,7 +21,7 @@ from .modify import (
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending
-from .valence_treatment import sorted_tuple, connection_forbidden, ChemGraph
+from .valence_treatment import sorted_tuple, ChemGraph
 from .periodic import element_name
 import random, os
 from copy import deepcopy
@@ -172,6 +174,12 @@ class TrajectoryPoint:
         self.first_MC_step_encounter = None
         self.first_global_MC_step_encounter = None
 
+        self.first_MC_step_acceptance = None
+        self.first_global_MC_step_acceptance = None
+
+        self.first_encounter_replica = None
+        self.first_acceptance_replica = None
+
         # Information for keeping detailed balance.
         self.bond_order_change_possibilities = None
         self.nuclear_charge_change_possibilities = None
@@ -301,12 +309,15 @@ class TrajectoryPoint:
         else:
             return self.num_visits[replica_id]
 
-    def copy_extra_data_to(self, other_tp, linear_storage=False):
+    def copy_extra_data_to(self, other_tp, linear_storage=False, omit_data=None):
         """
         Copy all calculated data from self to other_tp.
         """
         for quant_name in self.calculated_data:
             if quant_name not in other_tp.calculated_data:
+                if omit_data is not None:
+                    if quant_name in omit_data:
+                        continue
                 other_tp.calculated_data[quant_name] = self.calculated_data[quant_name]
         # Dealing with making sure the order is preserved is too complicated.
         # if self.bond_order_change_possibilities is not None:
@@ -665,7 +676,7 @@ class RandomWalk:
         if init_egcs is None:
             return
         self.cur_tps = []
-        for egc in init_egcs:
+        for replica_id, egc in enumerate(init_egcs):
             if egc_valid_wrt_change_params(egc, **self.used_randomized_change_params):
                 added_tp = TrajectoryPoint(egc=egc)
             else:
@@ -676,7 +687,7 @@ class RandomWalk:
             added_tp = self.hist_checked_tps([added_tp])[0]
             if self.min_function is not None:
                 # Initialize the minimized function's value in the new trajectory point and check that it is not None
-                cur_min_func_val = self.eval_min_func(added_tp)
+                cur_min_func_val = self.eval_min_func(added_tp, replica_id)
                 if cur_min_func_val is None:
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
@@ -701,13 +712,11 @@ class RandomWalk:
                     tp_in_histogram = new_tp in self.histogram
                     if tp_in_histogram:
                         tp_index = self.histogram.index(new_tp)
-                        new_tp.copy_extra_data_to(self.histogram[tp_index])
-                    else:
-                        new_tp.first_MC_step_encounter = self.MC_step_counter
-                        new_tp.first_global_MC_step_encounter = (
-                            self.global_MC_step_counter
+                        new_tp.copy_extra_data_to(
+                            self.histogram[tp_index], omit_data=self.delete_temp_data
                         )
-                        self.histogram.add(new_tp)
+                    else:
+                        self.add_to_histogram(new_tp, replica_id)
 
         if self.num_saved_candidates is not None:
             self.update_saved_candidates()
@@ -772,7 +781,7 @@ class RandomWalk:
         """
         tot_pot = init_bias
         if self.min_function is not None:
-            min_func_val = self.eval_min_func(tp)
+            min_func_val = self.eval_min_func(tp, replica_id)
             if min_func_val is None:
                 return None
             if self.betas[replica_id] is not None:
@@ -1047,7 +1056,7 @@ class RandomWalk:
         return self.converted_current_egcs(mol_format=mol_format)
 
     # Either evaluate minimized function or look it up.
-    def eval_min_func(self, tp):
+    def eval_min_func(self, tp, replica_id):
         output = tp.calc_or_lookup(self.min_function_dict)[self.min_function_name]
 
         # If we are keeping track of the histogram make sure all calculated data is saved there.
@@ -1056,9 +1065,11 @@ class RandomWalk:
             tp_in_histogram = tp in self.histogram
             if tp_in_histogram:
                 tp_index = self.histogram.index(tp)
-                tp.copy_extra_data_to(self.histogram[tp_index])
+                tp.copy_extra_data_to(
+                    self.histogram[tp_index], omit_data=self.delete_temp_data
+                )
             else:
-                self.histogram.add(deepcopy(tp))
+                self.add_to_histogram(tp, replica_id)
 
         if self.delete_temp_data is not None:
             for dtd_identifier in self.delete_temp_data:
@@ -1100,17 +1111,33 @@ class RandomWalk:
                 cur_visit_num = self.histogram[tp_index].num_visits[replica_id]
             return cur_visit_num * bias_coeff
 
+    def add_to_histogram(self, trajectory_point_in, replica_id):
+        trajectory_point_in.first_MC_step_encounter = self.global_MC_step_counter
+        trajectory_point_in.first_global_MC_step_encounter = self.MC_step_counter
+        trajectory_point_in.first_encounter_replica = replica_id
+
+        added_tp = deepcopy(trajectory_point_in)
+
+        if self.delete_temp_data is not None:
+            for del_entry in self.delete_temp_data:
+                if del_entry in added_tp.calculated_data:
+                    del added_tp.calculated_data[del_entry]
+
+        self.histogram.add(added_tp)
+
     def update_histogram(self, replica_ids):
         if self.keep_histogram:
             for replica_id in replica_ids:
                 cur_tp = self.cur_tps[replica_id]
                 tp_in_hist = cur_tp in self.histogram
                 if not tp_in_hist:
-                    self.histogram.add(deepcopy(cur_tp))
+                    self.add_to_histogram(cur_tp)
                 cur_tp_index = self.histogram.index(cur_tp)
                 if tp_in_hist:
                     cur_tp.copy_extra_data_to(
-                        self.histogram[cur_tp_index], linear_storage=self.linear_storage
+                        self.histogram[cur_tp_index],
+                        linear_storage=self.linear_storage,
+                        omit_data=self.delete_temp_data,
                     )
                 else:
                     if self.linear_storage:
@@ -1119,15 +1146,14 @@ class RandomWalk:
                             cur_tp_index
                         ].egc.chemgraph.pair_equivalence_matrix = None
 
-                if self.histogram[cur_tp_index].first_MC_step_encounter is None:
+                if self.histogram[cur_tp_index].first_MC_step_acceptance is None:
                     self.histogram[
                         cur_tp_index
-                    ].first_MC_step_encounter = self.MC_step_counter
-
-                if self.histogram[cur_tp_index].first_global_MC_step_encounter is None:
+                    ].first_MC_step_acceptance = self.MC_step_counter
                     self.histogram[
                         cur_tp_index
-                    ].first_global_MC_step_encounter = self.global_MC_step_counter
+                    ].first_global_MC_step_acceptance = self.global_MC_step_counter
+                    self.histogram[cur_tp_index].first_acceptance_replica = replica_id
 
                 if self.keep_full_trajectory:
                     if self.histogram[cur_tp_index].visit_step_ids is None:

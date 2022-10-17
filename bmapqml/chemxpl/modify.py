@@ -230,9 +230,9 @@ def bond_change_possibilities(
 def valence_change_possibilities(egc, exclude_equivalent=True):
     output = {}
     for ha_id, ha in enumerate(egc.chemgraph.hatoms):
-        cur_valence = ha.valence
         valence_list = ha.avail_val_list()
         if isinstance(valence_list, tuple):
+            cur_valence = ha.valence
             cur_val_id = valence_list.index(cur_valence)
             available_valences = list(valence_list[cur_val_id + 1 :])
             for potential_valence in valence_list[:cur_val_id]:
@@ -243,6 +243,122 @@ def valence_change_possibilities(egc, exclude_equivalent=True):
                     if atom_equivalent_to_list_member(egc, ha_id, output):
                         continue
                 output[ha_id] = available_valences
+    return output
+
+
+def valence_change_add_atom_possibilities(
+    egc,
+    chain_starting_element,
+    forbidden_bonds=None,
+    exclude_equivalent=True,
+    nhatoms_range=None,
+    added_bond_orders=[1, 2],
+    **other_kwargs
+):
+
+    if nhatoms_range is not None:
+        max_added_nhatoms = nhatoms_range[-1] - egc.num_heavy_atoms()
+        if max_added_nhatoms < 0:
+            raise Exception
+
+    max_added_valence = default_valence(chain_starting_element)
+    output = {}
+    if exclude_equivalent:
+        found_atoms = []
+    for ha_id, ha in enumerate(egc.chemgraph.hatoms):
+        valence_list = ha.avail_val_list()
+        if isinstance(valence_list, tuple):
+            if connection_forbidden(
+                ha.ncharge, chain_starting_element, forbidden_bonds
+            ):
+                continue
+            cur_valence = ha.valence
+            if cur_valence == valence_list[-1]:
+                continue
+            val_diff = valence_list[valence_list.index(cur_valence) + 1] - cur_valence
+            if exclude_equivalent:
+                if atom_equivalent_to_list_member(egc, ha_id, found_atoms):
+                    continue
+            for added_bond_order in added_bond_orders:
+                if added_bond_order > max_added_valence:
+                    continue
+                if val_diff % added_bond_order != 0:
+                    continue
+                added_nhatoms = val_diff // added_bond_order
+                if (nhatoms_range is not None) and (added_nhatoms > max_added_nhatoms):
+                    continue
+                if ha_id not in output:
+                    output[ha_id] = []
+                    if exclude_equivalent:
+                        found_atoms.append(ha_id)
+                output[ha_id].append(added_bond_order)
+    return output
+
+
+def valence_change_remove_atom_possibilities(
+    egc,
+    removed_atom_type,
+    exclude_equivalent=True,
+    nhatoms_range=None,
+    added_bond_orders=[1],
+    **other_kwargs
+):
+
+    if nhatoms_range is not None:
+        max_removed_nhatoms = egc.num_heavy_atoms() - nhatoms_range[0]
+        if max_removed_nhatoms < 0:
+            raise Exception()
+
+    removed_atom_ncharge = int_atom_checked(removed_atom_type)
+
+    max_removed_valence = default_valence(removed_atom_type)
+    output = {}
+    if exclude_equivalent:
+        found_atoms = []
+
+    cg = egc.chemgraph
+
+    for ha_id, ha in enumerate(egc.chemgraph.hatoms):
+        valence_list = ha.avail_val_list()
+        if isinstance(valence_list, tuple):
+            cur_valence = ha.valence
+            if cur_valence == valence_list[0]:
+                continue
+            val_diff = cur_valence - valence_list[valence_list.index(cur_valence) - 1]
+            if exclude_equivalent:
+                if atom_equivalent_to_list_member(egc, ha_id, found_atoms):
+                    continue
+            for added_bond_order in added_bond_orders:
+                if added_bond_order > max_removed_valence:
+                    continue
+                if val_diff % added_bond_order != 0:
+                    continue
+                removed_nhatoms = val_diff // added_bond_order
+                if (nhatoms_range is not None) and (
+                    removed_nhatoms > max_removed_nhatoms
+                ):
+                    continue
+                for neigh in cg.neighbors(ha_id):
+                    if (
+                        cg.bond_order(ha_id, neigh) != added_bond_order
+                    ):  # TODO better way to rewrite?
+                        continue
+                    if cg.hatoms[neigh].ncharge != removed_atom_ncharge:
+                        continue
+                    if (
+                        len(cg.neighbors(neigh)) != 1
+                    ):  # TODO make nneigh a thing? Check igraph routines?
+                        continue
+                    removed_atoms -= 1
+                    if removed_atoms == 0:
+                        break
+                if removed_nhatoms != 0:
+                    continue
+                if ha_id not in output:
+                    output[ha_id] = []
+                    if exclude_equivalent:
+                        found_atoms.append(ha_id)
+                output[ha_id].append(added_bond_order)
     return output
 
 
@@ -289,6 +405,58 @@ def change_bond_order(
 def change_valence(egc, modified_atom_id, new_valence):
     new_chemgraph = deepcopy(egc.chemgraph)
     new_chemgraph.change_valence(modified_atom_id, new_valence)
+    return ExtGraphCompound(chemgraph=new_chemgraph)
+
+
+def change_valence_add_atom(egc, modified_atom_id, new_atom_charge, new_bo):
+    new_chemgraph = deepcopy(egc.chempgraph)
+    mod_hatom = new_chemgraph.hatoms[modified_atom_id]
+    cur_mod_valence_val = mod_hatom.valence
+    cur_mod_valence_val_id = mod_hatom.valence_val_id()
+    new_mod_valence_val = mod_hatom.avail_val_list()[cur_mod_valence_val_id + 1]
+    val_diff = new_mod_valence_val - cur_mod_valence_val
+    if val_diff % new_bo != 0:
+        raise Exception()
+    num_removed = val_diff // new_bo
+    new_chemgraph.change_valence(modified_atom_id, new_mod_valence_val)
+    for _ in range(num_removed):
+        new_chemgraph.add_heavy_atom_chain(
+            modified_atom_id, [new_atom_charge], chain_bond_orders=[new_bo]
+        )
+    return ExtGraphCompound(chemgraph=new_chemgraph)
+
+
+def change_valence_remove_atom(egc, modified_atom_id, removed_atom_charge, removed_bo):
+    new_chemgraph = deepcopy(egc.chempgraph)
+    mod_hatom = new_chemgraph.hatoms[modified_atom_id]
+    cur_mod_valence_val_id = mod_hatom.valence_val_id()
+    cur_mod_valence = mod_hatom.valence
+    new_mod_valence_val = mod_hatom.avail_val_list()[cur_mod_valence_val_id - 1]
+    val_diff = cur_mod_valence - new_mod_valence_val
+    if val_diff % removed_bo != 0:
+        raise Exception()
+    num_removed = val_diff // removed_bo
+    deleted_atoms = []
+    neighs = new_chemgraph.neighbors(modified_atom_id)
+    for n in neighs:
+        neigh_hatom = new_chemgraph.hatoms[n]
+        # Check the charge is correct
+        if neigh_hatom.ncharge != removed_atom_charge:
+            continue
+        if neigh_hatom.valence_val_id() != 0:
+            continue
+        if len(new_chemgraph.neighbors(n)) != 1:
+            continue
+        deleted_atoms.append(n)
+        old_bo = new_chemgraph.bond_order(modified_atom_id, n)
+        new_chemgraph.change_bond_order(modified_atom_id, n, -old_bo)
+        num_removed -= 1
+        if num_removed == 0:
+            break
+    if num_removed != 0:
+        raise Exception()
+    new_chemgraph.change_valence(modified_atom_id, new_mod_valence_val)
+    new_chemgraph.remove_heavy_atoms(deleted_atoms)
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
 
