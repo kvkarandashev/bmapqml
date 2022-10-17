@@ -20,7 +20,7 @@ from .modify import (
     egc_valid_wrt_change_params,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl, loadpkl, pkl_compress_ending
+from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
 from .valence_treatment import sorted_tuple, ChemGraph
 from .periodic import element_name
 import random, os
@@ -29,16 +29,6 @@ import numpy as np
 
 # To make overflows during acceptance step are handled correctly.
 np.seterr(all="raise")
-
-
-def exp_wexceptions(val):
-    try:
-        return np.exp(val)
-    except FloatingPointError:
-        if val > 0.0:
-            return np.inf
-        else:
-            return 0.0
 
 
 # TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?

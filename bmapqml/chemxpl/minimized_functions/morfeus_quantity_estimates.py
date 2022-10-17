@@ -1,4 +1,4 @@
-from morfeus.conformer import ConformerEnsemble
+from morfeus.conformer import ConformerEnsemble, K_B, HARTREE
 from ..utils import (
     chemgraph_to_canonical_rdkit,
     InvalidAdjMat,
@@ -9,6 +9,7 @@ from ...utils import (
     repeated_dict,
     all_None_dict,
     any_element_in_list,
+    exp_wexceptions,
 )
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
@@ -52,11 +53,12 @@ def morfeus_coord_info_from_tp(
     if all_confs:
         conformers.prune_rmsd()
     all_coordinates = conformers.get_coordinates()
-    rel_energies = conformers.get_energies()
+    energies = conformers.get_energies()
     nuclear_charges = np.array(conformers.elements)
     output["nuclear_charges"] = nuclear_charges
 
-    min_en_id = np.argmin(rel_energies)
+    min_en_id = np.argmin(energies)
+    min_en = energies[min_en_id]
     min_coordinates = all_coordinates[min_en_id]
 
     try:
@@ -70,14 +72,24 @@ def morfeus_coord_info_from_tp(
 
     if all_confs:
         output["coordinates"] = all_coordinates
-        output["rdkit_energy"] = rel_energies
-        output["rdkit_degeneracies"] = conformers.get_degeneracies()
-        output["rdkit_Boltzmann"] = conformers.boltzmann_weights(
-            temperature=temperature
+        output["rdkit_energy"] = energies
+        output["rdkit_degeneracy"] = conformers.get_degeneracies()
+        #        output["rdkit_Boltzmann"] = conformers.boltzmann_weights(
+        #            temperature=temperature
+        #        )
+        # Rewriting in terms of exp_wexceptions because errors occur otherwise.
+        boltzmann_factors = np.array(
+            [
+                exp_wexceptions(-(en - min_en) / temperature / K_B * HARTREE)
+                for en in energies
+            ]
         )
+        boltzmann_factors /= np.sum(boltzmann_factors)
+        output["rdkit_Boltzmann"] = boltzmann_factors
+
     else:
         output["coordinates"] = all_coordinates[min_en_id]
-        output["rdkit_energy"] = rel_energies[min_en_id]
+        output["rdkit_energy"] = min_en
     return output
 
 

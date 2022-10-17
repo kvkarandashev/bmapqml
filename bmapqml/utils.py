@@ -49,6 +49,19 @@ def np_resize(np_arr, new_size):
     return new_arr
 
 
+def exp_wexceptions(val):
+    """
+    A version of numpy.exp that does not raise FloatingPointError exceptions.
+    """
+    try:
+        return np.exp(val)
+    except FloatingPointError:
+        if val > 0.0:
+            return np.inf
+        else:
+            return 0.0
+
+
 def canonical_atomtype(atomtype):
     return atomtype[0].upper() + atomtype[1:].lower()
 
