@@ -6,6 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Lipinski
 from rdkit.Chem import Descriptors
+import pdb
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     morfeus_coord_info_from_tp,
 )
@@ -414,15 +415,17 @@ class sample_local_space:
             print("Error in canonical SMILES, therefore skipping")
             return None
 
-        X_test = rdkit_descriptors.extended_get_single_FP(
-            rdkit_mol, self.fp_type, nBits=self.nbits
-        )
+        #Using this lead to the wrong distances due to incorrect function in rdkit descriptors 
+        #get_single_FP
+        X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type, nBits=self.nbits) 
 
+        #X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
+        #pdb.set_trace()
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        #if self.verbose:
-        #    print(f"{canon_SMILES} {d} {V}")
+        if self.verbose:
+            print(f"{canon_SMILES} {d} {V}")
 
         return V
 
