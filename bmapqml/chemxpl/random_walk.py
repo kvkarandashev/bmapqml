@@ -16,6 +16,8 @@ from .modify import (
     replace_heavy_atom,
     change_bond_order,
     change_valence,
+    change_valence_add_atom,
+    change_valence_remove_atom,
     randomized_cross_coupling,
     egc_valid_wrt_change_params,
 )
@@ -42,6 +44,14 @@ default_change_list = [
     change_valence,
 ]
 
+valence_ha_change_list = [
+    add_heavy_atom_chain,
+    remove_heavy_atom,
+    change_bond_order,
+    change_valence_add_atom,
+    change_valence_remove_atom,
+]
+
 stochiometry_conserving_change_list = [change_bond_order, change_valence]
 
 inverse_procedure = {
@@ -50,6 +60,8 @@ inverse_procedure = {
     replace_heavy_atom: replace_heavy_atom,
     change_bond_order: change_bond_order,
     change_valence: change_valence,
+    change_valence_add_atom: change_valence_remove_atom,
+    change_valence_remove_atom: change_valence_add_atom,
 }
 
 change_possibility_label = {
@@ -57,6 +69,8 @@ change_possibility_label = {
     remove_heavy_atom: "possible_elements",
     replace_heavy_atom: "possible_elements",
     change_bond_order: "bond_order_changes",
+    change_valence_add_atom: "possible_elements",
+    change_valence_remove_atom: "possible_elements",
     change_valence: None,
 }
 
@@ -79,9 +93,14 @@ def egc_change_func(egc_in, possibility_label, final_possibility_val, change_fun
         return change_function(egc_in, final_possibility_val)
     if change_function is change_valence:
         return change_function(egc_in, possibility_label, final_possibility_val)
-    true_possibility_label = possibility_label
     if change_function is add_heavy_atom_chain:
-        true_possibility_label = [possibility_label]
+        return change_function(
+            egc_in,
+            final_possibility_val[0],
+            [possibility_label[0]],
+            [final_possibility_val[1]],
+        )
+    true_possibility_label = possibility_label
     return change_function(egc_in, final_possibility_val, true_possibility_label)
 
 
