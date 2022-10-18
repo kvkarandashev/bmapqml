@@ -48,7 +48,6 @@ def atom_replacement_possibilities(
     forbidden_bonds=None,
     exclude_equivalent=True,
     not_protonated=None,
-    added_bond_orders=[1],
     **other_kwargs
 ):
     possible_ids = []
@@ -57,6 +56,8 @@ def atom_replacement_possibilities(
         replaced_iac = int_atom_checked(replaced_atom)
     if inserted_valence is None:
         inserted_valence = default_valence(inserted_iac)
+    if not_protonated is not None:
+        cant_be_protonated = inserted_iac in not_protonated
     for ha_id, ha in enumerate(egc.chemgraph.hatoms):
         if replaced_atom is not None:
             if ha.ncharge != replaced_iac:
@@ -78,9 +79,8 @@ def atom_replacement_possibilities(
         val_diff = ha.valence - inserted_valence
         if val_diff <= ha.nhydrogens:
             if not_protonated is not None:
-                if ha.ncharge in not_protonated:
-                    if val_diff != ha.nhydrogens:
-                        continue
+                if cant_be_protonated and (val_diff != ha.nhydrogens):
+                    continue
             if exclude_equivalent:
                 if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
                     continue
@@ -849,6 +849,7 @@ def egc_valid_wrt_change_params(
     nhatoms_range=None,
     forbidden_bonds=None,
     possible_elements=None,
+    not_protonated=None,
     **other_kwargs
 ):
     """
@@ -859,6 +860,10 @@ def egc_valid_wrt_change_params(
     """
     if not no_forbidden_bonds(egc, forbidden_bonds=forbidden_bonds):
         return False
+    if not_protonated is not None:
+        for ha in egc.chemgraph.hatoms:
+            if (ha.ncharge in not_protonated) and (ha.nhydrogens != 0):
+                return False
     if nhatoms_range is not None:
         nhas = egc.chemgraph.nhatoms()
         if (nhas < nhatoms_range[0]) or (nhas > nhatoms_range[1]):

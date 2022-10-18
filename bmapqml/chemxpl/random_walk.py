@@ -47,6 +47,7 @@ default_change_list = [
 valence_ha_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
+    replace_heavy_atom,
     change_bond_order,
     change_valence_add_atom,
     change_valence_remove_atom,
@@ -483,6 +484,8 @@ def randomized_change(
         tp.egc, possibility_label, final_possibility_val, cur_change_procedure
     )
 
+    #    print("BLA", cur_change_procedure)
+
     if new_egc is None:
         return None, None
 
@@ -499,6 +502,7 @@ def randomized_change(
     inverse_possibilities, total_inverse_prob = random_choice_from_dict(
         new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc
     )
+    #    print("HERE", tp.egc, new_egc)
     if cur_change_procedure is change_valence:
         inverse_prob = -np.log(len(new_tp.possibilities()[cur_change_procedure]))
         inverse_final_possibilities = change_possibilities
@@ -551,7 +555,7 @@ class RandomWalk:
         histogram_dump_file_prefix: str = "",
         track_histogram_size: bool = False,
         visit_num_count_acceptance: bool = False,
-        linear_storage: bool = False,
+        linear_storage: bool = True,
         compress_restart: bool = False,
     ):
         """
@@ -588,6 +592,15 @@ class RandomWalk:
                     self.num_replicas = len(init_egcs)
                 else:
                     self.num_replicas = 1
+
+        if self.betas is not None:
+            if self.num_replicas == 1:
+                self.all_betas_same = True
+            else:
+                self.all_betas_same = all(
+                    self.betas_same([0, other_beta_id])
+                    for other_beta_id in range(1, self.num_replicas)
+                )
 
         self.keep_full_trajectory = keep_full_trajectory
 
@@ -766,7 +779,11 @@ class RandomWalk:
                 if self.virtual_beta_id(replica_id):
                     vnew_tot_pot_vals.append(new_tot_pot_val)
                     vprev_tot_pot_vals.append(prev_tot_pot_val)
-            return min(vnew_tot_pot_vals) <= min(vprev_tot_pot_vals)
+            vnew_tot_pot_vals.sort()
+            vprev_tot_pot_vals.sort()
+            for vnew_tpv, vprev_tpv in zip(vnew_tot_pot_vals, vprev_tot_pot_vals):
+                if vnew_tpv != vprev_tpv:
+                    return vnew_tpv < vprev_tpv
 
         delta_pot = prob_balance + sum(new_tot_pot_vals) - sum(prev_tot_pot_vals)
 
@@ -776,13 +793,23 @@ class RandomWalk:
             return random.random() < exp_wexceptions(-delta_pot)
 
     def virtual_beta_present(self, beta_ids):
-        return any([self.virtual_beta_id(beta_id) for beta_id in beta_ids])
+        return any(self.virtual_beta_ids(beta_ids))
 
     def virtual_beta_id(self, beta_id):
         if self.betas is None:
             return False
         else:
             return self.betas[beta_id] is None
+
+    def virtual_beta_ids(self, beta_ids):
+        return [self.virtual_beta_id(beta_id) for beta_id in beta_ids]
+
+    def betas_same(self, beta_ids):
+        vb_ids = self.virtual_beta_ids(beta_ids)
+        if any(vb_ids):
+            return all(vb_ids)
+        else:
+            return self.betas[beta_ids[0]] == self.betas[beta_ids[1]]
 
     def tot_pot(self, tp, replica_id, init_bias=0.0):
         """
@@ -978,9 +1005,12 @@ class RandomWalk:
         return self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
-        if self.min_function is not None:
+        if (self.min_function is not None) and (not self.all_betas_same):
             for _ in range(num_parallel_tempering_tries):
-                replica_ids = self.random_changed_replica_pair()
+                invalid_choice = True
+                while invalid_choice:
+                    replica_ids = self.random_changed_replica_pair()
+                    invalid_choice = self.betas_same(replica_ids)
                 _ = self.parallel_tempering_swap(replica_ids)
 
     def global_change_dict(self):
