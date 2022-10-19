@@ -143,24 +143,27 @@ def chain_addition_possibilities(
     if nhatoms_range is not None:
         if egc.num_heavy_atoms() >= nhatoms_range[1]:
             return possible_ids
-    if not_protonated is not None:
-        if (chain_starting_element in not_protonated) and (
-            default_valence(chain_starting_element) != 1
-        ):
-            return possible_ids
+    chain_starting_ncharge = int_atom_checked(chain_starting_element)
 
-    for ha_id, ha in enumerate(egc.chemgraph.hatoms):
-        if (ha.nhydrogens > 0) and (
-            not connection_forbidden(
-                ha.ncharge, chain_starting_element, forbidden_bonds
-            )
-        ):
-            if exclude_equivalent:
-                if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
+    def_val = default_valence(chain_starting_ncharge)
+
+    for added_bond_order in added_bond_orders:
+        if added_bond_order > def_val:
+            continue
+        if not_protonated is not None:
+            if chain_starting_ncharge in not_protonated:
+                if added_bond_order != def_val:
                     continue
-            for added_bond_order in added_bond_orders:
-                if added_bond_order <= ha.nhydrogens:
-                    possible_ids.append((ha_id, added_bond_order))
+        for ha_id, ha in enumerate(egc.chemgraph.hatoms):
+            if (ha.nhydrogens >= added_bond_order) and (
+                not connection_forbidden(
+                    ha.ncharge, chain_starting_ncharge, forbidden_bonds
+                )
+            ):
+                if exclude_equivalent:
+                    if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
+                        continue
+                possible_ids.append((ha_id, added_bond_order))
     return possible_ids
 
 

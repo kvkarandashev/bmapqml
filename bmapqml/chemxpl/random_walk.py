@@ -484,8 +484,6 @@ def randomized_change(
         tp.egc, possibility_label, final_possibility_val, cur_change_procedure
     )
 
-    #    print("BLA", cur_change_procedure)
-
     if new_egc is None:
         return None, None
 
@@ -502,7 +500,7 @@ def randomized_change(
     inverse_possibilities, total_inverse_prob = random_choice_from_dict(
         new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc
     )
-    #    print("HERE", tp.egc, new_egc)
+
     if cur_change_procedure is change_valence:
         inverse_prob = -np.log(len(new_tp.possibilities()[cur_change_procedure]))
         inverse_final_possibilities = change_possibilities
