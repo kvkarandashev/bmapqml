@@ -18,6 +18,8 @@ from .modify import (
     change_valence,
     change_valence_add_atom,
     change_valence_remove_atom,
+    valence_change_add_atom_possibilities,
+    valence_change_remove_atom_possibilities,
     randomized_cross_coupling,
     egc_valid_wrt_change_params,
 )
@@ -42,6 +44,16 @@ default_change_list = [
     replace_heavy_atom,
     change_bond_order,
     change_valence,
+]
+
+full_change_list = [
+    add_heavy_atom_chain,
+    remove_heavy_atom,
+    replace_heavy_atom,
+    change_bond_order,
+    change_valence,
+    change_valence_add_atom,
+    change_valence_remove_atom,
 ]
 
 valence_ha_change_list = [
@@ -73,6 +85,16 @@ change_possibility_label = {
     change_valence_add_atom: "possible_elements",
     change_valence_remove_atom: "possible_elements",
     change_valence: None,
+}
+
+possibility_generator_func = {
+    add_heavy_atom_chain: chain_addition_possibilities,
+    remove_heavy_atom: atom_removal_possibilities,
+    replace_heavy_atom: atom_replacement_possibilities,
+    change_bond_order: bond_change_possibilities,
+    change_valence: valence_change_possibilities,
+    change_valence_add_atom: valence_change_add_atom_possibilities,
+    change_valence_remove_atom: valence_change_remove_atom_possibilities,
 }
 
 
@@ -191,71 +213,52 @@ class TrajectoryPoint:
         self.first_acceptance_replica = None
 
         # Information for keeping detailed balance.
-        self.bond_order_change_possibilities = None
-        self.nuclear_charge_change_possibilities = None
-        self.atom_removal_possibilities = None
-        self.valence_change_possibilities = None
-        self.chain_addition_possibilities = None
+        self.possibility_dict = None
 
         self.calculated_data = {}
 
     # TO-DO better way to write this?
-    def init_possibility_info(
-        self,
-        bond_order_changes=[-1, 1],
-        possible_elements=["C"],
-        restricted_tps=None,
-        **other_kwargs
-    ):
+    def init_possibility_info(self, **kwargs):
+
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
         # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
-        if (self.bond_order_change_possibilities is None) or (
+        if (self.possibility_dict is None) or (
             self.egc.chemgraph.canonical_permutation is None
-        ):  # The latter check is made j
-            self.bond_order_change_possibilities = {}
-            for bond_order_change in bond_order_changes:
-                cur_possibilities = bond_change_possibilities(
-                    self.egc, bond_order_change, **other_kwargs
-                )
-                if len(cur_possibilities) != 0:
-                    self.bond_order_change_possibilities[
-                        bond_order_change
-                    ] = cur_possibilities
-            self.nuclear_charge_change_possibilities = {}
-            self.atom_removal_possibilities = {}
-            self.chain_addition_possibilities = {}
-            for possible_element in possible_elements:
-                repl_possibilities = atom_replacement_possibilities(
-                    self.egc, possible_element, **other_kwargs
-                )
+        ):
 
-                if len(repl_possibilities) != 0:
-                    self.nuclear_charge_change_possibilities[
-                        possible_element
-                    ] = repl_possibilities
-                removal_possibilities = atom_removal_possibilities(
-                    self.egc,
-                    deleted_atom=possible_element,
-                    only_end_atoms=True,
-                    **other_kwargs
-                )
-                if len(removal_possibilities) != 0:
-                    self.atom_removal_possibilities[
-                        possible_element
-                    ] = removal_possibilities
-                addition_possibilities = chain_addition_possibilities(
-                    self.egc, chain_starting_element=possible_element, **other_kwargs
-                )
-                if len(addition_possibilities) != 0:
-                    self.chain_addition_possibilities[
-                        possible_element
-                    ] = addition_possibilities
-            self.valence_change_possibilities = valence_change_possibilities(self.egc)
+            change_prob_dict = lookup_or_none(kwargs, "change_prob_dict")
+            if change_prob_dict is None:
+                return
+
+            self.possibility_dict = {}
+            for change_procedure in change_prob_dict:
+                cur_subdict = {}
+                pos_label = change_possibility_label[change_procedure]
+                cur_pos_generator = possibility_generator_func[change_procedure]
+                if pos_label is None:
+                    cur_possibilities = cur_pos_generator(self.egc, **kwargs)
+                    if len(cur_possibilities) != 0:
+                        self.possibility_dict[change_procedure] = cur_possibilities
+                else:
+                    pos_label_vals = lookup_or_none(kwargs, pos_label)
+                    if pos_label_vals is None:
+                        continue
+                    for pos_label_val in pos_label_vals:
+                        cur_possibilities = cur_pos_generator(
+                            self.egc, pos_label_val, **kwargs
+                        )
+                        if len(cur_possibilities) != 0:
+                            cur_subdict[pos_label_val] = cur_possibilities
+                    if len(cur_subdict) != 0:
+                        self.possibility_dict[change_procedure] = cur_subdict
+
+            restricted_tps = lookup_or_none(kwargs, "restricted_tps")
+
             if restricted_tps is not None:
                 self.clear_possibility_info(restricted_tps)
 
     def clear_possibility_info(self, restricted_tps):
-        for poss_func, poss_dict in self.possibilities().items():
+        for poss_func, poss_dict in self.possibility_dict.items():
             poss_key_id = 0
             poss_keys = list(poss_dict.keys())
             while poss_key_id != len(poss_keys):
@@ -279,21 +282,12 @@ class TrajectoryPoint:
                 else:
                     poss_key_id += 1
 
-    def possibilities(self):
-        return {
-            add_heavy_atom_chain: self.chain_addition_possibilities,
-            replace_heavy_atom: self.nuclear_charge_change_possibilities,
-            remove_heavy_atom: self.atom_removal_possibilities,
-            change_bond_order: self.bond_order_change_possibilities,
-            change_valence: self.valence_change_possibilities,
-        }
+    def possibilities(self, **kwargs):
+        self.init_possibility_info(**kwargs)
+        return self.possibility_dict
 
     def clear_possibility_info(self):
-        self.chain_addition_possibilities = None
-        self.nuclear_charge_change_possibilities = None
-        self.atom_removal_possibilities = None
-        self.bond_order_change_possibilities = None
-        self.valence_change_possibilities = None
+        self.possibility_dict = None
 
     def calc_or_lookup(self, func_dict, args_dict=None, kwargs_dict=None):
         output = {}
@@ -474,6 +468,7 @@ def randomized_change(
     )
     possibility_dict_label = change_possibility_label[cur_change_procedure]
     possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
+
     possibility_label, change_possibilities, forward_prob = random_choice_from_dict(
         possibilities, possibility_dict
     )
@@ -493,7 +488,7 @@ def randomized_change(
             tp_id = visited_tp_list.index(new_tp)
             visited_tp_list[tp_id].copy_extra_data_to(new_tp)
 
-    new_tp.init_possibility_info(**other_kwargs)
+    new_tp.init_possibility_info(change_prob_dict=change_prob_dict, **other_kwargs)
 
     # Calculate the chances of doing the inverse operation
     inv_proc = inverse_procedure[cur_change_procedure]
@@ -680,6 +675,11 @@ class RandomWalk:
                 self.randomized_change_params["forbidden_bonds"] = tidy_forbidden_bonds(
                     self.randomized_change_params["forbidden_bonds"]
                 )
+            change_prob_dict = lookup_or_none(
+                randomized_change_params, "change_prob_dict"
+            )
+            if change_prob_dict is None:
+                randomized_change_params["change_prob_dict"] = default_change_list
         self.used_randomized_change_params = deepcopy(self.randomized_change_params)
 
         if self.no_exploration:

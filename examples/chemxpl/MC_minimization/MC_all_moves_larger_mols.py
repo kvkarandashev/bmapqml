@@ -69,7 +69,7 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="larger_mols_restart.pkl",
-    linear_storage=True,
+    track_histogram_size=False,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)

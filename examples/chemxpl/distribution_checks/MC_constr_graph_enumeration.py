@@ -16,7 +16,7 @@ random.seed(1)
 np.random.seed(1)
 
 #
-possible_elements = ["C", "P", "O", "F"]
+possible_elements = ["C", "S", "O", "F"]
 
 max_nhatoms = 4
 
@@ -30,7 +30,7 @@ basic_constraints = {
 
 # "forbidden_bonds" and "not_protonated" are two types of constraints that can be forced explicitly in the sampling procedure.
 advanced_constraints = {
-    "forbidden_bonds": [(8, 8), (8, 9), (9, 9), (15, 15)],
+    "forbidden_bonds": [(8, 8), (8, 9), (9, 9), (16, 16)],
     "not_protonated": [8, 9],
 }
 

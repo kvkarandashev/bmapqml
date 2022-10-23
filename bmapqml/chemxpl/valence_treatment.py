@@ -81,9 +81,13 @@ def int_atom_checked(atom_id):
         return atom_id
 
 
+def avail_val_list(atom_id):
+    return valences_int[int_atom_checked(atom_id)]
+
+
 # Default valence for a given element.
 def default_valence(atom_id):
-    val_list = valences_int[int_atom_checked(atom_id)]
+    val_list = avail_val_list(atom_id)
     if isinstance(val_list, tuple):
         return val_list[0]
     else:
@@ -140,7 +144,7 @@ class HeavyAtom:
         if self.ncharge == 0:
             return self.valence
         else:
-            return valences_int[self.ncharge]
+            return avail_val_list(self.ncharge)
 
     def valence_reasonable(self):
         val_list = self.avail_val_list()
@@ -237,8 +241,17 @@ class HeavyAtom:
         return str(self)
 
 
-# Function saying how large can a bond order be between two atoms. Will be extended if required.
+# Function saying how large can a bond order be between two atoms.
+def hatom_int_checked(hatom):
+    if isinstance(hatom, HeavyAtom):
+        return hatom.ncharge
+    return hatom
+
+
 def max_bo(hatom1, hatom2):
+    #   In the end I decided that supporting triple bonds with sulfur does make sense.
+    #    if (hatom_int_checked(hatom1) ==16) or (hatom_int_checked(hatom2) == 16):
+    #        return 2
     return 3
 
 

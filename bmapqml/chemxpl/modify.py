@@ -6,12 +6,12 @@ from .ext_graph_compound import ExtGraphCompound
 from .valence_treatment import (
     ChemGraph,
     default_valence,
+    avail_val_list,
     int_atom_checked,
     connection_forbidden,
     max_bo,
     sorted_by_membership,
     non_default_valences,
-    sorted_tuple,
 )
 from copy import deepcopy
 import random, itertools
@@ -21,8 +21,13 @@ from ..data import NUCLEAR_CHARGE
 
 
 def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
+    if len(atom_id_list) == 0:
+        return False
+    are_tuples = not isinstance(atom_id_list, dict)
+    if are_tuples:
+        are_tuples = isinstance(atom_id_list[0], tuple)
     for other_atom_id in atom_id_list:
-        if isinstance(other_atom_id, tuple):
+        if are_tuples:
             true_other_atom_id = other_atom_id[0]
         else:
             true_other_atom_id = other_atom_id
@@ -90,9 +95,8 @@ def atom_replacement_possibilities(
 
 def atom_removal_possibilities(
     egc,
-    deleted_atom=None,
+    deleted_atom="C",
     exclude_equivalent=True,
-    only_end_atoms=False,
     nhatoms_range=None,
     not_protonated=None,
     added_bond_orders=[1],
@@ -102,26 +106,31 @@ def atom_removal_possibilities(
         if egc.num_heavy_atoms() <= nhatoms_range[0]:
             return []
     possible_ids = []
-    if deleted_atom is not None:
-        deleted_iac = int_atom_checked(deleted_atom)
-    for ha_id, ha in enumerate(egc.chemgraph.hatoms):
-        if deleted_atom is not None:
-            if ha.ncharge != deleted_iac:
-                continue
-        if default_valence(ha.ncharge) != ha.valence:
+    deleted_iac = int_atom_checked(deleted_atom)
+    deleted_default_valence = default_valence(deleted_iac)
+
+    possible_hnums = []
+    for abo in added_bond_orders:
+        hnum = deleted_default_valence - abo
+        if hnum >= 0:
+            possible_hnums.append(hnum)
+
+    cg = egc.chemgraph
+    hatoms = cg.hatoms
+
+    for ha_id, ha in enumerate(hatoms):
+        if (
+            (ha.ncharge != deleted_iac)
+            or (deleted_default_valence != ha.valence)
+            or (ha.nhydrogens not in possible_hnums)
+        ):
             continue
-        if only_end_atoms:
-            neighs = egc.chemgraph.graph.neighbors(ha_id)
-            if len(neighs) > 1:
+        neighs = cg.neighbors(ha_id)
+        if len(neighs) != 1:
+            continue
+        if not_protonated is not None:
+            if hatoms[neighs[0]].ncharge in not_protonated:
                 continue
-            if (
-                egc.chemgraph.aa_all_bond_orders(ha_id, neighs[0])[0]
-                not in added_bond_orders
-            ):
-                continue
-            if not_protonated is not None:
-                if egc.chemgraph.hatoms[neighs[0]].ncharge in not_protonated:
-                    continue
         if exclude_equivalent:
             if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
                 continue
@@ -145,25 +154,26 @@ def chain_addition_possibilities(
             return possible_ids
     chain_starting_ncharge = int_atom_checked(chain_starting_element)
 
-    def_val = default_valence(chain_starting_ncharge)
+    avail_added_bond_order = available_added_atom_bos(
+        chain_starting_ncharge, added_bond_orders, not_protonated=not_protonated
+    )
 
-    for added_bond_order in added_bond_orders:
-        if added_bond_order > def_val:
-            continue
-        if not_protonated is not None:
-            if chain_starting_ncharge in not_protonated:
-                if added_bond_order != def_val:
+    min_avail_added_bond_order = min(avail_added_bond_order)
+
+    for ha_id, ha in enumerate(egc.chemgraph.hatoms):
+        if (ha.nhydrogens >= min_avail_added_bond_order) and (
+            not connection_forbidden(
+                ha.ncharge, chain_starting_ncharge, forbidden_bonds
+            )
+        ):
+            if exclude_equivalent:
+                if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
                     continue
-        for ha_id, ha in enumerate(egc.chemgraph.hatoms):
-            if (ha.nhydrogens >= added_bond_order) and (
-                not connection_forbidden(
-                    ha.ncharge, chain_starting_ncharge, forbidden_bonds
-                )
-            ):
-                if exclude_equivalent:
-                    if atom_equivalent_to_list_member(egc, ha_id, possible_ids):
-                        continue
-                possible_ids.append((ha_id, added_bond_order))
+            for added_bond_order in avail_added_bond_order:
+                if added_bond_order > max_bo(ha, chain_starting_ncharge):
+                    continue
+                if added_bond_order <= ha.nhydrogens:
+                    possible_ids.append((ha_id, added_bond_order))
     return possible_ids
 
 
@@ -264,27 +274,70 @@ def bond_change_possibilities(
     return output
 
 
+# TODO: initialize valence_change_possible_elements in random_walk?
+def gen_val_change_pos_ncharges(possible_elements=["C"], not_protonated=None):
+    output = []
+    for pos_el in possible_elements:
+        pos_ncharge = int_atom_checked(pos_el)
+
+        cur_avail_val_list = avail_val_list(pos_ncharge)
+
+        if isinstance(cur_avail_val_list, int):
+            continue
+
+        if not_protonated is not None:
+            if pos_ncharge in not_protonated:
+                continue
+        output.append(pos_ncharge)
+    return output
+
+
 def valence_change_possibilities(
-    egc, exclude_equivalent=True, not_protonated=None, **other_kwargs
+    egc,
+    val_change_poss_ncharges=None,
+    possible_elements=["C"],
+    exclude_equivalent=True,
+    not_protonated=None,
+    **other_kwargs
 ):
+
+    if val_change_poss_ncharges is None:
+        val_change_poss_ncharges = gen_val_change_pos_ncharges(
+            possible_elements=possible_elements, not_protonated=not_protonated
+        )
+
     output = {}
+
     for ha_id, ha in enumerate(egc.chemgraph.hatoms):
-        valence_list = ha.avail_val_list()
-        if isinstance(valence_list, tuple):
-            if not_protonated is not None:
-                if ha.ncharge in not_protonated:
-                    continue
-            cur_valence = ha.valence
-            cur_val_id = valence_list.index(cur_valence)
-            available_valences = list(valence_list[cur_val_id + 1 :])
-            for potential_valence in valence_list[:cur_val_id]:
-                if cur_valence - potential_valence <= ha.nhydrogens:
-                    available_valences.append(potential_valence)
-            if len(available_valences) != 0:
-                if exclude_equivalent:
-                    if atom_equivalent_to_list_member(egc, ha_id, output):
-                        continue
-                output[ha_id] = available_valences
+        if ha.ncharge not in val_change_poss_ncharges:
+            continue
+        if exclude_equivalent:
+            if atom_equivalent_to_list_member(egc, ha_id, output):
+                continue
+        cur_valence = ha.valence
+        cur_val_list = ha.avail_val_list()
+        cur_val_id = cur_val_list.index(cur_valence)
+        available_valences = list(cur_val_list[cur_val_id + 1 :])
+        for potential_valence in cur_val_list[:cur_val_id]:
+            if cur_valence - potential_valence <= ha.nhydrogens:
+                available_valences.append(potential_valence)
+        if len(available_valences) != 0:
+            output[ha_id] = available_valences
+    return output
+
+
+def available_added_atom_bos(added_element, added_bond_orders, not_protonated=None):
+    max_added_valence = default_valence(added_element)
+    if not_protonated is not None:
+        if int_atom_checked(added_element) in not_protonated:
+            if max_added_valence in added_bond_orders:
+                return [max_added_valence]
+            else:
+                return []
+    output = []
+    for abo in added_bond_orders:
+        if abo <= max_added_valence:
+            output.append(abo)
     return output
 
 
@@ -304,7 +357,12 @@ def valence_change_add_atom_possibilities(
         if max_added_nhatoms < 0:
             raise Exception
 
-    max_added_valence = default_valence(chain_starting_element)
+    avail_bond_orders = available_added_atom_bos(
+        chain_starting_element,
+        added_bond_orders_val_change,
+        not_protonated=not_protonated,
+    )
+
     output = []
     for ha_id, ha in enumerate(egc.chemgraph.hatoms):
         valence_list = ha.avail_val_list()
@@ -320,9 +378,7 @@ def valence_change_add_atom_possibilities(
             if exclude_equivalent:
                 if atom_equivalent_to_list_member(egc, ha_id, output):
                     continue
-            for added_bond_order in added_bond_orders_val_change:
-                if added_bond_order > max_added_valence:
-                    continue
+            for added_bond_order in avail_bond_orders:
                 if val_diff % added_bond_order != 0:
                     continue
                 added_nhatoms = val_diff // added_bond_order
@@ -838,11 +894,14 @@ def no_forbidden_bonds(egc: ExtGraphCompound, forbidden_bonds: None or list = No
     forbidden_bonds : list of sorted nuclear charge tuples.
     """
     if forbidden_bonds is not None:
-        for bond_tuple in egc.chemgraph.bond_orders.keys():
-            nc_tuple = sorted_tuple(
-                *[egc.chemgraph.hatoms[i].ncharge for i in bond_tuple]
-            )
-            if nc_tuple in forbidden_bonds:
+        cg = egc.chemgraph
+        hatoms = cg.hatoms
+        for bond_tuple in cg.bond_orders.keys():
+            if connection_forbidden(
+                hatoms[bond_tuple[0]].ncharge,
+                hatoms[bond_tuple[1]].ncharge,
+                forbidden_bonds=forbidden_bonds,
+            ):
                 return False
     return True
 
