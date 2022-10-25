@@ -509,6 +509,15 @@ class ChemGraph:
     def equiv_class_members(self, equiv_class_id, atom_set_length):
         return list(zip(*np.where(self.equiv_arr(atom_set_length) == equiv_class_id)))
 
+    def min_id_equivalent_atom_unchecked(self, atom_id):
+        if self.equivalence_vector is None:
+            return atom_id
+        equiv_class = self.equivalence_class(atom_id)
+        if equiv_class == -1:
+            return atom_id
+        else:
+            return np.where(self.equivalence_vector == equiv_class)[0][0]
+
     def check_equivalence_class(self, atom_id_set):
         atom_set_length = len(atom_id_set)
         self.init_equivalence_array(atom_set_length)

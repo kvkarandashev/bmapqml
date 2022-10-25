@@ -22,10 +22,18 @@ from .modify import (
     valence_change_remove_atom_possibilities,
     randomized_cross_coupling,
     egc_valid_wrt_change_params,
+    available_added_atom_bos,
+    gen_atom_removal_possible_hnums,
+    gen_val_change_pos_ncharges,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
-from .valence_treatment import sorted_tuple, ChemGraph
+from .valence_treatment import (
+    sorted_tuple,
+    ChemGraph,
+    int_atom_checked,
+    default_valence,
+)
 from .periodic import element_name
 import random, os
 from copy import deepcopy
@@ -104,27 +112,45 @@ def inverse_possibility_label(change_function, possibility_label):
     return possibility_label
 
 
-def egc_change_func(egc_in, possibility_label, final_possibility_val, change_function):
+def egc_change_func(
+    egc_in,
+    modification_path,
+    change_function,
+    chain_addition_tuple_possibilities=False,
+    **other_kwargs
+):
     if change_function is change_bond_order:
+        atom_id_tuple = modification_path[1][:2]
+        resonance_structure_id = modification_path[1][-1]
+        bo_change = modification_path[0]
         return change_function(
             egc_in,
-            *final_possibility_val[:2],
-            possibility_label,
-            resonance_structure_id=final_possibility_val[-1]
+            *atom_id_tuple,
+            bo_change,
+            resonance_structure_id=resonance_structure_id
         )
     if change_function is remove_heavy_atom:
-        return change_function(egc_in, final_possibility_val)
+        return change_function(egc_in, modification_path[1])
     if change_function is change_valence:
-        return change_function(egc_in, possibility_label, final_possibility_val)
+        return change_function(egc_in, modification_path[0], modification_path[1])
     if change_function is add_heavy_atom_chain:
+        if chain_addition_tuple_possibilities:
+            modified_atom_id = modification_path[1][0]
+            added_bond_order = modification_path[1][1]
+        else:
+            modified_atom_id = modification_path[1]
+            added_bond_order = modification_path[2]
         return change_function(
             egc_in,
-            final_possibility_val[0],
-            [possibility_label[0]],
-            [final_possibility_val[1]],
+            modified_atom_id,
+            [modification_path[0]],
+            [added_bond_order],
         )
-    true_possibility_label = possibility_label
-    return change_function(egc_in, final_possibility_val, true_possibility_label)
+    if change_function is change_valence:
+        return change_function(egc_in, modification_path[0], modification_path[1])
+    if change_function is replace_heavy_atom:
+        return change_function(egc_in, modification_path[1], modification_path[0])
+    raise Exception()
 
 
 def available_options_prob_norm(dict_in):
@@ -139,9 +165,9 @@ def random_choice_from_dict(possibilities, choices=None, get_probability_of=None
     prob_sum = 0.0
     corr_prob_choice = {}
     if choices is None:
-        choices = list(possibilities.keys())
-    for choice in list(choices):
-        if (choice not in list(possibilities)) or (len(possibilities[choice]) == 0):
+        choices = possibilities.keys()
+    for choice in choices:
+        if (choice not in possibilities) or (len(possibilities[choice]) == 0):
             continue
         if isinstance(choices, dict):
             prob = choices[choice]
@@ -163,6 +189,45 @@ def random_choice_from_dict(possibilities, choices=None, get_probability_of=None
         return possibilities[get_probability_of], np.log(
             corr_prob_choice[get_probability_of] / prob_sum
         )
+
+
+def random_choice_from_nested_dict(
+    possibilities, choices=None, get_probability_of=None
+):
+    continue_nested = True
+    cur_possibilities = possibilities
+    prob_log = 0.0
+    cur_choice_prob_dict = choices
+
+    if get_probability_of is None:
+        final_choice = []
+    else:
+        choice_level = 0
+
+    while continue_nested:
+        if not isinstance(cur_possibilities, dict):
+            if isinstance(cur_possibilities, list):
+                prob_log -= np.log(float(len(cur_possibilities)))
+                if get_probability_of is None:
+                    final_choice.append(random.choice(cur_possibilities))
+            break
+        if get_probability_of is None:
+            get_prob_arg = None
+        else:
+            get_prob_arg = get_probability_of[choice_level]
+            choice_level += 1
+
+        rcfd_res = random_choice_from_dict(
+            possibilities, choices=cur_choice_prob_dict, get_probability_of=get_prob_arg
+        )
+        prob_log += rcfd_res[-1]
+        cur_possibilities = rcfd_res[-2]
+        if get_probability_of is None:
+            final_choice.append(rcfd_res[0])
+    if get_probability_of is None:
+        return final_choice, prob_log
+    else:
+        return prob_log
 
 
 def lookup_or_none(dict_in, key):
@@ -402,6 +467,103 @@ class CandidateCompound:
         return str(self)
 
 
+from types import FunctionType
+
+
+def inverse_mod_path(
+    new_egc,
+    old_egc,
+    change_procedure,
+    forward_path,
+    chain_addition_tuple_possibilities=False,
+    **other_kwargs
+):
+    if change_procedure is change_bond_order:
+        return [-forward_path[0]]
+    if change_procedure is remove_heavy_atom:
+        removed_atom = forward_path[-1]
+        neigh = old_egc.chemgraph.neighbors(removed_atom)[0]
+        removed_elname = element_name[old_egc.chemgraph.hatoms[removed_atom].ncharge]
+        if removed_atom < neigh:
+            neigh -= 1
+        neigh = new_egc.chemgraph.min_id_equivalent_atom_unchecked(neigh)
+        if chain_addition_tuple_possibilities:
+            return [removed_elname]
+        else:
+            return [removed_elname, neigh]
+    if change_procedure is replace_heavy_atom:
+        changed_atom = forward_path[-1]
+        inserted_elname = element_name[old_egc.chemgraph.hatoms[changed_atom].ncharge]
+        return [inserted_elname]
+    if change_procedure is add_heavy_atom_chain:
+        return [forward_path[0]]
+    if change_procedure is change_valence:
+        return [new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[0])]
+    raise Exception()
+
+
+def randomized_change(
+    tp: TrajectoryPoint,
+    change_prob_dict=default_change_list,
+    visited_tp_list: list or None = None,
+    **other_kwargs
+):
+    """
+    Randomly modify a TrajectoryPoint object.
+    visited_tp_list : list of TrajectoryPoint objects for which data is available.
+    """
+    cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
+        tp.possibilities(), change_prob_dict
+    )
+    possibility_dict_label = change_possibility_label[cur_change_procedure]
+    possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
+
+    modification_path, forward_prob = random_choice_from_nested_dict(
+        possibilities, choices=possibility_dict
+    )
+
+    total_forward_prob += forward_prob
+
+    old_egc = tp.egc
+
+    new_egc = egc_change_func(
+        old_egc, modification_path, cur_change_procedure, **other_kwargs
+    )
+
+    if new_egc is None:
+        return None, None
+
+    new_tp = TrajectoryPoint(egc=new_egc)
+    if visited_tp_list is not None:
+        if new_tp in visited_tp_list:
+            tp_id = visited_tp_list.index(new_tp)
+            visited_tp_list[tp_id].copy_extra_data_to(new_tp)
+
+    new_tp.init_possibility_info(change_prob_dict=change_prob_dict, **other_kwargs)
+
+    # Calculate the chances of doing the inverse operation
+    inv_proc = inverse_procedure[cur_change_procedure]
+    inv_pos_label = change_possibility_label[inv_proc]
+    inv_poss_dict = lookup_or_none(other_kwargs, inv_pos_label)
+    inv_mod_path = inverse_mod_path(
+        new_egc, old_egc, cur_change_procedure, modification_path, **other_kwargs
+    )
+
+    inverse_possibilities, total_inverse_prob = random_choice_from_dict(
+        new_tp.possibilities(),
+        change_prob_dict,
+        get_probability_of=inv_proc,
+    )
+
+    inverse_prob = random_choice_from_nested_dict(
+        inverse_possibilities, inv_poss_dict, get_probability_of=inv_mod_path
+    )
+
+    total_inverse_prob += inverse_prob
+
+    return new_tp, total_forward_prob - total_inverse_prob
+
+
 def tidy_forbidden_bonds(forbidden_bonds):
     if forbidden_bonds is None:
         return None
@@ -450,74 +612,6 @@ class DataUnavailable(Exception):
     pass
 
 
-from types import FunctionType
-
-
-def randomized_change(
-    tp: TrajectoryPoint,
-    change_prob_dict=default_change_list,
-    visited_tp_list: list or None = None,
-    **other_kwargs
-):
-    """
-    Randomly modify a TrajectoryPoint object.
-    visited_tp_list : list of TrajectoryPoint objects for which data is available.
-    """
-    cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
-        tp.possibilities(), change_prob_dict
-    )
-    possibility_dict_label = change_possibility_label[cur_change_procedure]
-    possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
-
-    possibility_label, change_possibilities, forward_prob = random_choice_from_dict(
-        possibilities, possibility_dict
-    )
-    total_forward_prob += forward_prob - np.log(len(change_possibilities))
-    final_possibility_val = random.choice(change_possibilities)
-
-    new_egc = egc_change_func(
-        tp.egc, possibility_label, final_possibility_val, cur_change_procedure
-    )
-
-    if new_egc is None:
-        return None, None
-
-    new_tp = TrajectoryPoint(egc=new_egc)
-    if visited_tp_list is not None:
-        if new_tp in visited_tp_list:
-            tp_id = visited_tp_list.index(new_tp)
-            visited_tp_list[tp_id].copy_extra_data_to(new_tp)
-
-    new_tp.init_possibility_info(change_prob_dict=change_prob_dict, **other_kwargs)
-
-    # Calculate the chances of doing the inverse operation
-    inv_proc = inverse_procedure[cur_change_procedure]
-    inverse_possibilities, total_inverse_prob = random_choice_from_dict(
-        new_tp.possibilities(), change_prob_dict, get_probability_of=inv_proc
-    )
-
-    if cur_change_procedure is change_valence:
-        inverse_prob = -np.log(len(new_tp.possibilities()[cur_change_procedure]))
-        inverse_final_possibilities = change_possibilities
-    else:
-        inv_poss_dict_label = change_possibility_label[inv_proc]
-        inv_poss_dict = lookup_or_none(other_kwargs, inv_poss_dict_label)
-        if cur_change_procedure is replace_heavy_atom:
-            inverse_pl = element_name[
-                tp.egc.chemgraph.hatoms[final_possibility_val].ncharge
-            ]
-        else:
-            inverse_pl = inverse_possibility_label(
-                cur_change_procedure, possibility_label
-            )
-        inverse_final_possibilities, inverse_prob = random_choice_from_dict(
-            inverse_possibilities, inv_poss_dict, get_probability_of=inverse_pl
-        )
-    total_inverse_prob += inverse_prob - np.log(len(inverse_final_possibilities))
-
-    return new_tp, total_forward_prob - total_inverse_prob
-
-
 class RandomWalk:
     def __init__(
         self,
@@ -558,6 +652,7 @@ class RandomWalk:
         bias_coeff : biasing potential applied to push real beta replicas out of local minima
         vbeta_bias_coeff : biasing potential applied to push virtual beta replicas out of local minima
         bias_pot_all_replicas : whether the biasing potential is calculated from sum of visits of all replicas rather than the replica considered
+        bound_enforcing_coeff : biasing coefficient for "soft constraints"; currently the only one functioning properly allows biasing simulation run in nhatoms_range towards nhatoms values in final_nhatoms_range (see randomized_change_params)
         min_function : minimized function
         min_function_name : name of minimized function (the label used for minimized function value in TrajectoryPoint object's calculated_data)
         keep_histogram : store information about all considered molecules; mandatory for using biasing potentials
@@ -574,6 +669,7 @@ class RandomWalk:
         visit_num_count_acceptance : if True number of visit numbers (used in biasing potential) is counted during each accept_reject_move call rather than each global step
         linear_storage : whether objects saved to the histogram contain data whose size scales more than linearly with molecule size
         compress_restart : whether restart files are compressed by default
+        randomized_change_params : parameters defining the sampled chemical space and how the sampling is done; see description of init_randomized_params for more thorough explanation.
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -669,24 +765,114 @@ class RandomWalk:
         self.init_cur_tps(init_egcs)
 
     def init_randomized_change_params(self, randomized_change_params=None):
+        """
+        Initialize parameters for how the chemical space is sampled. If randomized_change_params is None do nothing; otherwise it is a dictionnary with following entries:
+        change_prob_dict : which changes are used simple MC moves (see full_change_list, default_change_list, and valence_ha_change_list global variables for examples).
+        possible_elements : symbols of heavy atom elements that can be found inside molecules.
+        added_bond_orders : as atoms are added to the molecule they can be connected to it with bonds of an order in added_bond_orders
+        chain_addition_tuple_possibilities : minor parameter choosing the procedure for how heavy atom sceleton is grown. Setting it to "False" (the default value) should accelerate discovery rates.
+        forbidden_bonds : nuclear charge pairs that are forbidden to connect with a covalent bond.
+        not_protonated : nuclear charges of atoms that should not be covalently connected to hydrogens.
+        """
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
-            if "forbidden_bonds" in self.randomized_change_params:
-                self.randomized_change_params["forbidden_bonds"] = tidy_forbidden_bonds(
-                    self.randomized_change_params["forbidden_bonds"]
-                )
-            change_prob_dict = lookup_or_none(
-                randomized_change_params, "change_prob_dict"
-            )
-            if change_prob_dict is None:
-                randomized_change_params["change_prob_dict"] = default_change_list
-        self.used_randomized_change_params = deepcopy(self.randomized_change_params)
-
-        if self.no_exploration:
-            if self.no_exploration_smove_adjust:
+            # used_randomized_change_params contains randomized_change_params as well as some temporary data to optimize code's performance.
+            self.used_randomized_change_params = deepcopy(self.randomized_change_params)
+            if "forbidden_bonds" in self.used_randomized_change_params:
                 self.used_randomized_change_params[
-                    "restricted_tps"
-                ] = self.restricted_tps
+                    "forbidden_bonds"
+                ] = tidy_forbidden_bonds(
+                    self.used_randomized_change_params["forbidden_bonds"]
+                )
+
+            self.used_randomized_change_params_check_defaults(
+                change_prob_dict=default_change_list,
+                possible_elements=["C"],
+                forbidden_boinds=None,
+                not_protonated=None,
+                added_bond_orders=[1],
+                chain_addition_tuple_possibilities=True,
+            )
+
+            # Some convenient aliases.
+            cur_change_dict = self.used_randomized_change_params["change_prob_dict"]
+
+            # Initialize some auxiliary arguments that allow the code to run just a little faster.
+            cur_added_bond_orders = self.used_randomized_change_params[
+                "added_bond_orders"
+            ]
+            cur_not_protonated = self.used_randomized_change_params["not_protonated"]
+            cur_possible_elements = self.used_randomized_change_params[
+                "possible_elements"
+            ]
+            cur_possible_ncharges = [
+                int_atom_checked(possible_element)
+                for possible_element in cur_possible_elements
+            ]
+            cur_default_valences = {}
+            for ncharge in cur_possible_ncharges:
+                cur_default_valences[ncharge] = default_valence(ncharge)
+
+            # Check that each change operation has an inverse.
+            for change_func in cur_change_dict:
+                inv_change_func = inverse_procedure[change_func]
+                if inv_change_func not in cur_change_dict:
+                    print(
+                        "WARNING, inverse not found in randomized_change_params for:",
+                        change_func,
+                        " adding inverse.",
+                    )
+                    if isinstance(cur_change_dict, dict):
+                        cur_change_dict[inv_change_func] = cur_change_dict[change_func]
+                    else:
+                        cur_change_dict.append(inv_change_func)
+
+            # Initialize some auxiliary arguments that allow the code to run just a little faster.
+            self.used_randomized_change_params[
+                "possible_ncharges"
+            ] = cur_possible_ncharges
+            self.used_randomized_change_params[
+                "default_valences"
+            ] = cur_default_valences
+
+            if (add_heavy_atom_chain in cur_change_dict) or (
+                remove_heavy_atom in cur_change_dict
+            ):
+                avail_added_bond_orders = {}
+                atom_removal_possible_hnums = {}
+                for ncharge, def_val in zip(
+                    cur_possible_ncharges, cur_default_valences.values()
+                ):
+                    avail_added_bond_orders[ncharge] = available_added_atom_bos(
+                        ncharge,
+                        cur_added_bond_orders,
+                        not_protonated=cur_not_protonated,
+                    )
+                    atom_removal_possible_hnums[
+                        ncharge
+                    ] = gen_atom_removal_possible_hnums(cur_added_bond_orders, def_val)
+                self.used_randomized_change_params_check_defaults(
+                    avail_added_bond_orders=avail_added_bond_orders,
+                    atom_removal_possible_hnums=atom_removal_possible_hnums,
+                )
+
+            if change_valence in cur_change_dict:
+                self.used_randomized_change_params[
+                    "val_change_poss_ncharges"
+                ] = gen_val_change_pos_ncharges(
+                    cur_possible_elements, not_protonated=cur_not_protonated
+                )
+
+            if self.no_exploration:
+                if self.no_exploration_smove_adjust:
+                    self.used_randomized_change_params[
+                        "restricted_tps"
+                    ] = self.restricted_tps
+
+    def used_randomized_change_params_check_defaults(self, **kwargs):
+        for kw, def_val in kwargs.items():
+            if kw not in self.used_randomized_change_params:
+                self.used_randomized_change_params[kw] = def_val
 
     def init_cur_tps(self, init_egcs=None):
         """
@@ -697,7 +883,7 @@ class RandomWalk:
             return
         self.cur_tps = []
         for replica_id, egc in enumerate(init_egcs):
-            if egc_valid_wrt_change_params(egc, **self.used_randomized_change_params):
+            if egc_valid_wrt_change_params(egc, **self.randomized_change_params):
                 added_tp = TrajectoryPoint(egc=egc)
             else:
                 raise InvalidStartingMolecules
@@ -838,8 +1024,10 @@ class RandomWalk:
                 )
         if egc.chemgraph.num_connected != 1:
             output += egc.chemgraph.num_connected() - 1
-        if "final_nhatoms_range" in self.randomized_change_params:
-            final_nhatoms_range = self.randomized_change_params["final_nhatoms_range"]
+        if "final_nhatoms_range" in self.used_randomized_change_params:
+            final_nhatoms_range = self.used_randomized_change_params[
+                "final_nhatoms_range"
+            ]
             if egc.num_heavy_atoms() > final_nhatoms_range[1]:
                 output += egc.num_heavy_atoms() - final_nhatoms_range[1]
             else:
