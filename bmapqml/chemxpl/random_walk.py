@@ -194,6 +194,7 @@ def random_choice_from_dict(possibilities, choices=None, get_probability_of=None
 def random_choice_from_nested_dict(
     possibilities, choices=None, get_probability_of=None
 ):
+
     continue_nested = True
     cur_possibilities = possibilities
     prob_log = 0.0
@@ -216,12 +217,14 @@ def random_choice_from_nested_dict(
         else:
             get_prob_arg = get_probability_of[choice_level]
             choice_level += 1
-
         rcfd_res = random_choice_from_dict(
-            possibilities, choices=cur_choice_prob_dict, get_probability_of=get_prob_arg
+            cur_possibilities,
+            choices=cur_choice_prob_dict,
+            get_probability_of=get_prob_arg,
         )
         prob_log += rcfd_res[-1]
         cur_possibilities = rcfd_res[-2]
+        cur_choice_prob_dict = None
         if get_probability_of is None:
             final_choice.append(rcfd_res[0])
     if get_probability_of is None:
@@ -287,9 +290,7 @@ class TrajectoryPoint:
 
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
         # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
-        if (self.possibility_dict is None) or (
-            self.egc.chemgraph.canonical_permutation is None
-        ):
+        if self.possibility_dict is None:
 
             change_prob_dict = lookup_or_none(kwargs, "change_prob_dict")
             if change_prob_dict is None:
@@ -482,14 +483,14 @@ def inverse_mod_path(
         return [-forward_path[0]]
     if change_procedure is remove_heavy_atom:
         removed_atom = forward_path[-1]
-        neigh = old_egc.chemgraph.neighbors(removed_atom)[0]
         removed_elname = element_name[old_egc.chemgraph.hatoms[removed_atom].ncharge]
-        if removed_atom < neigh:
-            neigh -= 1
-        neigh = new_egc.chemgraph.min_id_equivalent_atom_unchecked(neigh)
         if chain_addition_tuple_possibilities:
             return [removed_elname]
         else:
+            neigh = old_egc.chemgraph.neighbors(removed_atom)[0]
+            if removed_atom < neigh:
+                neigh -= 1
+            neigh = new_egc.chemgraph.min_id_equivalent_atom_unchecked(neigh)
             return [removed_elname, neigh]
     if change_procedure is replace_heavy_atom:
         changed_atom = forward_path[-1]
@@ -773,6 +774,7 @@ class RandomWalk:
         chain_addition_tuple_possibilities : minor parameter choosing the procedure for how heavy atom sceleton is grown. Setting it to "False" (the default value) should accelerate discovery rates.
         forbidden_bonds : nuclear charge pairs that are forbidden to connect with a covalent bond.
         not_protonated : nuclear charges of atoms that should not be covalently connected to hydrogens.
+        bond_order_changes : by how much a bond can change during a simple MC step (e.g. [-1, 1]).
         """
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
@@ -791,7 +793,8 @@ class RandomWalk:
                 forbidden_boinds=None,
                 not_protonated=None,
                 added_bond_orders=[1],
-                chain_addition_tuple_possibilities=True,
+                chain_addition_tuple_possibilities=False,
+                bond_order_changes=[-1, 1],
             )
 
             # Some convenient aliases.

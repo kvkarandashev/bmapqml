@@ -42,6 +42,7 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
+    "chain_addition_tuple_possibilities": True,
 }
 
 # "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.

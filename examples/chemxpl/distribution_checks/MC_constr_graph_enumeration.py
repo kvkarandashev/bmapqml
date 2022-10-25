@@ -47,8 +47,8 @@ randomized_change_params = {
     "max_fragment_num": 1,
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
+    "added_bond_orders": [1, 2, 3],
 }
-#    "change_prob_dict": [change_bond_order, replace_heavy_atom],
 
 
 if IMPLICIT_CONSTRAINT:
@@ -60,7 +60,7 @@ min_func = NumHAtoms(intervals=intervals)
 
 ln2 = np.log(2.0)
 
-betas = [None, None, 2.0 * ln2, ln2, ln2 / 2.0]
+betas = [None, None, 2.0 * ln2, ln2, ln2 / 2.0, ln2 / 2.0, ln2 / 4.0, ln2 / 4.0]
 
 num_MC_steps = 50000  # 100000
 

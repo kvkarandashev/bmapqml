@@ -36,6 +36,7 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
+    "chain_addition_tuple_possibilities": True,
 }
 global_change_params = {
     "num_parallel_tempering_tries": 5,
