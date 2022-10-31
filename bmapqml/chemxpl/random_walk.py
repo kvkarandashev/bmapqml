@@ -16,10 +16,10 @@ from .modify import (
     replace_heavy_atom,
     change_bond_order,
     change_valence,
-    change_valence_add_atom,
-    change_valence_remove_atom,
-    valence_change_add_atom_possibilities,
-    valence_change_remove_atom_possibilities,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
+    valence_change_add_atoms_possibilities,
+    valence_change_remove_atoms_possibilities,
     randomized_cross_coupling,
     egc_valid_wrt_change_params,
     available_added_atom_bos,
@@ -60,8 +60,8 @@ full_change_list = [
     replace_heavy_atom,
     change_bond_order,
     change_valence,
-    change_valence_add_atom,
-    change_valence_remove_atom,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
 ]
 
 valence_ha_change_list = [
@@ -69,8 +69,8 @@ valence_ha_change_list = [
     remove_heavy_atom,
     replace_heavy_atom,
     change_bond_order,
-    change_valence_add_atom,
-    change_valence_remove_atom,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
 ]
 
 stochiometry_conserving_change_list = [change_bond_order, change_valence]
@@ -81,8 +81,8 @@ inverse_procedure = {
     replace_heavy_atom: replace_heavy_atom,
     change_bond_order: change_bond_order,
     change_valence: change_valence,
-    change_valence_add_atom: change_valence_remove_atom,
-    change_valence_remove_atom: change_valence_add_atom,
+    change_valence_add_atoms: change_valence_remove_atoms,
+    change_valence_remove_atoms: change_valence_add_atoms,
 }
 
 change_possibility_label = {
@@ -90,8 +90,8 @@ change_possibility_label = {
     remove_heavy_atom: "possible_elements",
     replace_heavy_atom: "possible_elements",
     change_bond_order: "bond_order_changes",
-    change_valence_add_atom: "possible_elements",
-    change_valence_remove_atom: "possible_elements",
+    change_valence_add_atoms: "possible_elements",
+    change_valence_remove_atoms: "possible_elements",
     change_valence: None,
 }
 
@@ -101,8 +101,8 @@ possibility_generator_func = {
     replace_heavy_atom: atom_replacement_possibilities,
     change_bond_order: bond_change_possibilities,
     change_valence: valence_change_possibilities,
-    change_valence_add_atom: valence_change_add_atom_possibilities,
-    change_valence_remove_atom: valence_change_remove_atom_possibilities,
+    change_valence_add_atoms: valence_change_add_atoms_possibilities,
+    change_valence_remove_atoms: valence_change_remove_atoms_possibilities,
 }
 
 
@@ -150,6 +150,10 @@ def egc_change_func(
         return change_function(egc_in, modification_path[0], modification_path[1])
     if change_function is replace_heavy_atom:
         return change_function(egc_in, modification_path[1], modification_path[0])
+    if change_function is change_valence_add_atoms:
+        return change_function(egc_in, modification_path[1], modification_path[0], modification_path[2])
+    if  change_function is change_valence_remove_atoms:
+        return change_function(egc_in, modification_path[1], modification_path[2])
     raise Exception()
 
 
@@ -500,6 +504,17 @@ def inverse_mod_path(
         return [forward_path[0]]
     if change_procedure is change_valence:
         return [new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[0])]
+    if change_procedure is change_valence_add_atoms:
+        return [forward_path[0], new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[1]), list(range(old_egc.num_heavy_atoms(), new_egc.num_heavy_atoms()))]
+    if change_procedure is change_valence_remove_atoms:
+        modified_id=forward_path[1]
+        new_modified_id=modified_id
+        removed_ids=forward_path[2]
+        for removed_id in forward_path[2]:
+            if removed_id < modified_id:
+                new_modified_id-=1
+        bo=old_egc.chemgraph.bond_order(modified_id, removed_ids[0])
+        return [forward_path[0], new_egc.chemgraph.min_id_equivalent_atom_unchecked(new_modified_id), bo]
     raise Exception()
 
 
@@ -775,6 +790,8 @@ class RandomWalk:
         forbidden_bonds : nuclear charge pairs that are forbidden to connect with a covalent bond.
         not_protonated : nuclear charges of atoms that should not be covalently connected to hydrogens.
         bond_order_changes : by how much a bond can change during a simple MC step (e.g. [-1, 1]).
+        max_fragment_num : how many disconnected fragments (e.g. molecules) a chemical graph is allowed to break into.
+        added_bond_orders_val_change : when creating atoms to be connected to a molecule's atom with a change of valence of the latter what the possible bond orders are.
         """
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
@@ -788,13 +805,18 @@ class RandomWalk:
                 )
 
             self.used_randomized_change_params_check_defaults(
+                check_kw_validity=True,
                 change_prob_dict=default_change_list,
                 possible_elements=["C"],
-                forbidden_boinds=None,
+                forbidden_bonds=None,
                 not_protonated=None,
                 added_bond_orders=[1],
                 chain_addition_tuple_possibilities=False,
                 bond_order_changes=[-1, 1],
+                nhatoms_range=None,
+                final_nhatoms_range=None,
+                max_fragment_num=1,
+                added_bond_orders_val_change=[1, 2],
             )
 
             # Some convenient aliases.
@@ -872,10 +894,15 @@ class RandomWalk:
                         "restricted_tps"
                     ] = self.restricted_tps
 
-    def used_randomized_change_params_check_defaults(self, **kwargs):
-        for kw, def_val in kwargs.items():
+    def used_randomized_change_params_check_defaults(self, check_kw_validity=False, **other_kwargs):
+        if check_kw_validity:
+            for kw in self.used_randomized_change_params:
+                if kw not in other_kwargs:
+                    raise Exception("Randomized change parameter ", kw, " is invalid.")
+        for kw, def_val in other_kwargs.items():
             if kw not in self.used_randomized_change_params:
                 self.used_randomized_change_params[kw] = def_val
+
 
     def init_cur_tps(self, init_egcs=None):
         """

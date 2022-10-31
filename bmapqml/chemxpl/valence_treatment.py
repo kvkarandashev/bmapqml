@@ -240,14 +240,26 @@ class HeavyAtom:
     def __repr__(self):
         return str(self)
 
+# TODO check that the function is not duplicated elsewhere
+def next_valence(ha : HeavyAtom, int_step : int = 1):
+    """
+    Next valence value.
+    """
+    val_list=ha.avail_val_list()
+    cur_val_id=val_list.index(ha.valence)
+    new_val_id=cur_val_id+int_step
+    if (new_val_id < 0) or (new_val_id >= len(val_list)):
+        return None
+    else:
+        return val_list[new_val_id]
 
-# Function saying how large can a bond order be between two atoms.
 def hatom_int_checked(hatom):
     if isinstance(hatom, HeavyAtom):
         return hatom.ncharge
     return hatom
 
 
+# Function saying how large can a bond order be between two atoms.
 def max_bo(hatom1, hatom2):
     #   In the end I decided that supporting triple bonds with sulfur does make sense.
     #    if (hatom_int_checked(hatom1) ==16) or (hatom_int_checked(hatom2) == 16):
