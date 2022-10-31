@@ -60,10 +60,8 @@ class Analyze:
 
         for run in tqdm(self.results, disable=not self.verbose):
 
-            try:
-                obj = loadtar(run)
-            except:
-                obj = loadpkl(run)
+            
+            obj = loadpkl(run,compress=True)
 
             HISTOGRAM = self.to_dataframe(obj["histogram"])
             ALL_HISTOGRAMS.append(HISTOGRAM)
@@ -76,9 +74,6 @@ class Analyze:
                     CURR_TRAJECTORIES.append(TRAJECTORY)
                 ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
 
-        # if self.full_traj:
-        #    del obj, traj
-        # del obj
 
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
         self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
@@ -89,20 +84,20 @@ class Analyze:
             if self.verbose:
                 print("Best 5 molecules")
 
-            for ind, label in enumerate(self.LABELS):
-                print("{}".format(label))
-                if ind < 2:
-                    BEST = self.GLOBAL_HISTOGRAM.sort_values(
-                        label, ascending=True
-                    ).tail()[::-1]
-                else:
-                    BEST = self.GLOBAL_HISTOGRAM.sort_values(
-                        label, ascending=False
-                    ).tail()[::-1]
+                for ind, label in enumerate(self.LABELS):
+                    print("{}".format(label))
+                    if ind < 2:
+                        BEST = self.GLOBAL_HISTOGRAM.sort_values(
+                            label, ascending=True
+                        ).tail()[::-1]
+                    else:
+                        BEST = self.GLOBAL_HISTOGRAM.sort_values(
+                            label, ascending=False
+                        ).tail()[::-1]
 
-                print("==========================================================")
-                print(BEST)
-                print("==========================================================")
+                    print("==========================================================")
+                    print(BEST)
+                    print("==========================================================")
 
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
 
@@ -319,20 +314,13 @@ class Analyze:
         in_interval = (darr >= dl) & (darr <= dh)
         N = len(darr[in_interval])
 
-        try:
 
-            import mpmath
+        if return_mols == False:
+            return N
+        else:
+            return N, SMILES_sampled[in_interval][:1000]
 
-            dV = self.volume_of_nsphere(nBits, dh) - self.volume_of_nsphere(nBits, dl)
-            logRDF = float(mpmath.log(N / dV))
-            if return_mols == False:
-                return N, logRDF
-            else:
-                return N, logRDF, SMILES_sampled[in_interval][:1000]
 
-        except ImportError:
-            print("mpmath not installed")
-            return N, None
 
     def volume_of_nsphere(self, N, d):
         """
