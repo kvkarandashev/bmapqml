@@ -1,6 +1,6 @@
 # TODO Perhaps add support for atoms with higher valences being added directly?
 # TODO Ensure resonance structure invariance for genetic algorithms.
-# TODO perhaps num_neighbors should be a proper function in ChemGraph 
+# TODO perhaps num_neighbors should be a proper function in ChemGraph
 
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
@@ -13,7 +13,7 @@ from .valence_treatment import (
     max_bo,
     sorted_by_membership,
     non_default_valences,
-    next_valence
+    next_valence,
 )
 from copy import deepcopy
 import random, itertools
@@ -376,16 +376,23 @@ def available_added_atom_bos(added_element, added_bond_orders, not_protonated=No
     return output
 
 
-def gen_val_change_add_atom_pos_ncharges(possible_elements, chain_starting_element, forbidden_bonds=None):
-    val_change_pos_changes=gen_val_change_pos_ncharges(possible_elements, not_protonated=None)
+def gen_val_change_add_atom_pos_ncharges(
+    possible_elements, chain_starting_element, forbidden_bonds=None
+):
+    val_change_pos_changes = gen_val_change_pos_ncharges(
+        possible_elements, not_protonated=None
+    )
     if forbidden_bonds is None:
         return val_change_pos_changes
     else:
-        output=[]
+        output = []
         for ncharge in val_change_pos_changes:
-            if not connection_forbidden(ncharge, chain_starting_element, forbidden_bonds):
+            if not connection_forbidden(
+                ncharge, chain_starting_element, forbidden_bonds
+            ):
                 output.append(ncharge)
         return output
+
 
 def valence_change_add_atoms_possibilities(
     egc,
@@ -400,13 +407,17 @@ def valence_change_add_atoms_possibilities(
     possible_elements=None,
     **other_kwargs,
 ):
-    possibilities={}
+    possibilities = {}
     if val_change_add_atom_poss_ncharges is None:
-        val_change_poss_ncharges=gen_val_change_add_atom_pos_ncharges(possible_elements, chain_starting_element, forbidden_bonds=forbidden_bonds)
+        val_change_poss_ncharges = gen_val_change_add_atom_pos_ncharges(
+            possible_elements, chain_starting_element, forbidden_bonds=forbidden_bonds
+        )
     else:
-        val_change_poss_ncharges=val_change_add_atom_poss_ncharges[chain_starting_element]
+        val_change_poss_ncharges = val_change_add_atom_poss_ncharges[
+            chain_starting_element
+        ]
 
-    if len(val_change_poss_ncharges)==0:
+    if len(val_change_poss_ncharges) == 0:
         return possibilities
 
     if avail_added_bond_orders_val_change is None:
@@ -416,8 +427,7 @@ def valence_change_add_atoms_possibilities(
             not_protonated=not_protonated,
         )
     else:
-        avail_bond_orders=avail_added_bond_orders_val_change[chain_starting_element]
-
+        avail_bond_orders = avail_added_bond_orders_val_change[chain_starting_element]
 
     if nhatoms_range is not None:
         max_added_nhatoms = nhatoms_range[1] - egc.num_heavy_atoms()
@@ -428,7 +438,7 @@ def valence_change_add_atoms_possibilities(
         if ha.ncharge not in val_change_poss_ncharges:
             continue
         cur_valence = ha.valence
-        new_valence=next_valence(ha)
+        new_valence = next_valence(ha)
         if new_valence is None:
             continue
         val_diff = new_valence - cur_valence
@@ -444,8 +454,9 @@ def valence_change_add_atoms_possibilities(
             if ha_id in possibilities:
                 possibilities[ha_id].append(added_bond_order)
             else:
-                possibilities[ha_id]=[added_bond_order]
+                possibilities[ha_id] = [added_bond_order]
     return possibilities
+
 
 def valence_change_remove_atoms_possibilities(
     egc,
@@ -466,13 +477,15 @@ def valence_change_remove_atoms_possibilities(
         if max_removed_nhatoms < 0:
             raise Exception()
 
-    possibilities={}
+    possibilities = {}
     if val_change_add_atom_poss_ncharges is None:
-        val_change_poss_ncharges=gen_val_change_add_atom_pos_ncharges(possible_elements, removed_atom_type, forbidden_bonds=forbidden_bonds)
+        val_change_poss_ncharges = gen_val_change_add_atom_pos_ncharges(
+            possible_elements, removed_atom_type, forbidden_bonds=forbidden_bonds
+        )
     else:
-        val_change_poss_ncharges=val_change_add_atom_poss_ncharges[removed_atom_type]
+        val_change_poss_ncharges = val_change_add_atom_poss_ncharges[removed_atom_type]
 
-    if len(val_change_poss_ncharges)==0:
+    if len(val_change_poss_ncharges) == 0:
         return possibilities
 
     if avail_added_bond_orders_val_change is None:
@@ -482,7 +495,7 @@ def valence_change_remove_atoms_possibilities(
             not_protonated=not_protonated,
         )
     else:
-        avail_bond_orders=avail_added_bond_orders_val_change[removed_atom_type]
+        avail_bond_orders = avail_added_bond_orders_val_change[removed_atom_type]
 
     removed_atom_ncharge = int_atom_checked(removed_atom_type)
 
@@ -496,7 +509,7 @@ def valence_change_remove_atoms_possibilities(
         if new_valence is None:
             continue
 
-        val_diff = cur_valence-new_valence
+        val_diff = cur_valence - new_valence
 
         if exclude_equivalent:
             if atom_equivalent_to_list_member(egc, ha_id, possibilities):
@@ -505,15 +518,11 @@ def valence_change_remove_atoms_possibilities(
             if val_diff % added_bond_order != 0:
                 continue
             removed_nhatoms = val_diff // added_bond_order
-            if (nhatoms_range is not None) and (
-                    removed_nhatoms > max_removed_nhatoms
-                ):
+            if (nhatoms_range is not None) and (removed_nhatoms > max_removed_nhatoms):
                 continue
-            removed_hatoms=[]
+            removed_hatoms = []
             for neigh in cg.neighbors(ha_id):
-                if (
-                    cg.bond_order(ha_id, neigh) != added_bond_order
-                ):
+                if cg.bond_order(ha_id, neigh) != added_bond_order:
                     continue
                 if cg.hatoms[neigh].ncharge != removed_atom_ncharge:
                     continue
@@ -583,10 +592,11 @@ def change_valence(egc, modified_atom_id, new_valence):
     new_chemgraph.change_valence(modified_atom_id, new_valence)
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
+
 def change_valence_add_atoms(egc, modified_atom_id, new_atom_element, new_bo):
     new_chemgraph = deepcopy(egc.chemgraph)
 
-    new_atom_charge=int_atom_checked(new_atom_element)
+    new_atom_charge = int_atom_checked(new_atom_element)
 
     mod_hatom = new_chemgraph.hatoms[modified_atom_id]
     new_mod_valence_val = next_valence(mod_hatom)
@@ -601,21 +611,22 @@ def change_valence_add_atoms(egc, modified_atom_id, new_atom_element, new_bo):
         )
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
+
 def change_valence_remove_atoms(egc, modified_atom_id, removed_neighbors):
     new_chemgraph = deepcopy(egc.chemgraph)
 
-    mod_hatom=new_chemgraph.hatoms[modified_atom_id]
-    new_mod_valence_val=next_valence(mod_hatom, -1)
-    val_diff=mod_hatom.valence-new_mod_valence_val
+    mod_hatom = new_chemgraph.hatoms[modified_atom_id]
+    new_mod_valence_val = next_valence(mod_hatom, -1)
+    val_diff = mod_hatom.valence - new_mod_valence_val
 
-    id_shift=0
-    running_bond=None
+    id_shift = 0
+    running_bond = None
     for neigh in removed_neighbors:
         if neigh < modified_atom_id:
-            id_shift-=1
-        cur_bond=new_chemgraph.bond_order(neigh, modified_atom_id)
+            id_shift -= 1
+        cur_bond = new_chemgraph.bond_order(neigh, modified_atom_id)
         if running_bond is None:
-            running_bond=cur_bond
+            running_bond = cur_bond
             if running_bond == 0:
                 raise Exception()
         else:
@@ -627,9 +638,10 @@ def change_valence_remove_atoms(egc, modified_atom_id, removed_neighbors):
     if val_diff != 0:
         raise Exception()
     new_chemgraph.remove_heavy_atoms(removed_neighbors)
-    new_modified_atom_id=modified_atom_id+id_shift
+    new_modified_atom_id = modified_atom_id + id_shift
     new_chemgraph.change_valence(new_modified_atom_id, new_mod_valence_val)
     return ExtGraphCompound(chemgraph=new_chemgraph)
+
 
 # Procedures for genetic algorithms.
 

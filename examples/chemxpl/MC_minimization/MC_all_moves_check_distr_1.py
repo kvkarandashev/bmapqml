@@ -15,7 +15,7 @@ np.random.seed(1)
 possible_elements = ["C", "P", "O"]
 
 forbidden_bonds = [(8, 8)]
-not_protonated=[8]
+not_protonated = [8]
 
 max_nhatoms = 4
 
@@ -31,7 +31,7 @@ min_func = NumHAtoms(intervals=intervals)
 # these unsembles are used to decrease the probability that greedy optimization returns a local minimum rather than a global one.
 ln2 = np.log(2.0)
 
-betas = [None, None, 2.0 * ln2, ln2, ln2, ln2/2.]
+betas = [None, None, 2.0 * ln2, ln2, ln2, ln2 / 2.0]
 
 num_MC_steps = 20000  # 100000
 
@@ -44,7 +44,7 @@ randomized_change_params = {
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
     "added_bond_orders": [1, 2, 3],
-    "not_protonated" : not_protonated,
+    "not_protonated": not_protonated,
 }
 
 # "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.
@@ -55,8 +55,8 @@ global_change_params = {
 }
 
 # Initial point for all replicas is CC#CC.
-init_cg_str="6#1@1:6@2:6@3:6#1"
-#init_cg_str="6#4"
+init_cg_str = "6#1@1:6@2:6@3:6#1"
+# init_cg_str="6#4"
 
 init_cg = str2ChemGraph(init_cg_str)
 
@@ -76,7 +76,7 @@ rw = RandomWalk(
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
-    track_histogram_size=True
+    track_histogram_size=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)

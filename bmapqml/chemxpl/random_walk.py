@@ -151,8 +151,10 @@ def egc_change_func(
     if change_function is replace_heavy_atom:
         return change_function(egc_in, modification_path[1], modification_path[0])
     if change_function is change_valence_add_atoms:
-        return change_function(egc_in, modification_path[1], modification_path[0], modification_path[2])
-    if  change_function is change_valence_remove_atoms:
+        return change_function(
+            egc_in, modification_path[1], modification_path[0], modification_path[2]
+        )
+    if change_function is change_valence_remove_atoms:
         return change_function(egc_in, modification_path[1], modification_path[2])
     raise Exception()
 
@@ -505,16 +507,24 @@ def inverse_mod_path(
     if change_procedure is change_valence:
         return [new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[0])]
     if change_procedure is change_valence_add_atoms:
-        return [forward_path[0], new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[1]), list(range(old_egc.num_heavy_atoms(), new_egc.num_heavy_atoms()))]
+        return [
+            forward_path[0],
+            new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[1]),
+            list(range(old_egc.num_heavy_atoms(), new_egc.num_heavy_atoms())),
+        ]
     if change_procedure is change_valence_remove_atoms:
-        modified_id=forward_path[1]
-        new_modified_id=modified_id
-        removed_ids=forward_path[2]
+        modified_id = forward_path[1]
+        new_modified_id = modified_id
+        removed_ids = forward_path[2]
         for removed_id in forward_path[2]:
             if removed_id < modified_id:
-                new_modified_id-=1
-        bo=old_egc.chemgraph.bond_order(modified_id, removed_ids[0])
-        return [forward_path[0], new_egc.chemgraph.min_id_equivalent_atom_unchecked(new_modified_id), bo]
+                new_modified_id -= 1
+        bo = old_egc.chemgraph.bond_order(modified_id, removed_ids[0])
+        return [
+            forward_path[0],
+            new_egc.chemgraph.min_id_equivalent_atom_unchecked(new_modified_id),
+            bo,
+        ]
     raise Exception()
 
 
@@ -894,7 +904,9 @@ class RandomWalk:
                         "restricted_tps"
                     ] = self.restricted_tps
 
-    def used_randomized_change_params_check_defaults(self, check_kw_validity=False, **other_kwargs):
+    def used_randomized_change_params_check_defaults(
+        self, check_kw_validity=False, **other_kwargs
+    ):
         if check_kw_validity:
             for kw in self.used_randomized_change_params:
                 if kw not in other_kwargs:
@@ -902,7 +914,6 @@ class RandomWalk:
         for kw, def_val in other_kwargs.items():
             if kw not in self.used_randomized_change_params:
                 self.used_randomized_change_params[kw] = def_val
-
 
     def init_cur_tps(self, init_egcs=None):
         """

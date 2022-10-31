@@ -240,18 +240,20 @@ class HeavyAtom:
     def __repr__(self):
         return str(self)
 
+
 # TODO check that the function is not duplicated elsewhere
-def next_valence(ha : HeavyAtom, int_step : int = 1):
+def next_valence(ha: HeavyAtom, int_step: int = 1):
     """
     Next valence value.
     """
-    val_list=ha.avail_val_list()
-    cur_val_id=val_list.index(ha.valence)
-    new_val_id=cur_val_id+int_step
+    val_list = ha.avail_val_list()
+    cur_val_id = val_list.index(ha.valence)
+    new_val_id = cur_val_id + int_step
     if (new_val_id < 0) or (new_val_id >= len(val_list)):
         return None
     else:
         return val_list[new_val_id]
+
 
 def hatom_int_checked(hatom):
     if isinstance(hatom, HeavyAtom):
