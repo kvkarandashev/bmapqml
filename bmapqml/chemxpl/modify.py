@@ -469,6 +469,7 @@ def valence_change_remove_atoms_possibilities(
     val_change_add_atom_poss_ncharges=None,
     forbidden_bonds=None,
     not_protonated=None,
+    default_valences=None,
     **other_kwargs,
 ):
 
@@ -499,6 +500,11 @@ def valence_change_remove_atoms_possibilities(
 
     removed_atom_ncharge = int_atom_checked(removed_atom_type)
 
+    if default_valences is None:
+        default_removed_valence = default_valences[removed_atom_ncharge]
+    else:
+        default_removed_valence = default_valence(removed_atom_ncharge)
+
     cg = egc.chemgraph
 
     for ha_id, ha in enumerate(egc.chemgraph.hatoms):
@@ -524,21 +530,25 @@ def valence_change_remove_atoms_possibilities(
             for neigh in cg.neighbors(ha_id):
                 if cg.bond_order(ha_id, neigh) != added_bond_order:
                     continue
-                if cg.hatoms[neigh].ncharge != removed_atom_ncharge:
+                neigh_ha = cg.hatoms[neigh]
+                if neigh_ha.ncharge != removed_atom_ncharge:
                     continue
                 if (
                     len(cg.neighbors(neigh)) != 1
                 ):  # TODO make nneigh a thing? Check igraph routines?
+                    continue
+                if neigh_ha.valence != default_removed_valence:
                     continue
                 removed_hatoms.append(neigh)
                 if removed_nhatoms == len(removed_hatoms):
                     break
             if removed_nhatoms != len(removed_hatoms):
                 continue
+            removed_hatoms_tuple = tuple(removed_hatoms)
             if ha_id in possibilities:
-                possibilities[ha_id].append(removed_hatoms)
+                possibilities[ha_id].append(removed_hatoms_tuple)
             else:
-                possibilities[ha_id] = [removed_hatoms]
+                possibilities[ha_id] = [removed_hatoms_tuple]
 
     return possibilities
 
