@@ -146,6 +146,9 @@ class HeavyAtom:
         else:
             return avail_val_list(self.ncharge)
 
+    def is_polyvalent(self):
+        return isinstance(valences_int[self.ncharge], tuple)
+
     def valence_reasonable(self):
         val_list = self.avail_val_list()
         if isinstance(val_list, tuple):
@@ -714,6 +717,14 @@ class ChemGraph:
             raise InvalidChange
 
     # For reassigning multiple bonds if valence composition is invalid, and all related procedures.
+    def attempt_minimize_valences(self):
+        if self.non_default_valence_present():
+            old_non_default_valences = self.non_default_valences()
+            self.reassign_nonsigma_bonds()
+            return old_non_default_valences == self.non_default_valences()
+        else:
+            return True
+
     def reassign_nonsigma_bonds(self):
         # Set all bond orders to one.
         for bond_tuple, bond_order in self.bond_orders.items():

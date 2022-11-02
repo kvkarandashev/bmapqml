@@ -1,6 +1,10 @@
 # TODO Perhaps add support for atoms with higher valences being added directly?
 # TODO Ensure resonance structure invariance for genetic algorithms.
 # TODO perhaps num_neighbors should be a proper function in ChemGraph
+# TODO check max_bo is enforced properly when atoms are added
+# TODO revise change_bond_order_possibilities; CHECK IT WORKS FOR [-2, -1, 1, 2]
+# TODO create *_tuple_possibilities options for change_bond functions?
+# TODO check that the currently commenting change_valence function exception is correct
 
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
@@ -553,6 +557,99 @@ def valence_change_remove_atoms_possibilities(
     return possibilities
 
 
+def valence_bond_change_possibilities(
+    egc,
+    bond_order_change,
+    forbidden_bonds=None,
+    not_protonated=None,
+    max_fragment_num=None,
+    exclude_equivalent=True,
+    **other_kwargs,
+):
+    cg = egc.chemgraph
+    hatoms = cg.hatoms
+    output = []
+    if bond_order_change == 0:
+        return output
+    for mod_val_ha_id, mod_val_ha in enumerate(hatoms):
+        mod_val_nc = mod_val_ha.ncharge
+        if not mod_val_ha.is_polyvalent():
+            continue
+        if (
+            next_valence(mod_val_ha, np.sign(bond_order_change))
+            != mod_val_ha.valence + bond_order_change
+        ):
+            continue
+        for other_ha_id, other_ha in enumerate(hatoms):
+            if other_ha_id == mod_val_ha_id:
+                continue
+            other_nc = other_ha.ncharge
+            bond_tuple = (mod_val_ha_id, other_ha_id)
+            if bond_order_change > 0:
+                if connection_forbidden(mod_val_nc, other_nc, forbidden_bonds):
+                    continue
+                if hatoms[other_ha_id].nhydrogens < bond_order_change:
+                    continue
+            else:
+                if not_protonated is not None:
+                    if other_nc in not_protonated:
+                        continue
+            possible_bond_orders = cg.aa_all_bond_orders(*bond_tuple)
+            max_bond_order = max(possible_bond_orders)
+            if bond_order_change > 0:
+                min_bond_order = min(possible_bond_orders)
+                if min_bond_order + bond_order_change > max_bo(mod_val_nc, other_nc):
+                    continue
+                if max_bond_order == min_bond_order:
+                    possible_resonance_structures = [0]
+                else:
+                    # TO-DO is this actually needed?
+                    possible_resonance_structures = [
+                        cg.aa_all_bond_orders(*bond_tuple, unsorted=True).index(
+                            min_bond_order
+                        )
+                    ]
+            else:
+                if max_bond_order < -bond_order_change:
+                    continue
+                if (max_fragment_num is not None) and (
+                    max_bond_order == -bond_order_change
+                ):
+                    if (cg.num_connected() == max_fragment_num) and (
+                        cg.graph.edge_connectivity(
+                            source=mod_val_ha_id, target=other_ha_id
+                        )
+                        == 1
+                    ):
+                        continue
+                if -bond_order_change in possible_bond_orders:
+                    unsorted_possible_bond_orders = egc.chemgraph.aa_all_bond_orders(
+                        *bond_tuple, unsorted=True
+                    )
+                    bond_break_index = unsorted_possible_bond_orders.index(
+                        -bond_order_change
+                    )
+                    if max_bond_order == -bond_order_change:
+                        possible_resonance_structures = [bond_break_index]
+                    else:
+                        max_bond_index = unsorted_possible_bond_orders.index(
+                            max_bond_order
+                        )
+                        possible_resonance_structures = [
+                            bond_break_index,
+                            max_bond_index,
+                        ]
+                else:
+                    possible_resonance_structures = [0]
+            if exclude_equivalent:
+                if atom_pair_equivalent_to_list_member(egc, bond_tuple, output):
+                    continue
+            for poss_res_struct in possible_resonance_structures:
+                output.append((*bond_tuple, poss_res_struct))
+
+    return output
+
+
 def add_heavy_atom_chain(
     egc, modified_atom_id, new_chain_atoms, chain_bond_orders=None
 ):
@@ -588,11 +685,8 @@ def change_bond_order(
         resonance_structure_id=resonance_structure_id,
     )
 
-    if new_chemgraph.non_default_valence_present():
-        old_non_default_valences = new_chemgraph.non_default_valences()
-        new_chemgraph.reassign_nonsigma_bonds()
-        if old_non_default_valences != new_chemgraph.non_default_valences():
-            return None
+    if not new_chemgraph.attempt_minimize_valences():
+        return None
 
     return ExtGraphCompound(chemgraph=new_chemgraph)
 
@@ -601,6 +695,12 @@ def change_valence(egc, modified_atom_id, new_valence):
     new_chemgraph = deepcopy(egc.chemgraph)
     new_chemgraph.change_valence(modified_atom_id, new_valence)
     return ExtGraphCompound(chemgraph=new_chemgraph)
+
+
+#    if new_chemgraph.attempt_minimize_valences():
+#        return ExtGraphCompound(chemgraph=new_chemgraph)
+#    else:
+#        return None
 
 
 def change_valence_add_atoms(egc, modified_atom_id, new_atom_element, new_bo):
@@ -651,6 +751,51 @@ def change_valence_remove_atoms(egc, modified_atom_id, removed_neighbors):
     new_modified_atom_id = modified_atom_id + id_shift
     new_chemgraph.change_valence(new_modified_atom_id, new_mod_valence_val)
     return ExtGraphCompound(chemgraph=new_chemgraph)
+
+
+def change_bond_order_valence(
+    egc, val_changed_atom_id, other_atom_id, bond_order_change, resonance_structure_id=0
+):
+
+    if bond_order_change > 0:
+        new_chemgraph = deepcopy(egc.chemgraph)
+    else:
+        temp_egc = change_bond_order(
+            egc,
+            val_changed_atom_id,
+            other_atom_id,
+            bond_order_change,
+            resonance_structure_id=resonance_structure_id,
+        )
+        if temp_egc is None:
+            print(
+                egc,
+                val_changed_atom_id,
+                other_atom_id,
+                bond_order_change,
+                egc.chemgraph.hatoms,
+                egc.chemgraph.bond_orders,
+            )
+            quit()
+        new_chemgraph = deepcopy(temp_egc.chemgraph)
+    new_chemgraph.change_valence(
+        val_changed_atom_id,
+        new_chemgraph.hatoms[val_changed_atom_id].valence + bond_order_change,
+    )
+    if not new_chemgraph.hatoms[val_changed_atom_id].valence_reasonable():
+        raise Exception
+
+    intermediate_egc = ExtGraphCompound(chemgraph=new_chemgraph)
+    if bond_order_change > 0:
+        return change_bond_order(
+            intermediate_egc,
+            val_changed_atom_id,
+            other_atom_id,
+            bond_order_change,
+            resonance_structure_id=resonance_structure_id,
+        )
+    else:
+        return intermediate_egc
 
 
 # Procedures for genetic algorithms.

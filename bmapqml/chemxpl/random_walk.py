@@ -25,6 +25,8 @@ from .modify import (
     available_added_atom_bos,
     gen_atom_removal_possible_hnums,
     gen_val_change_pos_ncharges,
+    change_bond_order_valence,
+    valence_bond_change_possibilities,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
@@ -62,6 +64,7 @@ full_change_list = [
     change_valence,
     change_valence_add_atoms,
     change_valence_remove_atoms,
+    change_bond_order_valence,
 ]
 
 valence_ha_change_list = [
@@ -83,6 +86,7 @@ inverse_procedure = {
     change_valence: change_valence,
     change_valence_add_atoms: change_valence_remove_atoms,
     change_valence_remove_atoms: change_valence_add_atoms,
+    change_bond_order_valence: change_bond_order_valence,
 }
 
 change_possibility_label = {
@@ -93,6 +97,7 @@ change_possibility_label = {
     change_valence_add_atoms: "possible_elements",
     change_valence_remove_atoms: "possible_elements",
     change_valence: None,
+    change_bond_order_valence: "bond_order_valence_changes",
 }
 
 possibility_generator_func = {
@@ -103,13 +108,8 @@ possibility_generator_func = {
     change_valence: valence_change_possibilities,
     change_valence_add_atoms: valence_change_add_atoms_possibilities,
     change_valence_remove_atoms: valence_change_remove_atoms_possibilities,
+    change_bond_order_valence: valence_bond_change_possibilities,
 }
-
-
-def inverse_possibility_label(change_function, possibility_label):
-    if change_function is change_bond_order:
-        return -possibility_label
-    return possibility_label
 
 
 def egc_change_func(
@@ -119,7 +119,9 @@ def egc_change_func(
     chain_addition_tuple_possibilities=False,
     **other_kwargs
 ):
-    if change_function is change_bond_order:
+    if (change_function is change_bond_order) or (
+        change_function is change_bond_order_valence
+    ):
         atom_id_tuple = modification_path[1][:2]
         resonance_structure_id = modification_path[1][-1]
         bo_change = modification_path[0]
@@ -485,7 +487,9 @@ def inverse_mod_path(
     chain_addition_tuple_possibilities=False,
     **other_kwargs
 ):
-    if change_procedure is change_bond_order:
+    if (change_procedure is change_bond_order) or (
+        change_procedure is change_bond_order_valence
+    ):
         return [-forward_path[0]]
     if change_procedure is remove_heavy_atom:
         removed_atom = forward_path[-1]
@@ -800,6 +804,7 @@ class RandomWalk:
         forbidden_bonds : nuclear charge pairs that are forbidden to connect with a covalent bond.
         not_protonated : nuclear charges of atoms that should not be covalently connected to hydrogens.
         bond_order_changes : by how much a bond can change during a simple MC step (e.g. [-1, 1]).
+        bond_order_valence_changes : by how much a bond can change during steps that change bond order and valence of an atom (e.g. [-2, 2]).
         max_fragment_num : how many disconnected fragments (e.g. molecules) a chemical graph is allowed to break into.
         added_bond_orders_val_change : when creating atoms to be connected to a molecule's atom with a change of valence of the latter what the possible bond orders are.
         """
@@ -823,6 +828,7 @@ class RandomWalk:
                 added_bond_orders=[1],
                 chain_addition_tuple_possibilities=False,
                 bond_order_changes=[-1, 1],
+                bond_order_valence_changes=[-2, 2],
                 nhatoms_range=None,
                 final_nhatoms_range=None,
                 max_fragment_num=1,
