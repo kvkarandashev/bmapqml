@@ -1,7 +1,7 @@
 # TODO For forward and backward probabilities, comment more on where different signs come from.
 # TODO 1. Account for statistical noise of input data. 2. Many theory levels?
 # TODO Somehow unify all instances where simulation histogram is modified.
-# !!!TODO!!! check that delete_temp_data functions properly after the recent changes.
+# TODO sorted betas + parallel tempering just neighboring points.
 
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound

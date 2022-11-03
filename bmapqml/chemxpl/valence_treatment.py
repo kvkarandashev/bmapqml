@@ -125,7 +125,12 @@ def list2colors(obj_list):
 # Auxiliary class mainly used to keep valences in check.
 class HeavyAtom:
     def __init__(
-        self, atom_symbol, valence=None, nhydrogens=0, coordination_number=None
+        self,
+        atom_symbol,
+        valence=None,
+        nhydrogens=0,
+        coordination_number=None,
+        possible_valences=None,
     ):
         self.ncharge = int_atom_checked(atom_symbol)
         if valence is None:
@@ -134,6 +139,7 @@ class HeavyAtom:
             )
         self.valence = valence
         self.nhydrogens = nhydrogens
+        self.possible_valences = possible_valences
         self.changed()
 
     def changed(self):
@@ -684,6 +690,10 @@ class ChemGraph:
     def neighbors(self, hatom_id):
         return self.graph.neighbors(hatom_id)
 
+    def num_neighbors(self, hatom_id):
+        #        return len(self.neighbors(hatom_id))
+        return self.graph.neighborhood_size(vertices=hatom_id, order=1)
+
     # Basic commands for managing the graph.
     def set_edge_order(self, atom1, atom2, new_edge_order):
         true_bond_tuple = tuple(sorted_tuple(atom1, atom2))
@@ -799,7 +809,7 @@ class ChemGraph:
             extra_val_ids_lists, coord_nums_lists, extra_val_subgraph_list
         ):
             for i, val_id1 in enumerate(extra_val_ids):
-                neighs = self.graph.neighbors(val_id1)
+                neighs = self.neighbors(val_id1)
                 for val_id2 in extra_val_ids[:i]:
                     if val_id2 in neighs:
                         self.resonance_structure_map[(val_id2, val_id1)] = len(
@@ -810,25 +820,29 @@ class ChemGraph:
             )
             if added_edges_lists is None:
                 raise InvalidAdjMat
-            subgraph_res_struct = []
-            for added_edges in added_edges_lists:
-                terminate = False
-                add_bond_orders = {}
-                for e in added_edges:
-                    se = tuple(sorted(e))
-                    if se in add_bond_orders:
-                        add_bond_orders[se] += 1
-                        if add_bond_orders[se] == max_bo(
-                            self.hatoms[se[0]], self.hatoms[se[1]]
-                        ):
-                            terminate = True
-                            break
-                    else:
-                        add_bond_orders[se] = 1
-                if (not terminate) and (add_bond_orders not in subgraph_res_struct):
-                    subgraph_res_struct.append(add_bond_orders)
+            subgraph_res_struct = self.added_edges_to_res_struct(added_edges_lists)
             self.resonance_structure_orders.append(subgraph_res_struct)
             self.resonance_structure_inverse_map.append(extra_val_ids)
+
+    def added_edges_to_res_struct(self, added_edges_lists):
+        subgraph_res_struct = []
+        for added_edges in added_edges_lists:
+            terminate = False
+            add_bond_orders = {}
+            for e in added_edges:
+                se = tuple(sorted(e))
+                if se in add_bond_orders:
+                    add_bond_orders[se] += 1
+                    if add_bond_orders[se] == max_bo(
+                        self.hatoms[se[0]], self.hatoms[se[1]]
+                    ):
+                        terminate = True
+                        break
+                else:
+                    add_bond_orders[se] = 1
+            if (not terminate) and (add_bond_orders not in subgraph_res_struct):
+                subgraph_res_struct.append(add_bond_orders)
+        return subgraph_res_struct
 
     def reassign_nonsigma_bonds_subgraph(
         self, extra_val_ids, coord_nums, extra_val_subgraph
