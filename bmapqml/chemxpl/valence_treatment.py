@@ -735,23 +735,37 @@ class ChemGraph:
         else:
             return True
 
+    def gen_coord_nums_extra_valence_ids(
+        self, init_valence=False, ref_max_valence=True
+    ):
+        coordination_numbers = []
+        extra_valence_indices = []
+        for hatom_id, hatom in enumerate(self.hatoms):
+            cur_coord_number = self.coordination_number(hatom_id)
+            if ref_max_valence:
+                ref_valence = hatom.max_valence()
+            else:
+                ref_valence = hatom.valence
+            if ref_valence < cur_coord_number:
+                raise InvalidAdjMat
+            elif ref_valence > cur_coord_number:
+                coordination_numbers.append(cur_coord_number)
+                extra_valence_indices.append(hatom_id)
+            if init_valence:
+                hatom.valence = hatom.smallest_valid_valence(cur_coord_number)
+        return coordination_numbers, extra_valence_indices
+
     def reassign_nonsigma_bonds(self):
         # Set all bond orders to one.
         for bond_tuple, bond_order in self.bond_orders.items():
             if bond_order > 1:
                 self.change_edge_order(*bond_tuple, 1 - bond_order)
         # Find indices of atoms with spare non-sigma electrons. Also check coordination numbers are not above valence.
-        coordination_numbers = []
-        extra_valence_indices = []
-        for hatom_id, hatom in enumerate(self.hatoms):
-            cur_coord_number = self.coordination_number(hatom_id)
-            max_valence = hatom.max_valence()
-            if max_valence < cur_coord_number:
-                raise InvalidAdjMat
-            elif max_valence > cur_coord_number:
-                coordination_numbers.append(cur_coord_number)
-                extra_valence_indices.append(hatom_id)
-            hatom.valence = hatom.smallest_valid_valence(cur_coord_number)
+        (
+            coordination_numbers,
+            extra_valence_indices,
+        ) = self.gen_coord_nums_extra_valence_ids(init_valence=True)
+
         if len(extra_valence_indices) == 0:  # no non-sigma bonds to reassign
             return
         (
@@ -789,14 +803,10 @@ class ChemGraph:
         self.resonance_structure_map = {}
         self.resonance_structure_inverse_map = []
 
-        extra_valence_indices = []
-        coordination_numbers = []
-        for hatom_id, hatom in enumerate(self.hatoms):
-            cur_coord_number = self.coordination_number(hatom_id)
-            cur_valence = hatom.valence
-            if cur_valence > cur_coord_number:
-                extra_valence_indices.append(hatom_id)
-                coordination_numbers.append(cur_coord_number)
+        (
+            coordination_numbers,
+            extra_valence_indices,
+        ) = self.gen_coord_nums_extra_valence_ids(ref_max_valence=False)
         if len(extra_valence_indices) == 0:
             return
         (
