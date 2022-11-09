@@ -54,6 +54,7 @@ global_change_params = {
 
 # Initial point for all replicas is CC#CC.
 init_cg = str2ChemGraph("6#1@1:6@2:6@3:6#1")
+# init_cg=str2ChemGraph("6#4")
 
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(len(betas))]
 

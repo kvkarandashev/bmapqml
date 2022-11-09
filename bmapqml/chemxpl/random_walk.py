@@ -132,9 +132,18 @@ def egc_change_func(
             resonance_structure_id=resonance_structure_id
         )
     if change_function is remove_heavy_atom:
-        return change_function(egc_in, modification_path[1])
+        return change_function(
+            egc_in,
+            modification_path[1][0],
+            resonance_structure_id=modification_path[1][1],
+        )
     if change_function is change_valence:
-        return change_function(egc_in, modification_path[0], modification_path[1])
+        return change_function(
+            egc_in,
+            modification_path[0],
+            modification_path[1][0],
+            resonance_structure_id=modification_path[1][1],
+        )
     if change_function is add_heavy_atom_chain:
         if chain_addition_tuple_possibilities:
             modified_atom_id = modification_path[1][0]
@@ -151,13 +160,23 @@ def egc_change_func(
     if change_function is change_valence:
         return change_function(egc_in, modification_path[0], modification_path[1])
     if change_function is replace_heavy_atom:
-        return change_function(egc_in, modification_path[1], modification_path[0])
+        return change_function(
+            egc_in,
+            modification_path[1][0],
+            modification_path[0],
+            resonance_structure_id=modification_path[1][1],
+        )
     if change_function is change_valence_add_atoms:
         return change_function(
             egc_in, modification_path[1], modification_path[0], modification_path[2]
         )
     if change_function is change_valence_remove_atoms:
-        return change_function(egc_in, modification_path[1], modification_path[2])
+        return change_function(
+            egc_in,
+            modification_path[1],
+            modification_path[2][0],
+            resonance_structure_id=modification_path[2][1],
+        )
     raise Exception()
 
 
@@ -299,6 +318,8 @@ class TrajectoryPoint:
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
         # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
         if self.possibility_dict is None:
+
+            self.egc.chemgraph.init_resonance_structures()
 
             change_prob_dict = lookup_or_none(kwargs, "change_prob_dict")
             if change_prob_dict is None:
@@ -492,7 +513,7 @@ def inverse_mod_path(
     ):
         return [-forward_path[0]]
     if change_procedure is remove_heavy_atom:
-        removed_atom = forward_path[-1]
+        removed_atom = forward_path[-1][0]
         removed_elname = element_name[old_egc.chemgraph.hatoms[removed_atom].ncharge]
         if chain_addition_tuple_possibilities:
             return [removed_elname]
@@ -503,7 +524,7 @@ def inverse_mod_path(
             neigh = new_egc.chemgraph.min_id_equivalent_atom_unchecked(neigh)
             return [removed_elname, neigh]
     if change_procedure is replace_heavy_atom:
-        changed_atom = forward_path[-1]
+        changed_atom = forward_path[-1][0]
         inserted_elname = element_name[old_egc.chemgraph.hatoms[changed_atom].ncharge]
         return [inserted_elname]
     if change_procedure is add_heavy_atom_chain:
@@ -519,8 +540,8 @@ def inverse_mod_path(
     if change_procedure is change_valence_remove_atoms:
         modified_id = forward_path[1]
         new_modified_id = modified_id
-        removed_ids = forward_path[2]
-        for removed_id in forward_path[2]:
+        removed_ids = forward_path[2][0]
+        for removed_id in removed_ids:
             if removed_id < modified_id:
                 new_modified_id -= 1
         bo = old_egc.chemgraph.bond_order(modified_id, removed_ids[0])
@@ -542,6 +563,9 @@ def randomized_change(
     Randomly modify a TrajectoryPoint object.
     visited_tp_list : list of TrajectoryPoint objects for which data is available.
     """
+    # TODO delete post-testing
+    if not tp.egc.chemgraph.valences_reasonable():
+        raise Exception()
     cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
         tp.possibilities(), change_prob_dict
     )
@@ -563,6 +587,10 @@ def randomized_change(
     if new_egc is None:
         return None, None
 
+    # TODO delete post-testing
+    if not new_egc.chemgraph.valences_reasonable():
+        raise Exception()
+
     new_tp = TrajectoryPoint(egc=new_egc)
     if visited_tp_list is not None:
         if new_tp in visited_tp_list:
@@ -570,7 +598,6 @@ def randomized_change(
             visited_tp_list[tp_id].copy_extra_data_to(new_tp)
 
     new_tp.init_possibility_info(change_prob_dict=change_prob_dict, **other_kwargs)
-
     # Calculate the chances of doing the inverse operation
     inv_proc = inverse_procedure[cur_change_procedure]
     inv_pos_label = change_possibility_label[inv_proc]
@@ -1264,7 +1291,6 @@ class RandomWalk:
         cur_procedure = random.choices(
             list(prob_dict), weights=list(prob_dict.values())
         )[0]
-
         global_change_dict = self.global_change_dict()
         if cur_procedure in global_change_dict:
             global_change_dict[cur_procedure](**other_kwargs)
