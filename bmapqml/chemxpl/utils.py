@@ -24,7 +24,7 @@ from .modify import replace_heavy_atom, atom_replacement_possibilities
 import numpy as np
 from igraph import Graph
 from ..utils import read_xyz_file, default_num_procs, write_xyz_file, xyz_string
-from .valence_treatment import ChemGraph, InvalidAdjMat
+from .valence_treatment import ChemGraph, InvalidAdjMat, str2ChemGraph
 import copy, tarfile
 from sortedcontainers import SortedList
 
@@ -413,9 +413,14 @@ def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
 
     # Convert RWMol to Mol object
     mol = mol.GetMol()
-    # TO-DO: Do we need to sanitize?
+    # TODO: Do we need to sanitize?
     Chem.SanitizeMol(mol)
     return mol, heavy_atom_index, hydrogen_connection, canon_SMILES
+
+
+def ChemGraphStr_to_SMILES(chemgraph_str):
+    cg = str2ChemGraph(chemgraph_str)
+    return chemgraph_to_canonical_rdkit(cg, SMILES_only=True)
 
 
 def trajectory_point_to_canonical_rdkit(tp_in, SMILES_only=False):

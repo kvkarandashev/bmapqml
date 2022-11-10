@@ -54,10 +54,15 @@ def morfeus_coord_info_from_tp(
         conformers.prune_rmsd()
     all_coordinates = conformers.get_coordinates()
     energies = conformers.get_energies()
+
     nuclear_charges = np.array(conformers.elements)
     output["nuclear_charges"] = nuclear_charges
 
+    if len(energies) == 0:
+        return output
+
     min_en_id = np.argmin(energies)
+
     min_en = energies[min_en_id]
     min_coordinates = all_coordinates[min_en_id]
 
