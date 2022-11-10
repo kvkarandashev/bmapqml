@@ -48,7 +48,7 @@ np.seterr(all="raise")
 # TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
 # TODO 3. keep_histogram option needs more testing.
 
-default_change_list = [
+minimized_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
     replace_heavy_atom,
@@ -555,7 +555,7 @@ def inverse_mod_path(
 
 def randomized_change(
     tp: TrajectoryPoint,
-    change_prob_dict=default_change_list,
+    change_prob_dict=full_change_list,
     visited_tp_list: list or None = None,
     **other_kwargs
 ):
@@ -824,7 +824,7 @@ class RandomWalk:
     def init_randomized_change_params(self, randomized_change_params=None):
         """
         Initialize parameters for how the chemical space is sampled. If randomized_change_params is None do nothing; otherwise it is a dictionnary with following entries:
-        change_prob_dict : which changes are used simple MC moves (see full_change_list, default_change_list, and valence_ha_change_list global variables for examples).
+        change_prob_dict : which changes are used simple MC moves (see full_change_list, minimized_change_list, and valence_ha_change_list global variables for examples).
         possible_elements : symbols of heavy atom elements that can be found inside molecules.
         added_bond_orders : as atoms are added to the molecule they can be connected to it with bonds of an order in added_bond_orders
         chain_addition_tuple_possibilities : minor parameter choosing the procedure for how heavy atom sceleton is grown. Setting it to "False" (the default value) should accelerate discovery rates.
@@ -848,7 +848,7 @@ class RandomWalk:
 
             self.used_randomized_change_params_check_defaults(
                 check_kw_validity=True,
-                change_prob_dict=default_change_list,
+                change_prob_dict=full_change_list,
                 possible_elements=["C"],
                 forbidden_bonds=None,
                 not_protonated=None,
