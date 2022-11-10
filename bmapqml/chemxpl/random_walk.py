@@ -1,7 +1,7 @@
 # TODO For forward and backward probabilities, comment more on where different signs come from.
 # TODO 1. Account for statistical noise of input data. 2. Many theory levels?
 # TODO Somehow unify all instances where simulation histogram is modified.
-# !!!TODO!!! check that delete_temp_data functions properly after the recent changes.
+# TODO sorted betas + parallel tempering just neighboring points.
 
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
@@ -16,15 +16,17 @@ from .modify import (
     replace_heavy_atom,
     change_bond_order,
     change_valence,
-    change_valence_add_atom,
-    change_valence_remove_atom,
-    valence_change_add_atom_possibilities,
-    valence_change_remove_atom_possibilities,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
+    valence_change_add_atoms_possibilities,
+    valence_change_remove_atoms_possibilities,
     randomized_cross_coupling,
     egc_valid_wrt_change_params,
     available_added_atom_bos,
     gen_atom_removal_possible_hnums,
     gen_val_change_pos_ncharges,
+    change_bond_order_valence,
+    valence_bond_change_possibilities,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
@@ -46,7 +48,7 @@ np.seterr(all="raise")
 # TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
 # TODO 3. keep_histogram option needs more testing.
 
-default_change_list = [
+minimized_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
     replace_heavy_atom,
@@ -60,8 +62,9 @@ full_change_list = [
     replace_heavy_atom,
     change_bond_order,
     change_valence,
-    change_valence_add_atom,
-    change_valence_remove_atom,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
+    change_bond_order_valence,
 ]
 
 valence_ha_change_list = [
@@ -69,8 +72,8 @@ valence_ha_change_list = [
     remove_heavy_atom,
     replace_heavy_atom,
     change_bond_order,
-    change_valence_add_atom,
-    change_valence_remove_atom,
+    change_valence_add_atoms,
+    change_valence_remove_atoms,
 ]
 
 stochiometry_conserving_change_list = [change_bond_order, change_valence]
@@ -81,8 +84,9 @@ inverse_procedure = {
     replace_heavy_atom: replace_heavy_atom,
     change_bond_order: change_bond_order,
     change_valence: change_valence,
-    change_valence_add_atom: change_valence_remove_atom,
-    change_valence_remove_atom: change_valence_add_atom,
+    change_valence_add_atoms: change_valence_remove_atoms,
+    change_valence_remove_atoms: change_valence_add_atoms,
+    change_bond_order_valence: change_bond_order_valence,
 }
 
 change_possibility_label = {
@@ -90,9 +94,10 @@ change_possibility_label = {
     remove_heavy_atom: "possible_elements",
     replace_heavy_atom: "possible_elements",
     change_bond_order: "bond_order_changes",
-    change_valence_add_atom: "possible_elements",
-    change_valence_remove_atom: "possible_elements",
+    change_valence_add_atoms: "possible_elements",
+    change_valence_remove_atoms: "possible_elements",
     change_valence: None,
+    change_bond_order_valence: "bond_order_valence_changes",
 }
 
 possibility_generator_func = {
@@ -101,15 +106,10 @@ possibility_generator_func = {
     replace_heavy_atom: atom_replacement_possibilities,
     change_bond_order: bond_change_possibilities,
     change_valence: valence_change_possibilities,
-    change_valence_add_atom: valence_change_add_atom_possibilities,
-    change_valence_remove_atom: valence_change_remove_atom_possibilities,
+    change_valence_add_atoms: valence_change_add_atoms_possibilities,
+    change_valence_remove_atoms: valence_change_remove_atoms_possibilities,
+    change_bond_order_valence: valence_bond_change_possibilities,
 }
-
-
-def inverse_possibility_label(change_function, possibility_label):
-    if change_function is change_bond_order:
-        return -possibility_label
-    return possibility_label
 
 
 def egc_change_func(
@@ -119,7 +119,9 @@ def egc_change_func(
     chain_addition_tuple_possibilities=False,
     **other_kwargs
 ):
-    if change_function is change_bond_order:
+    if (change_function is change_bond_order) or (
+        change_function is change_bond_order_valence
+    ):
         atom_id_tuple = modification_path[1][:2]
         resonance_structure_id = modification_path[1][-1]
         bo_change = modification_path[0]
@@ -130,9 +132,18 @@ def egc_change_func(
             resonance_structure_id=resonance_structure_id
         )
     if change_function is remove_heavy_atom:
-        return change_function(egc_in, modification_path[1])
+        return change_function(
+            egc_in,
+            modification_path[1][0],
+            resonance_structure_id=modification_path[1][1],
+        )
     if change_function is change_valence:
-        return change_function(egc_in, modification_path[0], modification_path[1])
+        return change_function(
+            egc_in,
+            modification_path[0],
+            modification_path[1][0],
+            resonance_structure_id=modification_path[1][1],
+        )
     if change_function is add_heavy_atom_chain:
         if chain_addition_tuple_possibilities:
             modified_atom_id = modification_path[1][0]
@@ -149,7 +160,23 @@ def egc_change_func(
     if change_function is change_valence:
         return change_function(egc_in, modification_path[0], modification_path[1])
     if change_function is replace_heavy_atom:
-        return change_function(egc_in, modification_path[1], modification_path[0])
+        return change_function(
+            egc_in,
+            modification_path[1][0],
+            modification_path[0],
+            resonance_structure_id=modification_path[1][1],
+        )
+    if change_function is change_valence_add_atoms:
+        return change_function(
+            egc_in, modification_path[1], modification_path[0], modification_path[2]
+        )
+    if change_function is change_valence_remove_atoms:
+        return change_function(
+            egc_in,
+            modification_path[1],
+            modification_path[2][0],
+            resonance_structure_id=modification_path[2][1],
+        )
     raise Exception()
 
 
@@ -291,6 +318,8 @@ class TrajectoryPoint:
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
         # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
         if self.possibility_dict is None:
+
+            self.egc.chemgraph.init_resonance_structures()
 
             change_prob_dict = lookup_or_none(kwargs, "change_prob_dict")
             if change_prob_dict is None:
@@ -479,10 +508,12 @@ def inverse_mod_path(
     chain_addition_tuple_possibilities=False,
     **other_kwargs
 ):
-    if change_procedure is change_bond_order:
+    if (change_procedure is change_bond_order) or (
+        change_procedure is change_bond_order_valence
+    ):
         return [-forward_path[0]]
     if change_procedure is remove_heavy_atom:
-        removed_atom = forward_path[-1]
+        removed_atom = forward_path[-1][0]
         removed_elname = element_name[old_egc.chemgraph.hatoms[removed_atom].ncharge]
         if chain_addition_tuple_possibilities:
             return [removed_elname]
@@ -493,19 +524,38 @@ def inverse_mod_path(
             neigh = new_egc.chemgraph.min_id_equivalent_atom_unchecked(neigh)
             return [removed_elname, neigh]
     if change_procedure is replace_heavy_atom:
-        changed_atom = forward_path[-1]
+        changed_atom = forward_path[-1][0]
         inserted_elname = element_name[old_egc.chemgraph.hatoms[changed_atom].ncharge]
         return [inserted_elname]
     if change_procedure is add_heavy_atom_chain:
         return [forward_path[0]]
     if change_procedure is change_valence:
         return [new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[0])]
+    if change_procedure is change_valence_add_atoms:
+        return [
+            forward_path[0],
+            new_egc.chemgraph.min_id_equivalent_atom_unchecked(forward_path[1]),
+            list(range(old_egc.num_heavy_atoms(), new_egc.num_heavy_atoms())),
+        ]
+    if change_procedure is change_valence_remove_atoms:
+        modified_id = forward_path[1]
+        new_modified_id = modified_id
+        removed_ids = forward_path[2][0]
+        for removed_id in removed_ids:
+            if removed_id < modified_id:
+                new_modified_id -= 1
+        bo = old_egc.chemgraph.bond_order(modified_id, removed_ids[0])
+        return [
+            forward_path[0],
+            new_egc.chemgraph.min_id_equivalent_atom_unchecked(new_modified_id),
+            bo,
+        ]
     raise Exception()
 
 
 def randomized_change(
     tp: TrajectoryPoint,
-    change_prob_dict=default_change_list,
+    change_prob_dict=full_change_list,
     visited_tp_list: list or None = None,
     **other_kwargs
 ):
@@ -513,6 +563,9 @@ def randomized_change(
     Randomly modify a TrajectoryPoint object.
     visited_tp_list : list of TrajectoryPoint objects for which data is available.
     """
+    # TODO delete post-testing
+    if not tp.egc.chemgraph.valences_reasonable():
+        raise Exception()
     cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
         tp.possibilities(), change_prob_dict
     )
@@ -534,6 +587,10 @@ def randomized_change(
     if new_egc is None:
         return None, None
 
+    # TODO delete post-testing
+    if not new_egc.chemgraph.valences_reasonable():
+        raise Exception()
+
     new_tp = TrajectoryPoint(egc=new_egc)
     if visited_tp_list is not None:
         if new_tp in visited_tp_list:
@@ -541,7 +598,6 @@ def randomized_change(
             visited_tp_list[tp_id].copy_extra_data_to(new_tp)
 
     new_tp.init_possibility_info(change_prob_dict=change_prob_dict, **other_kwargs)
-
     # Calculate the chances of doing the inverse operation
     inv_proc = inverse_procedure[cur_change_procedure]
     inv_pos_label = change_possibility_label[inv_proc]
@@ -768,13 +824,16 @@ class RandomWalk:
     def init_randomized_change_params(self, randomized_change_params=None):
         """
         Initialize parameters for how the chemical space is sampled. If randomized_change_params is None do nothing; otherwise it is a dictionnary with following entries:
-        change_prob_dict : which changes are used simple MC moves (see full_change_list, default_change_list, and valence_ha_change_list global variables for examples).
+        change_prob_dict : which changes are used simple MC moves (see full_change_list, minimized_change_list, and valence_ha_change_list global variables for examples).
         possible_elements : symbols of heavy atom elements that can be found inside molecules.
         added_bond_orders : as atoms are added to the molecule they can be connected to it with bonds of an order in added_bond_orders
         chain_addition_tuple_possibilities : minor parameter choosing the procedure for how heavy atom sceleton is grown. Setting it to "False" (the default value) should accelerate discovery rates.
         forbidden_bonds : nuclear charge pairs that are forbidden to connect with a covalent bond.
         not_protonated : nuclear charges of atoms that should not be covalently connected to hydrogens.
         bond_order_changes : by how much a bond can change during a simple MC step (e.g. [-1, 1]).
+        bond_order_valence_changes : by how much a bond can change during steps that change bond order and valence of an atom (e.g. [-2, 2]).
+        max_fragment_num : how many disconnected fragments (e.g. molecules) a chemical graph is allowed to break into.
+        added_bond_orders_val_change : when creating atoms to be connected to a molecule's atom with a change of valence of the latter what the possible bond orders are.
         """
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
@@ -788,13 +847,19 @@ class RandomWalk:
                 )
 
             self.used_randomized_change_params_check_defaults(
-                change_prob_dict=default_change_list,
+                check_kw_validity=True,
+                change_prob_dict=full_change_list,
                 possible_elements=["C"],
-                forbidden_boinds=None,
+                forbidden_bonds=None,
                 not_protonated=None,
                 added_bond_orders=[1],
                 chain_addition_tuple_possibilities=False,
                 bond_order_changes=[-1, 1],
+                bond_order_valence_changes=[-2, 2],
+                nhatoms_range=None,
+                final_nhatoms_range=None,
+                max_fragment_num=1,
+                added_bond_orders_val_change=[1, 2],
             )
 
             # Some convenient aliases.
@@ -872,8 +937,14 @@ class RandomWalk:
                         "restricted_tps"
                     ] = self.restricted_tps
 
-    def used_randomized_change_params_check_defaults(self, **kwargs):
-        for kw, def_val in kwargs.items():
+    def used_randomized_change_params_check_defaults(
+        self, check_kw_validity=False, **other_kwargs
+    ):
+        if check_kw_validity:
+            for kw in self.used_randomized_change_params:
+                if kw not in other_kwargs:
+                    raise Exception("Randomized change parameter ", kw, " is invalid.")
+        for kw, def_val in other_kwargs.items():
             if kw not in self.used_randomized_change_params:
                 self.used_randomized_change_params[kw] = def_val
 
@@ -1220,7 +1291,6 @@ class RandomWalk:
         cur_procedure = random.choices(
             list(prob_dict), weights=list(prob_dict.values())
         )[0]
-
         global_change_dict = self.global_change_dict()
         if cur_procedure in global_change_dict:
             global_change_dict[cur_procedure](**other_kwargs)

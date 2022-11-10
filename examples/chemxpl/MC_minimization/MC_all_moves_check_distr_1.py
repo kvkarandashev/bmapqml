@@ -12,9 +12,10 @@ np.random.seed(1)
 
 # Constraints on chemical space - molecules with only C and P heavy atoms, maximum 4 heavy atoms large,
 # bonds between two phosphorus atoms are forbidden.
-possible_elements = ["C", "P"]
+possible_elements = ["C", "P", "O"]
 
-forbidden_bonds = None  # [(15, 15)]
+forbidden_bonds = [(8, 8)]
+not_protonated = [8]
 
 max_nhatoms = 4
 
@@ -30,9 +31,9 @@ min_func = NumHAtoms(intervals=intervals)
 # these unsembles are used to decrease the probability that greedy optimization returns a local minimum rather than a global one.
 ln2 = np.log(2.0)
 
-betas = [None, 2.0 * ln2, ln2]
+betas = [None, None, 2.0 * ln2, ln2, ln2, ln2 / 2.0]
 
-num_MC_steps = 10000  # 100000
+num_MC_steps = 20000  # 100000
 
 
 randomized_change_params = {
@@ -42,7 +43,8 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
-    "chain_addition_tuple_possibilities": True,
+    "added_bond_orders": [1, 2, 3],
+    "not_protonated": not_protonated,
 }
 
 # "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.
@@ -53,8 +55,10 @@ global_change_params = {
 }
 
 # Initial point for all replicas is CC#CC.
-init_cg = str2ChemGraph("6#1@1:6@2:6@3:6#1")
-# init_cg=str2ChemGraph("6#4")
+init_cg_str = "6#1@1:6@2:6@3:6#1"
+# init_cg_str="6#4"
+
+init_cg = str2ChemGraph(init_cg_str)
 
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(len(betas))]
 
@@ -72,7 +76,7 @@ rw = RandomWalk(
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
-    track_histogram_size=False,
+    track_histogram_size=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
