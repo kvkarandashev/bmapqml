@@ -323,6 +323,10 @@ def SMILES_to_egc(smiles_string, egc_hydrogen_autofill=False):
     return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
 
 
+def SMILES_list_to_egc(smiles_list):
+    return [SMILES_to_egc(smiles) for smiles in smiles_list]
+
+
 #   For converting InChI to egc.
 def InChI_to_egc(InChI_string, egc_hydrogen_autofill=False):
     mol = Chem.inchi.MolFromInchi(InChI_string, removeHs=False)
