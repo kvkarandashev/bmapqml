@@ -91,9 +91,10 @@ def extract_quant_from_xyz(xyz_file, name):
 class Quantity:
     def __init__(self, quant_name):
         self.name = quant_name
-        quant_tuple = quant_properties[quant_name]
-        self.dimensionality = quant_tuple[0]
-        self.estimate_function = quant_tuple[1]
+        if quant_name in quant_properties:
+            quant_tuple = quant_properties[quant_name]
+            self.dimensionality = quant_tuple[0]
+            self.estimate_function = quant_tuple[1]
 
     def extract_xyz(self, filename):
         return extract_quant_from_xyz(filename, self.name)

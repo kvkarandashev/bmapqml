@@ -210,7 +210,7 @@ def chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
     converted_coordinates = [
         [float(atom_coord) for atom_coord in atom_coords] for atom_coords in coordinates
     ]
-    bond_order_matrix, ncharges, coords = xyz2mol_graph(
+    bond_order_matrix, ncharges, _ = xyz2mol_graph(
         converted_ncharges, charge, converted_coordinates
     )
     return ChemGraph(adj_mat=bond_order_matrix, nuclear_charges=ncharges)
@@ -320,7 +320,9 @@ def SMILES_to_egc(smiles_string, egc_hydrogen_autofill=False):
     # We can fill the hydrogens either at this stage or at EGC creation stage;
     # introduced when I had problems with rdKIT.
     mol = Chem.AddHs(mol, explicitOnly=egc_hydrogen_autofill)
-    return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
+    egc_out = rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
+    egc_out.additional_data["SMILES"] = smiles_string
+    return egc_out
 
 
 def SMILES_list_to_egc(smiles_list):

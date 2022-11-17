@@ -14,7 +14,6 @@ from .valence_treatment import (
     connection_forbidden,
     max_bo,
     sorted_by_membership,
-    non_default_valences,
     next_valence,
     sorted_tuple,
 )
@@ -305,37 +304,31 @@ def bond_change_possibilities(
             else:
                 if max_bond_order < -bond_order_change:
                     continue
-                # If there is a resonance structure for which decreasing bond order breaks the bond then the result of
-                # the operation will depend on resonance structure chosen.
-                if -bond_order_change in possible_bond_orders:
-                    unsorted_possible_bond_orders = cg.aa_all_bond_orders(
-                        *bond_tuple, unsorted=True
-                    )
-                    bond_break_index = unsorted_possible_bond_orders.index(
-                        -bond_order_change
-                    )
+                # The results will be different if we apply the change to a resonance structure where the bond order equals -bond_order_change or not. The algorithm accounts for both options.
+                unsorted_bond_orders = None
+                possible_resonance_structures = []
+                for pbo in possible_bond_orders:
+                    if pbo == -bond_order_change:
+                        if max_fragment_num is not None:
+                            if cg.num_connected() == max_fragment_num:
+                                if (
+                                    cg.graph.edge_connectivity(
+                                        source=ha_id1, target=ha_id2
+                                    )
+                                    == 1
+                                ):
+                                    continue
+                    if pbo >= -bond_order_change:
+                        if unsorted_bond_orders is None:
+                            unsorted_bond_orders = cg.aa_all_bond_orders(
+                                *bond_tuple, unsorted=True
+                            )
+                        possible_resonance_structures.append(
+                            unsorted_bond_orders.index(pbo)
+                        )
+                        if pbo != -bond_order_change:
+                            break
 
-                    disturbs_connectivity = False
-                    if max_fragment_num is not None:
-                        if cg.num_connected() == max_fragment_num:
-                            if (
-                                cg.graph.edge_connectivity(source=ha_id1, target=ha_id2)
-                                == 1
-                            ):
-                                disturbs_connectivity = True
-
-                    if max_bond_order == -bond_order_change:
-                        if disturbs_connectivity:
-                            continue
-                        possible_resonance_structures = [bond_break_index]
-                    else:
-                        possible_resonance_structures = [
-                            unsorted_possible_bond_orders.index(max_bond_order)
-                        ]
-                        if not disturbs_connectivity:
-                            possible_resonance_structures.append(bond_break_index)
-                else:
-                    possible_resonance_structures = [None]
             if exclude_equivalent:
                 if atom_pair_equivalent_to_list_member(egc, bond_tuple, output):
                     continue
@@ -779,7 +772,7 @@ def replace_heavy_atom(
         inserted_valence=inserted_valence,
         resonance_structure_id=resonance_structure_id,
     )
-    return ExtGraphCompound(chemgraph=new_chemgraph)
+    return val_min_checked_egc(new_chemgraph)
 
 
 def remove_heavy_atom(egc, removed_atom_id, resonance_structure_id=None):
@@ -812,12 +805,8 @@ def change_valence(egc, modified_atom_id, new_valence, resonance_structure_id=No
         new_chemgraph.adjust_resonance_valences(
             resonance_structure_region, resonance_structure_id
         )
-    old_valence = new_chemgraph.hatoms[modified_atom_id].valence
     new_chemgraph.change_valence(modified_atom_id, new_valence)
-    if old_valence > new_valence:
-        return ExtGraphCompound(chemgraph=new_chemgraph)
-    else:
-        return val_min_checked_egc(new_chemgraph)
+    return val_min_checked_egc(new_chemgraph)
 
 
 def change_valence_add_atoms(egc, modified_atom_id, new_atom_element, new_bo):
@@ -920,10 +909,16 @@ def change_bond_order_valence(
 
 
 # Procedures for genetic algorithms.
-
-# Pair of fragments formed from one molecule split around the membership vector.
 class FragmentPair:
-    def __init__(self, cg, membership_vector, copied=False):
+    def __init__(
+        self, cg: ChemGraph, membership_vector: list or np.array, copied: bool = True
+    ):
+        """
+        Pair of fragments formed from one molecule split around the membership vector.
+        cg : ChemGraph - the split molecule
+        membership_vector : list or NumPy array - list of integer values indicating which fragment a given HeavyAtom belongs to.
+        copied : bool - whether a deep copy of cg should be made at initialization.
+        """
         cg.init_resonance_structures()
         if copied:
             self.chemgraph = cg
@@ -931,9 +926,11 @@ class FragmentPair:
             self.chemgraph = deepcopy(cg)
 
         self.membership_vector = membership_vector
+        # Two list of vertices corresponding to the two grahments.
         self.sorted_vertices = sorted_by_membership(self.membership_vector)
         self.affected_resonance_structures = []
 
+        # Find resonance structures affected by the bond split.
         resonance_structure_orders_iterators = []
 
         for rsr_id, rsr_nodelist in enumerate(
@@ -948,10 +945,12 @@ class FragmentPair:
                     break
 
         if len(resonance_structure_orders_iterators) == 0:
-            self.affected_bonds = [self.current_affected_bonds()]
+            # No resonance structures affected.
+            self.affected_status = [self.current_affected_status()]
             self.resonance_structure_adjustments = None
         else:
-            self.affected_bonds = []
+            # For each resonance structure check the corresponding bond orders.
+            self.affected_status = []
             self.resonance_structure_adjustments = []
             for resonance_structure_orders_ids in itertools.product(
                 *resonance_structure_orders_iterators
@@ -962,14 +961,24 @@ class FragmentPair:
                     self.chemgraph.adjust_resonance_valences(
                         resonance_structure_region_id, resonance_structure_orders_id
                     )
-                cur_affected_bonds = self.current_affected_bonds()
-                if cur_affected_bonds not in self.affected_bonds:
-                    self.affected_bonds.append(cur_affected_bonds)
+                cur_affected_status = self.current_affected_status()
+                ### NEED PROPER OBJECT!!!
+                if cur_affected_status not in self.affected_status:
+                    self.affected_status.append(cur_affected_status)
                     self.resonance_structure_adjustments.append(
                         resonance_structure_orders_ids
                     )
 
+    def current_affected_status(self):
+        return {
+            "bonds": self.current_affected_bonds(),
+            "valences": self.current_affected_valence_possibilities(),
+        }
+
     def current_affected_bonds(self):
+        """
+        Info about bonds affected by the fragmentation. Structured as dictionnary with bond orders as keys and lists of corresponding bond tuples as items.
+        """
         output = {}
         for i in self.sorted_vertices[0]:
             for neigh in self.chemgraph.neighbors(i):
@@ -982,13 +991,53 @@ class FragmentPair:
                         output[bo] = [btuple]
         return output
 
+    def current_affected_valence_possibilities(self):
+        """
+        Which valence possibility is currently taken by heavy atoms in affected resonance regions.
+        """
+        output = {}
+        for affected_resonance_structure in self.affected_resonance_structures:
+            for evi in self.chemgraph.resonance_structure_inverse_map[
+                affected_resonance_structure
+            ]:
+                ha = self.chemgraph.hatoms[evi]
+                poss_val = ha.possible_valences
+                if poss_val is not None:
+                    output[evi] = poss_val.index(ha.valence)
+        return output
+
+    def current_ha_valences(self, affected_status_id, fragment_id):
+        output = []
+
+        if self.resonance_structure_adjustments is None:
+            poss_val_dict = None
+        else:
+            poss_val_dict = self.affected_status[affected_status_id]["valences"]
+
+        for ha_id in self.sorted_vertices[fragment_id]:
+            ha = self.chemgraph.hatoms[ha_id]
+            if (ha.possible_valences is not None) and (poss_val_dict is not None):
+                if ha_id in poss_val_dict:
+                    output.append(ha.possible_valences[poss_val_dict[ha_id]])
+                    continue
+            output.append(ha.valence)
+        return output
+
     def cross_couple(
         self,
         other_fp,
-        switched_bond_tuples_self,
-        switched_bond_tuples_other,
+        switched_bond_tuples_self: int,
+        switched_bond_tuples_other: int,
+        affected_status_id_self: int,
+        affected_status_id_other: int,
         forbidden_bonds=None,
     ):
+        """
+        Couple to another fragment.
+        switched_bond_tuples_self, switched_bond_tuples_other - bonds corresponding to which heavy atom index tuples are switched between different fragments.
+        affected_bonds_id_self, affected_bonds_id_other - which sets of affected bond orders the fragments are initialized with.
+        """
+
         remainder_subgraph = self.chemgraph.graph.subgraph(self.sorted_vertices[0])
         other_frag_subgraph = other_fp.chemgraph.graph.subgraph(
             other_fp.sorted_vertices[1]
@@ -1007,6 +1056,10 @@ class FragmentPair:
             deepcopy(other_fp.chemgraph.hatoms[ha_id])
             for ha_id in other_fp.sorted_vertices[1]
         ]
+
+        new_hatoms_old_valences = self.current_ha_valences(
+            affected_status_id_self, 0
+        ) + other_fp.current_ha_valences(affected_status_id_other, 1)
 
         new_graph = disjoint_union([remainder_subgraph, other_frag_subgraph])
 
@@ -1035,18 +1088,19 @@ class FragmentPair:
                 ):
                     return None, None
 
-        init_non_default_valences = non_default_valences(new_hatoms)
         new_ChemGraph = ChemGraph(hatoms=new_hatoms, graph=new_graph)
 
         # Lastly, check that re-initialization does not decrease the bond order.
-        new_non_default_valences = new_ChemGraph.non_default_valences()
-        if new_non_default_valences == init_non_default_valences:
+        if new_ChemGraph.valence_config_valid(new_hatoms_old_valences):
             return new_ChemGraph, new_membership_vector
         else:
             return None, None
 
 
-def bond_dicts_match(frag_bond_dict1, frag_bond_dict2):
+def bond_dicts_match(frag_bond_dict1: dict, frag_bond_dict2: dict):
+    """
+    Check that two results of current_affected_bonds call in FragmentPair correspond to fragments that can be cross-coupled.
+    """
     if len(frag_bond_dict1) != len(frag_bond_dict2):
         return False
     for key1, positions1 in frag_bond_dict1.items():
@@ -1057,47 +1111,62 @@ def bond_dicts_match(frag_bond_dict1, frag_bond_dict2):
     return True
 
 
-def matching_dict_tuples(fp1, fp2):
+def matching_dict_tuples(fp1: FragmentPair, fp2: FragmentPair):
+    """
+    Check which valence configurations of FragmentPair instances can be used for cross-coupling. List of tuples of their indices is returned as output.
+    """
     output = []
-    for bdid1, bond_dict1 in enumerate(fp1.affected_bonds):
-        for bdid2, bond_dict2 in enumerate(fp2.affected_bonds):
-            if bond_dicts_match(bond_dict1, bond_dict2):
-                output.append((bdid1, bdid2))
+    for as1, affected_status1 in enumerate(fp1.affected_status):
+        for as2, affected_status2 in enumerate(fp2.affected_status):
+            if bond_dicts_match(affected_status1["bonds"], affected_status2["bonds"]):
+                output.append((as1, as2))
     return output
 
 
-def random_connect_fragments(fp1, fp2, connection_tuple, forbidden_bonds=None):
-    switched_bond_tuples1 = []
-    switched_bond_tuples2 = []
+def random_connect_fragments(
+    fp_pair: tuple, connection_tuple: tuple, forbidden_bonds: list or None = None
+):
+    """
+    Randonly reconnect two FragmentPair objects into new ChemGraph objects.
+    """
 
-    bond_dict1 = fp1.affected_bonds[connection_tuple[0]]
-    bond_dict2 = fp2.affected_bonds[connection_tuple[1]]
+    switched_bond_tuples = [[], []]
 
-    for key, l1 in bond_dict1.items():
-        l2 = bond_dict2[key]
+    bond_dicts = [
+        fp.affected_status[affected_bonds_id]["bonds"]
+        for fp, affected_bonds_id in zip(fp_pair, connection_tuple)
+    ]
+
+    for key, l0 in bond_dicts[0].items():
+        l1 = bond_dicts[1][key]
         random.shuffle(l1)
-        switched_bond_tuples1 += l1
-        switched_bond_tuples2 += l2
+        switched_bond_tuples[0] += l0
+        switched_bond_tuples[1] += l1
 
-    new_mol1, new_membership_vector1 = fp1.cross_couple(
-        fp2,
-        switched_bond_tuples1,
-        switched_bond_tuples2,
-        forbidden_bonds=forbidden_bonds,
-    )
-    new_mol2, new_membership_vector2 = fp2.cross_couple(
-        fp1,
-        switched_bond_tuples2,
-        switched_bond_tuples1,
-        forbidden_bonds=forbidden_bonds,
-    )
+    new_mols = []
+    new_membership_vectors = []
+    for self_id in [0, 1]:
+        other_id = 1 - self_id
+        cur_new_mol, cur_new_membership_vector = fp_pair[self_id].cross_couple(
+            fp_pair[other_id],
+            switched_bond_tuples[self_id],
+            switched_bond_tuples[other_id],
+            connection_tuple[self_id],
+            connection_tuple[other_id],
+            forbidden_bonds=forbidden_bonds,
+        )
+        new_mols.append(cur_new_mol)
+        new_membership_vectors.append(cur_new_membership_vector)
 
-    return [new_mol1, new_mol2], [new_membership_vector1, new_membership_vector2]
+    return new_mols, new_membership_vectors
 
 
 def possible_fragment_sizes(
     cg, fragment_ratio_range=[0.0, 0.5], fragment_size_range=None
 ):
+    """
+    Possible fragment sizes for a ChemGraph objects satisfying enforced constraints.
+    """
     if fragment_ratio_range is None:
         bounds = deepcopy(fragment_size_range)
     else:
@@ -1113,6 +1182,9 @@ def possible_fragment_sizes(
 def possible_pair_fragment_sizes(
     cg_pair, nhatoms_range=None, **possible_fragment_sizes_kwargs
 ):
+    """
+    Possible sizes of fragments for ChemGraph objects in cg_pair that lead to cross-coupled molecules satisfying size constraints enforced by nhatoms_range and other keyword arguments.
+    """
     possible_fragment_sizes_iterators = []
     for cg in cg_pair:
         possible_fragment_sizes_iterators.append(
@@ -1140,6 +1212,9 @@ def possible_pair_fragment_sizes(
 
 
 def randomized_split_membership_vector(cg, origin_choices, fragment_size):
+    """
+    Randomly create a membership vector that can be used to split ChemGraph object into a FragmentPair object.
+    """
     membership_vector = np.zeros(cg.nhatoms(), dtype=int)
 
     origin_choices = cg.unrepeated_atom_list()
@@ -1177,7 +1252,9 @@ def randomized_cross_coupling(
     visited_tp_list: list or None = None,
     **dummy_kwargs,
 ):
-    """ """
+    """
+    Break two ChemGraph objects into two FragmentPair objects; the fragments are then re-coupled into two new ChemGraph objects.
+    """
 
     ppfs_kwargs = {
         "nhatoms_range": nhatoms_range,
@@ -1217,7 +1294,7 @@ def randomized_cross_coupling(
     final_md_tuple = random.choice(mdtuples)
 
     new_cg_pair, new_membership_vectors = random_connect_fragments(
-        *fragment_pairs, final_md_tuple, forbidden_bonds=forbidden_bonds
+        fragment_pairs, final_md_tuple, forbidden_bonds=forbidden_bonds
     )
 
     if (new_cg_pair[0] is None) or (new_cg_pair[1] is None):

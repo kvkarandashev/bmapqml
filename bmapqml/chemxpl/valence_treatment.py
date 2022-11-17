@@ -94,16 +94,6 @@ def default_valence(atom_id):
         return val_list
 
 
-# List atoms with non-default valences.
-def non_default_valences(hatoms):
-    output = []
-    for ha_id, ha in enumerate(hatoms):
-        cur_val_id = ha.valence_val_id()
-        if cur_val_id != 0:
-            output.append((ha_id, cur_val_id))
-    return output
-
-
 # Color obj_list in a way that each equal obj1 and obj2 were the same color.
 # Used for defining canonical permutation of a graph.
 def list2colors(obj_list):
@@ -252,6 +242,13 @@ class HeavyAtom:
         return str(self)
 
 
+def str2HeavyAtom(ha_str: str):
+    fields = ha_str.split(",")
+    return HeavyAtom(
+        int(fields[0][2:]), valence=int(fields[1][2:]), nhydrogens=int(fields[2][2:])
+    )
+
+
 # TODO check that the function is not duplicated elsewhere
 def next_valence(
     ha: HeavyAtom, int_step: int = 1, valence_option_id: int or None = None
@@ -272,17 +269,8 @@ def next_valence(
         return val_list[new_val_id]
 
 
-def hatom_int_checked(hatom):
-    if isinstance(hatom, HeavyAtom):
-        return hatom.ncharge
-    return hatom
-
-
 # Function saying how large can a bond order be between two atoms.
 def max_bo(hatom1, hatom2):
-    #   In the end I decided that supporting triple bonds with sulfur does make sense.
-    #    if (hatom_int_checked(hatom1) ==16) or (hatom_int_checked(hatom2) == 16):
-    #        return 2
     return 3
 
 
@@ -309,6 +297,36 @@ def adj_mat2bond_orders(adj_mat):
             if adj_mat_val != 0:
                 bos[(atom2, atom1)] = adj_mat_val
     return bos
+
+
+# Old draft. I'm no longer sure things should be done this way.
+# class ValenceConfigurationCharacter:
+#    def __init__(self, valence_values):
+#        """
+#        An auxiliary class introduced for comparisons of valence configurations and sorting them according to relevance.
+#        """
+#        self.sorted_valence_values = sorted(valence_values, reverse=True)
+#
+#    def __eq__(self, other_vcc):
+#        return self.sorted_valence_values == other_vcc.sorted_valence_values
+#
+#    def __gt__(self, other_vcc):
+#        if len(self.sorted_valence_values) != len(other_vcc.sorted_valence_values):
+#            return len(self.sorted_valence_values) > len(
+#                other_vcc.sorted_valence_values
+#            )
+#        for s1, s2 in zip(self.sorted_valence_values, other_vcc.sorted_valence_values):
+#            if s1 != s2:
+#                return s1 > s2
+# Must be equal then.
+#        return False
+#
+#    def __lt__(self, other_vcc):
+#        return not self > other_vcc
+
+
+def ValenceConfigurationCharacter(valence_values):
+    return sum(valence_values)
 
 
 # TODO perhaps used SortedDict from sortedcontainers more here?
@@ -339,7 +357,18 @@ class ChemGraph:
 
         if self.hatoms is not None:
             if nuclear_charges is None:
-                self.nuclear_charges = np.array([ha.ncharge for ha in self.hatoms])
+                self.nuclear_charges = [ha.ncharge for ha in self.hatoms]
+                if graph is None:
+                    self.all_bond_orders = {}
+                    for t, bo in self.bond_orders.items():
+                        self.all_bond_orders[sorted_tuple(*t)] = bo
+                    cur_h_id = len(self.nuclear_charges)
+                    for ha_id, ha in enumerate(self.hatoms):
+                        for _ in range(ha.nhydrogens):
+                            self.nuclear_charges.append(1)
+                            self.all_bond_orders[(ha_id, cur_h_id)] = 1
+                            cur_h_id += 1
+                    nuclear_charges = self.nuclear_charges
 
         if (self.all_bond_orders is None) and (self.bond_orders is None):
             if self.graph is None:
@@ -444,14 +473,11 @@ class ChemGraph:
                 return False
         return True
 
-    def non_default_valence_present(self):
+    def polyvalent_atoms_present(self):
         for ha in self.hatoms:
-            if ha.valence_val_id() != 0:
+            if ha.is_polyvalent():
                 return True
         return False
-
-    def non_default_valences(self):
-        return non_default_valences(self.hatoms)
 
     def coordination_number(self, hatom_id):
         return len(self.neighbors(hatom_id)) + self.hatoms[hatom_id].nhydrogens
@@ -740,15 +766,45 @@ class ChemGraph:
         if self.hatoms[atom_id].nhydrogens < 0:
             raise InvalidChange
 
-    # For reassigning multiple bonds if valence composition is invalid, and all related procedures.
-    def valence_sum(self):
-        return sum(ha.valence for ha in self.hatoms)
+    def valence_config_valid(self, checked_valences):
+        """
+        Check whether heavy atom valences provided in checked_valences array are valid for some resonance structure.
+        """
+        for ha, cv in zip(self.hatoms, checked_valences):
+            if ha.possible_valences is None:
+                if ha.valence != cv:
+                    return False
 
+        for extra_val_ids in self.resonance_structure_inverse_map:
+            num_poss = None
+            for evi in extra_val_ids:
+                ha = self.hatoms[evi]
+                poss_vals = ha.possible_valences
+                if poss_vals is not None:
+                    num_poss = len(poss_vals)
+                    break
+            if num_poss is not None:
+                for val_poss in range(num_poss):
+                    match_found = True
+                    for evi in extra_val_ids:
+                        poss_vals = self.hatoms[evi].possible_valences
+                        if poss_vals is not None:
+                            if poss_vals[val_poss] != checked_valences[evi]:
+                                match_found = False
+                                break
+                    if match_found:
+                        break
+                if not match_found:
+                    return False
+
+        return True
+
+    # TODO Can this be achieved with fewer operations?
     def attempt_minimize_valences(self):
-        if self.non_default_valence_present():
-            old_val_sum = self.valence_sum()
+        if self.polyvalent_atoms_present():
+            old_valences = [ha.valence for ha in self.hatoms]
             self.init_resonance_structures()
-            return old_val_sum == self.valence_sum()
+            return self.valence_config_valid(old_valences)
         else:
             return True
 
@@ -917,9 +973,9 @@ class ChemGraph:
             self.resonance_structure_valence_vals.append(tot_valence_vals)
             self.resonance_structure_orders.append(tot_subgraph_res_struct)
             self.resonance_structure_inverse_map.append(extra_val_ids)
-
-        if def_val_option is not None:
-            self.change_valence_option(extra_val_ids, def_val_option)
+            # Change valence states of extra_val_ids to the default option that corresponds to the bond orders assigned through the bond_orders dictionnary.
+            if def_val_option is not None:
+                self.change_valence_option(extra_val_ids, def_val_option)
         # TODO delete post-testing
         if not self.valences_reasonable():
             raise Exception()
@@ -938,9 +994,13 @@ class ChemGraph:
                 add_bond_orders[se] = 1
         return add_bond_orders
 
-    def reassign_nonsigma_bonds_subgraph(
-        self, extra_val_ids, coord_nums, extra_val_subgraph
-    ):
+    def possible_subgraph_heavy_atom_valences(self, extra_val_ids, coord_nums):
+        """
+        An auxiliary procedure that checks which valence values can be iterated over for a subset of the chemical graph
+        and then sorts the valences lists to be iterated over in order of relevance.
+        The order of relevance is determined by: 1. Sum of valence numbers. 2. For two valence configurations with the same sum, we pick the one with
+        smallest
+        """
         HeavyAtomValenceIterators = []
         IteratedValenceIds = []
         for hatom_id, coord_num in zip(extra_val_ids, coord_nums):
@@ -954,12 +1014,24 @@ class ChemGraph:
                 )
                 IteratedValenceIds.append(hatom_id)
         HeavyAtomValences = list(itertools.product(*HeavyAtomValenceIterators))
-        # We want the algorithm to return structure with smallest number of valence electrons possible, hence the sorting.
-        HeavyAtomValences.sort(key=lambda x: sum(x))
-        min_found_val_sum = None
+        HeavyAtomValences.sort(key=lambda x: ValenceConfigurationCharacter(x))
+
+        return HeavyAtomValences, IteratedValenceIds
+
+    def reassign_nonsigma_bonds_subgraph(
+        self, extra_val_ids, coord_nums, extra_val_subgraph
+    ):
+        (
+            HeavyAtomValences,
+            IteratedValenceIds,
+        ) = self.possible_subgraph_heavy_atom_valences(extra_val_ids, coord_nums)
+        min_found_vcc = None
         for HeavyAtomValencesList in HeavyAtomValences:
-            if min_found_val_sum is not None:
-                if sum(HeavyAtomValencesList) != min_found_val_sum:
+            if min_found_vcc is not None:
+                if (
+                    ValenceConfigurationCharacter(HeavyAtomValencesList)
+                    != min_found_vcc
+                ):
                     break
             # Assign all heavy atoms their current valences.
             for ha_id, ha_val in zip(IteratedValenceIds, HeavyAtomValencesList):
@@ -968,15 +1040,15 @@ class ChemGraph:
                 extra_val_ids, coord_nums, extra_val_subgraph
             )
             if subgraph_resonance_struct is not None:
-                if min_found_val_sum is None:
-                    min_found_val_sum = sum(HeavyAtomValencesList)
+                if min_found_vcc is None:
+                    min_found_vcc = ValenceConfigurationCharacter(HeavyAtomValencesList)
                     saved_subgraph_resonance_struct = subgraph_resonance_struct
                     saved_heavy_atom_valences_list = HeavyAtomValencesList
                 for ha_id, ha_val in zip(IteratedValenceIds, HeavyAtomValencesList):
                     if self.hatoms[ha_id].possible_valences is None:
                         self.hatoms[ha_id].possible_valences = []
                     self.hatoms[ha_id].possible_valences.append(ha_val)
-        if min_found_val_sum is None:
+        if min_found_vcc is None:
             raise InvalidAdjMat
         for ha_id, ha_val in zip(IteratedValenceIds, saved_heavy_atom_valences_list):
             ha = self.hatoms[ha_id]
@@ -993,15 +1065,22 @@ class ChemGraph:
     def complete_valences_attempt(
         self, extra_val_ids, coord_nums, extra_val_subgraph, all_possibilities=False
     ):
+        """
+        For a subgraph of the chemical graph extra_val_subgraph which spawns over hatoms with ids extra_val_ids with
+        coordination numbers coord_nums, generate assignment of all non-sigma valence electrons into nonsigma bonds.
+        If all_possibilities is False returns one such resonance structure, otherwise enumerate and return all resonance structures.
+        """
+
         output = None
         added_edges = []
         connection_opportunities = np.zeros(len(extra_val_ids), dtype=int)
         extra_valences = np.zeros(len(extra_val_ids), dtype=int)
         for i, (eval_id, coord_num) in enumerate(zip(extra_val_ids, coord_nums)):
             extra_valences[i] = self.hatoms[eval_id].valence - coord_num
-        # TO-DO is it needed?
+        # TODO is it needed?
         if np.all(extra_valences == 0):
             return {}
+        # Check how many neighboring atoms a given atom can be connected to with the nonsigma bonds.
         for cur_id, extra_valence in enumerate(extra_valences):
             if extra_valence != 0:
                 neighs = extra_val_subgraph.neighbors(cur_id)
@@ -1020,6 +1099,7 @@ class ChemGraph:
         while True:
             min_connectivity = 0
             if np.any(connection_opportunities != 0):
+                # Check extra electrons from which atom can be connected to the least number of neighboring atoms.
                 min_connectivity = np.min(
                     connection_opportunities[np.nonzero(connection_opportunities)]
                 )
@@ -1032,6 +1112,7 @@ class ChemGraph:
             else:
                 closed_atom = None
             if min_connectivity == 1:
+                # We add an extra nonsigma bond between closed_atom and the only atom for which the other such connection is possible.
                 choice = 0
             else:
                 cur_decision_fork += 1
@@ -1070,20 +1151,26 @@ class ChemGraph:
                 choice = path_taken[cur_decision_fork]
             other_closed_atom = potential_other_atoms[choice]
 
+            # Add the extra nonsigma bond.
             added_edges.append(
                 (extra_val_ids[closed_atom], extra_val_ids[other_closed_atom])
             )
+            # Delete the now tied valence atoms.
             for cur_id in [closed_atom, other_closed_atom]:
                 extra_valences[cur_id] -= 1
                 if extra_valences[cur_id] == 0:
                     connection_opportunities[cur_id] = 0
+                    # Neighbors of an atom with "spent" extra valence electrons can no longer connect to it.
                     for neigh_id in extra_val_subgraph.neighbors(cur_id):
                         if connection_opportunities[neigh_id] != 0:
                             connection_opportunities[neigh_id] -= 1
             if np.all(extra_valences == 0):
                 added_bonds_dict = self.added_edges_list_to_dict(added_edges)
                 if added_bonds_dict is None:
-                    continue
+                    if all_possibilities:
+                        continue
+                    else:
+                        raise InvalidAdjMat
                 if all_possibilities:
                     if output is None:
                         output = [added_bonds_dict]

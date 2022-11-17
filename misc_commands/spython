@@ -120,18 +120,21 @@ done
 
 cat >> $EXNAME << EOF
 export BMAPQML_NUM_PROCS=$NCPUs
-if [ "$USE_CURRENT_DIR" == "0" ]
+
+USE_CURRENT_DIR=$USE_CURRENT_DIR
+
+if [ "\$USE_CURRENT_DIR" == "0" ]
 then
     cd \$SCRATCH_DIR
     output_dir="."
 else
-    output_dir=$(pwd)
-    cd $(pwd)/..
+    output_dir=$data_dir
+    cd $data_dir
 fi
 echo "Started: \$(date)" > \$output_dir/execution_time.txt
 python $script_path $other_args
 echo "Finished: \$(date)" >> \$output_dir/execution_time.txt
-if [ "$USE_CURRENT_DIR" == "0" ]
+if [ "\$USE_CURRENT_DIR" == "0" ]
 then
     cp -r * $data_dir
 fi

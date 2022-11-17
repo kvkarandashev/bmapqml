@@ -41,7 +41,7 @@ randomized_change_params = {
     "nhatoms_range": [1, max_nhatoms],
     "final_nhatoms_range": [1, max_nhatoms],
     "possible_elements": possible_elements,
-    "bond_order_changes": [-1, 1],
+    "bond_order_changes": [-2, -1, 1, 2],
     "forbidden_bonds": forbidden_bonds,
     "added_bond_orders": [1, 2, 3],
     "not_protonated": not_protonated,
