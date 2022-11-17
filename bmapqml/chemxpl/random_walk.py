@@ -1,7 +1,7 @@
 # TODO For forward and backward probabilities, comment more on where different signs come from.
 # TODO 1. Account for statistical noise of input data. 2. Many theory levels?
 # TODO Somehow unify all instances where simulation histogram is modified.
-# TODO sorted betas + parallel tempering just neighboring points.
+# TODO sorted betas + parallel tempering just neighboring points as an option?
 
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
@@ -45,9 +45,8 @@ import numpy as np
 np.seterr(all="raise")
 
 
-# TODO 1. make default values for randomized change parameters work. 2. Add atoms with bond order more than one already?
-# TODO 3. keep_histogram option needs more testing.
-
+# Minimal set of procedures that allow to claim that our MC chains are Markovian.
+# replace_heavy_atom is only necessary for this claim to be valid if we are constrained to molecules with only one heavy atom.
 minimized_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
@@ -56,6 +55,7 @@ minimized_change_list = [
     change_valence,
 ]
 
+# Full list of procedures for "simple MC moves" available for simulation.
 full_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
@@ -67,6 +67,7 @@ full_change_list = [
     change_bond_order_valence,
 ]
 
+# A list of operations sufficient (?) for exploring chemical space where polyvalent heavy atoms are not protonated.
 valence_ha_change_list = [
     add_heavy_atom_chain,
     remove_heavy_atom,
@@ -74,6 +75,7 @@ valence_ha_change_list = [
     change_bond_order,
     change_valence_add_atoms,
     change_valence_remove_atoms,
+    change_bond_order_valence,
 ]
 
 stochiometry_conserving_change_list = [change_bond_order, change_valence]
@@ -563,9 +565,6 @@ def randomized_change(
     Randomly modify a TrajectoryPoint object.
     visited_tp_list : list of TrajectoryPoint objects for which data is available.
     """
-    # TODO delete post-testing
-    if not tp.egc.chemgraph.valences_reasonable():
-        raise Exception()
     cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
         tp.possibilities(), change_prob_dict
     )
@@ -586,10 +585,6 @@ def randomized_change(
 
     if new_egc is None:
         return None, None
-
-    # TODO delete post-testing
-    if not new_egc.chemgraph.valences_reasonable():
-        raise Exception()
 
     new_tp = TrajectoryPoint(egc=new_egc)
     if visited_tp_list is not None:
@@ -1120,10 +1115,7 @@ class RandomWalk:
                 output = tot_pot_val
         return output
 
-    # TODO do we still need Metropolis_rejection_prob? Does not appear anywhere.
-    def tp_pair_order_prob(
-        self, replica_ids, tp_pair=None, Metropolis_rejection_prob=False
-    ):
+    def tp_pair_order_prob(self, replica_ids, tp_pair=None):
         if tp_pair is None:
             tp_pair = [self.cur_tps[replica_id] for replica_id in replica_ids]
         cur_tot_pot_vals = [
@@ -1151,20 +1143,14 @@ class RandomWalk:
                     return None
         else:
             delta_pot = sum(cur_tot_pot_vals) - sum(switched_tot_pot_vals)
-            if Metropolis_rejection_prob:
-                if delta_pot < 0.0:
-                    return 0.0
-                else:
-                    return 1.0 - exp_wexceptions(-delta_pot)
+            exp_val = exp_wexceptions(-delta_pot)
+            if np.isinf(exp_val):
+                return None
             else:
-                exp_val = exp_wexceptions(-delta_pot)
-                if np.isinf(exp_val):
+                try:
+                    return (1.0 + exp_val) ** (-1)
+                except FloatingPointError:
                     return None
-                else:
-                    try:
-                        return (1.0 + exp_val) ** (-1)
-                    except FloatingPointError:
-                        return None
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):

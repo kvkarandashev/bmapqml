@@ -42,7 +42,6 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
-    "chain_addition_tuple_possibilities": True,
 }
 
 # "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.
@@ -72,7 +71,6 @@ rw = RandomWalk(
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
-    track_histogram_size=False,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)

@@ -1,7 +1,4 @@
 # TODO Perhaps add support for atoms with higher valences being added directly?
-# TODO check max_bo is enforced properly when atoms are added
-# TODO revise change_bond_order_possibilities; CHECK IT WORKS FOR [-2, -1, 1, 2]
-# TODO create *_tuple_possibilities options for change_bond functions?
 # TODO check that the currently commenting change_valence function exception is correct
 
 import numpy as np
@@ -47,7 +44,6 @@ def atom_pair_equivalent_to_list_member(egc, atom_pair, atom_pair_list):
     return False
 
 
-#   TODO add reference to default_valences as in other functions.
 def atom_replacement_possibilities(
     egc,
     inserted_atom,
@@ -56,6 +52,7 @@ def atom_replacement_possibilities(
     forbidden_bonds=None,
     exclude_equivalent=True,
     not_protonated=None,
+    default_valences=None,
     **other_kwargs,
 ):
 
@@ -64,7 +61,10 @@ def atom_replacement_possibilities(
     if replaced_atom is not None:
         replaced_iac = int_atom_checked(replaced_atom)
     if inserted_valence is None:
-        inserted_valence = default_valence(inserted_iac)
+        if default_valences is None:
+            inserted_valence = default_valences[inserted_iac]
+        else:
+            inserted_valence = default_valence(inserted_iac)
     if not_protonated is not None:
         cant_be_protonated = inserted_iac in not_protonated
     cg = egc.chemgraph
@@ -880,9 +880,6 @@ def change_bond_order_valence(
     bond_order_change,
     resonance_structure_id=None,
 ):
-    # TODO delete after testing
-    if not egc.chemgraph.valences_reasonable():
-        raise Exception()
 
     new_chemgraph = deepcopy(egc.chemgraph)
 

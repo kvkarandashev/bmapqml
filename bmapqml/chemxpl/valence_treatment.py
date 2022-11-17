@@ -3,7 +3,6 @@
 # TODO Perhaps defining "canonically_permuted" inside a ChemGraph can simplify some expressions.
 # TODO I have rewritten the way resonance structures are treated, as a result some subroutines used for representation generation
 # may not work.
-# TODO Number of resonance structures considered can be reduced.
 
 import itertools, copy
 import numpy as np
@@ -330,7 +329,6 @@ def ValenceConfigurationCharacter(valence_values):
 
 
 # TODO perhaps used SortedDict from sortedcontainers more here?
-# TODO revise initialization procedure, does not work if hatoms and bond_orders initialized.
 class ChemGraph:
     def __init__(
         self,
@@ -726,12 +724,6 @@ class ChemGraph:
         return self.graph.neighbors(hatom_id)
 
     def num_neighbors(self, hatom_id):
-        # TODO remove after testing is completed
-        if (
-            len(self.neighbors(hatom_id))
-            != self.graph.neighborhood_size(vertices=hatom_id, order=1) - 1
-        ):
-            raise Exception()
         return self.graph.neighborhood_size(vertices=hatom_id, order=1) - 1
 
     # Basic commands for managing the graph.
@@ -905,9 +897,6 @@ class ChemGraph:
     # TODO: Maybe expand to include charge transfer?
     def init_resonance_structures(self):
         self.prelim_nonsigma_bonds()
-        # TODO delete post-testing
-        if not self.valences_reasonable():
-            raise Exception()
         if (
             (self.resonance_structure_orders is not None)
             and (self.resonance_structure_valence_vals is not None)
@@ -940,9 +929,6 @@ class ChemGraph:
             for i, val_id1 in enumerate(extra_val_ids):
                 neighs = self.neighbors(val_id1)
                 for val_id2 in extra_val_ids[:i]:
-                    # TODO delete this post-testing.
-                    if val_id2 > val_id1:
-                        raise Exception()
                     if val_id2 in neighs:
                         self.resonance_structure_map[
                             (val_id2, val_id1)
@@ -976,9 +962,6 @@ class ChemGraph:
             # Change valence states of extra_val_ids to the default option that corresponds to the bond orders assigned through the bond_orders dictionnary.
             if def_val_option is not None:
                 self.change_valence_option(extra_val_ids, def_val_option)
-        # TODO delete post-testing
-        if not self.valences_reasonable():
-            raise Exception()
 
     def added_edges_list_to_dict(self, added_edges):
         add_bond_orders = {}
@@ -1181,7 +1164,6 @@ class ChemGraph:
                     return added_bonds_dict
 
     # More sophisticated commands that are to be called in the "modify" module.
-    # TODO: can this function with resonance_structure_id being set to None as default? Requires changes in modify.py!
     def change_bond_order(
         self, atom1, atom2, bond_order_change, resonance_structure_id=None
     ):
@@ -1208,9 +1190,6 @@ class ChemGraph:
         self, resonance_structure_region, resonance_structure_id
     ):
         self.init_resonance_structures()
-        # TODO delete post-testing
-        if not self.valences_reasonable():
-            raise Exception()
         changed_hatom_ids = self.resonance_structure_inverse_map[
             resonance_structure_region
         ]
@@ -1234,9 +1213,6 @@ class ChemGraph:
                         )
                     else:
                         self.set_edge_order(hatom_id1, hatom_id2, 1)
-        # TODO delete post-testing
-        if not self.valences_reasonable():
-            raise Exception()
 
     def adjust_resonance_valences_atom(
         self, atom_id, resonance_structure_id=None, valence_option_id=None
@@ -1274,10 +1250,6 @@ class ChemGraph:
         self.bond_orders = new_bond_orders
         del self.hatoms[atom_id]
         self.changed()
-
-        # TODO delete after testing
-        if not self.valences_reasonable():
-            raise Exception()
 
     def remove_heavy_atoms(self, atom_ids):
         sorted_atom_ids = sorted(atom_ids, reverse=True)
