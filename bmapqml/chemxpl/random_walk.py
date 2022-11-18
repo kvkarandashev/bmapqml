@@ -1733,3 +1733,44 @@ def gen_beta_array(num_greedy_replicas, max_real_beta, *args):
             added_beta -= cur_beta_delta
             output.append(added_beta)
     return output
+
+
+def gen_inv_lin_beta_array(
+    num_greedy_replicas: int, min_real_beta: float, num_real_betas: int
+):
+    """
+    Generate an array of betas whose inverse changes linearly from 0 (corresponding to the greedy replicas) to a certain value.
+    num_greedy_replicas : number of "greedy" replicase
+    min_real_beta : minimal value of beta (highest temperature)
+    num_real_betas : how many real beta values we want in the array
+    """
+    output = [None for _ in range(num_greedy_replicas)]
+    max_real_beta = min_real_beta * num_real_betas
+    for real_beta_id in range(num_real_betas):
+        output.append(max_real_beta / (real_beta_id + 1))
+    return output
+
+
+def gen_exp_lin_beta_array(
+    num_greedy_replicas: int,
+    min_real_beta: float,
+    num_real_betas: int,
+    end_beta_ratio: float,
+):
+    """
+    Generate an array of betas following the formula:
+    beta_i=C1 / (C2 ** i - 1)     (i=1, ..., num_real_betas)
+    C1 and C2 are chosen in such a way that beta_{num_real_betas}=min_real_beta and beta_{num_real_betas-1}/beta_{num_real_betas}=end_beta_ratio
+    """
+    assert num_real_betas > 1
+    # First determine C_1 and C_2
+    C_polynom_coeffs = np.ones((num_real_betas,))
+    C_polynom_coeffs[1:] -= end_beta_ratio
+    r = np.roots(C_polynom_coeffs)
+    C2 = np.real(sorted(r, key=lambda x: np.abs(np.imag(x)))[0])
+    assert C2 > 0.0  # just in case
+    C1 = min_real_beta * (C2**num_real_betas - 1)
+    output = [None for _ in range(num_greedy_replicas)]
+    for i in range(num_real_betas):
+        output.append(C1 / (C2 ** (i + 1) - 1))
+    return output

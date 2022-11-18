@@ -20,6 +20,9 @@ from igraph.operators import disjoint_union
 from ..utils import canonical_atomtype
 from ..data import NUCLEAR_CHARGE
 
+# TODO delete post-testing
+from .rdkit_utils import chemgraph_to_canonical_rdkit
+
 
 def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
     if len(atom_id_list) == 0:
@@ -916,11 +919,12 @@ class FragmentPair:
         membership_vector : list or NumPy array - list of integer values indicating which fragment a given HeavyAtom belongs to.
         copied : bool - whether a deep copy of cg should be made at initialization.
         """
-        cg.init_resonance_structures()
         if copied:
             self.chemgraph = cg
         else:
             self.chemgraph = deepcopy(cg)
+
+        self.chemgraph.init_resonance_structures()
 
         self.membership_vector = membership_vector
         # Two list of vertices corresponding to the two grahments.
@@ -934,7 +938,7 @@ class FragmentPair:
             self.chemgraph.resonance_structure_inverse_map
         ):
             for i in rsr_nodelist[:-1]:
-                if membership_vector[i] != membership_vector[-1]:
+                if membership_vector[i] != membership_vector[rsr_nodelist[-1]]:
                     self.affected_resonance_structures.append(rsr_id)
                     resonance_structure_orders_iterators.append(
                         range(len(self.chemgraph.resonance_structure_orders[rsr_id]))
@@ -959,7 +963,6 @@ class FragmentPair:
                         resonance_structure_region_id, resonance_structure_orders_id
                     )
                 cur_affected_status = self.current_affected_status()
-                ### NEED PROPER OBJECT!!!
                 if cur_affected_status not in self.affected_status:
                     self.affected_status.append(cur_affected_status)
                     self.resonance_structure_adjustments.append(
@@ -967,6 +970,7 @@ class FragmentPair:
                     )
 
     def current_affected_status(self):
+        ###TODO NEED PROPER OBJECT???
         return {
             "bonds": self.current_affected_bonds(),
             "valences": self.current_affected_valence_possibilities(),
