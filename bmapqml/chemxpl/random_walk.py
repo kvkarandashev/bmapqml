@@ -1774,3 +1774,37 @@ def gen_exp_lin_beta_array(
     for i in range(num_real_betas):
         output.append(C1 / (C2 ** (i + 1) - 1))
     return output
+
+
+def gen_exp_beta_array(
+    num_greedy_replicas: int,
+    min_real_beta: float,
+    num_real_betas: int,
+    max_real_beta: float or None = None,
+    real_beta_multiplier: float or None = None,
+):
+    """
+    Generate a range of beta values where the real beta values are separated evenly in logspace.
+    """
+    output = [None for _ in range(num_greedy_replicas)]
+    if num_real_betas == 1:
+        output.append(min_real_beta)
+        return output
+    log_min_real_beta = np.log2(min_real_beta)
+    if max_real_beta is None:
+        if num_real_betas != 1:
+            assert real_beta_multiplier is not None
+            log_max_real_beta = log_min_real_beta + (num_real_betas - 1) * np.log2(
+                real_beta_multiplier
+            )
+    else:
+        log_max_real_beta = np.log2(max_real_beta)
+    if num_real_betas == 1:
+        real_betas = [min_real_beta]
+    else:
+        real_betas = np.logspace(
+            log_max_real_beta, log_min_real_beta, num=num_real_betas, base=2
+        )
+
+    output += list(real_betas)
+    return output
