@@ -208,6 +208,52 @@ def chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
     return ChemGraph(adj_mat=bond_order_matrix, nuclear_charges=ncharges)
 
 
+def chemgraph_to_canonical_rdkit_wcoords(
+    cg, ff_type="MMFF", num_attempts=1, pick_minimal_conf=False
+):
+    """
+    Creates an rdkit Molecule object whose heavy atoms are canonically ordered.
+    cg : ChemGraph input chemgraph object
+    ff_type : which forcefield to use; currently MMFF and UFF are available
+    num_attempts : how many times the optimization is attempted
+    output : RDKit molecule, indices of the heavy atoms, indices of heavy atoms to which a given hydrogen is connected,
+    SMILES generated from the canonical RDKit molecules, and the RDKit's coordinates
+    """
+    (
+        mol,
+        heavy_atom_index,
+        hydrogen_connection,
+        canon_SMILES,
+    ) = chemgraph_to_canonical_rdkit(cg)
+
+    if pick_minimal_conf:
+        rdkit_coords, rdkit_nuclear_charges, _ = RDKit_FF_min_en_conf(
+            mol, ff_type, num_attempts=num_attempts, corresponding_cg=cg
+        )
+    else:
+        RDKit_FF_optimize_coords(
+            mol,
+            rdkit_coord_optimizer[ff_type],
+            num_attempts=num_attempts,
+            corresponding_cg=cg,
+        )
+        rdkit_coords = np.array(mol.GetConformer().GetPositions())
+        rdkit_nuclear_charges = np.array(
+            [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+        )
+    # Additionally check that the coordinates actually correspond to the molecule.
+    try:
+        coord_based_cg = chemgraph_from_ncharges_coords(
+            rdkit_nuclear_charges, rdkit_coords
+        )
+    except InvalidAdjMat:
+        raise FFInconsistent
+    if coord_based_cg != cg:
+        raise FFInconsistent
+
+    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, rdkit_coords
+
+
 def egc_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
     cg = chemgraph_from_ncharges_coords(nuclear_charges, coordinates, charge=0)
     return ExtGraphCompound(chemgraph=cg, coordinates=np.array(coordinates))
