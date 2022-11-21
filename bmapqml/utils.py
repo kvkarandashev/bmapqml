@@ -62,6 +62,18 @@ def exp_wexceptions(val):
             return 0.0
 
 
+def renorm_wexceptions(array):
+    """
+    Normalize a numpy array; exceptions are accounted for.
+    """
+    s = np.sum(array)
+    for i in range(array.shape[0]):
+        try:
+            array[i] /= s
+        except FloatingPointError:
+            array[i] = 0.0
+
+
 def canonical_atomtype(atomtype):
     return atomtype[0].upper() + atomtype[1:].lower()
 

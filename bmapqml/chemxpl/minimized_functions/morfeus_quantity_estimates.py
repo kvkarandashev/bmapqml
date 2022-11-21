@@ -10,6 +10,7 @@ from ...utils import (
     all_None_dict,
     any_element_in_list,
     exp_wexceptions,
+    renorm_wexceptions,
 )
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
@@ -89,9 +90,8 @@ def morfeus_coord_info_from_tp(
                 for en in energies
             ]
         )
-        boltzmann_factors /= np.sum(boltzmann_factors)
+        renorm_wexceptions(boltzmann_factors)
         output["rdkit_Boltzmann"] = boltzmann_factors
-
     else:
         output["coordinates"] = all_coordinates[min_en_id]
         output["rdkit_energy"] = min_en
