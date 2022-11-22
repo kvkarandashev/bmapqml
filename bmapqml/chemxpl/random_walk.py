@@ -789,7 +789,15 @@ class RandomWalk:
 
         # For storing statistics on move success.
         self.num_attempted_cross_couplings = 0
+        self.num_valid_cross_couplings = 0
         self.num_accepted_cross_couplings = 0
+
+        self.num_attempted_simple_moves = 0
+        self.num_accepted_simple_moves = 0
+
+        self.num_attempted_tempering_swaps = 0
+        self.num_accepted_tempering_swaps = 0
+
         self.moves_since_changed = np.zeros((self.num_replicas,), dtype=int)
 
         # Related to making restart files and checking for soft exit.
@@ -1154,6 +1162,8 @@ class RandomWalk:
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):
+        self.num_attempted_simple_moves += 1
+
         changed_tp = self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance = randomized_change(
@@ -1167,6 +1177,9 @@ class RandomWalk:
         accepted = self.accept_reject_move(
             new_tps, prob_balance, replica_ids=[replica_id]
         )
+        if accepted:
+            self.num_accepted_simple_moves += 1
+
         return accepted
 
     def genetic_MC_step(self, replica_ids):
@@ -1193,6 +1206,7 @@ class RandomWalk:
                     new_cg_pair = None
         if new_cg_pair is None:
             return False
+        self.num_valid_cross_couplings += 1
         new_pair_tps = self.hist_checked_tps(
             [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
         )
@@ -1244,11 +1258,17 @@ class RandomWalk:
             self.parallel_tempering_swap(changed_replica_ids)
 
     def parallel_tempering_swap(self, replica_ids):
+        self.num_attempted_tempering_swaps += 1
+
         trial_tps = [
             deepcopy(self.cur_tps[replica_ids[1]]),
             deepcopy(self.cur_tps[replica_ids[0]]),
         ]
-        return self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
+        accepted = self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
+        if accepted:
+            self.num_accepted_tempering_swaps += 1
+
+        return accepted
 
     def parallel_tempering(self, num_parallel_tempering_tries=1, **dummy_kwargs):
         if (self.min_function is not None) and (not self.all_betas_same):
@@ -1556,7 +1576,12 @@ class RandomWalk:
             "MC_step_counter": self.MC_step_counter,
             "global_MC_step_counter": self.global_MC_step_counter,
             "num_attempted_cross_couplings": self.num_attempted_cross_couplings,
+            "num_valid_cross_couplings": self.num_valid_cross_couplings,
             "num_accepted_cross_couplings": self.num_accepted_cross_couplings,
+            "num_attempted_simple_moves": self.num_attempted_simple_moves,
+            "num_accepted_simple_moves": self.num_accepted_simple_moves,
+            "num_attempted_tempering_swaps": self.num_attempted_tempering_swaps,
+            "num_accepted_tempering_swaps": self.num_accepted_tempering_swaps,
             "moves_since_changed": self.moves_since_changed,
             "global_steps_since_last": self.global_steps_since_last,
             "numpy_rng_state": np.random.get_state(),
@@ -1586,9 +1611,21 @@ class RandomWalk:
         self.num_attempted_cross_couplings = recovered_data[
             "num_attempted_cross_couplings"
         ]
+        self.num_valid_cross_couplings = recovered_data["num_valid_cross_couplings"]
         self.num_accepted_cross_couplings = recovered_data[
             "num_accepted_cross_couplings"
         ]
+
+        self.num_attempted_simple_moves = recovered_data["num_attempted_simple_moves"]
+        self.num_accepted_simple_moves = recovered_data["num_accepted_simple_moves"]
+
+        self.num_attempted_tempering_swaps = recovered_data[
+            "num_attempted_tempering_swaps"
+        ]
+        self.num_accepted_tempering_swaps = recovered_data[
+            "num_accepted_tempering_swaps"
+        ]
+
         self.moves_since_changed = recovered_data["moves_since_changed"]
         self.global_steps_since_last = recovered_data["global_steps_since_last"]
         if self.keep_histogram:

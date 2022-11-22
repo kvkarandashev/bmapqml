@@ -36,4 +36,29 @@ for tp1, tp2 in zip(*histograms):
         if vis_ids1 != vis_ids2:
             not_match("Visit ids don't match.")
 
+# Check that auxiliary data stored in restart files matches.
+# SHOULD be satisfied if trajectories are the same unless there is a bug in the code.
+extra_data_keys = [
+    "cur_tps",
+    "MC_step_counter",
+    "global_MC_step_counter",
+    "num_attempted_cross_couplings",
+    "num_valid_cross_couplings",
+    "num_accepted_cross_couplings",
+    "num_attempted_simple_moves",
+    "num_accepted_simple_moves",
+    "num_attempted_tempering_swaps",
+    "num_accepted_tempering_swaps",
+    "moves_since_changed",
+    "global_steps_since_last",
+]
+
+for extra_data_key in extra_data_keys:
+    comp_res = (
+        restart_contents[0][extra_data_key] == restart_contents[1][extra_data_key]
+    )
+    if not isinstance(comp_res, bool):
+        comp_res = comp_res.all()
+    if not comp_res:
+        not_match("Not match in extra data key", extra_data_key)
 print("Saved trajectories match.")
