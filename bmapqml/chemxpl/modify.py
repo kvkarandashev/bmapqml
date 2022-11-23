@@ -1032,9 +1032,9 @@ class FragmentPair:
         )
 
         new_hatoms = [
-            deepcopy(self.chemgraph.hatoms[ha_id]) for ha_id in self.sorted_vertices[0]
+            self.chemgraph.hatoms[ha_id].mincopy() for ha_id in self.sorted_vertices[0]
         ] + [
-            deepcopy(other_fp.chemgraph.hatoms[ha_id])
+            other_fp.chemgraph.hatoms[ha_id].mincopy()
             for ha_id in other_fp.sorted_vertices[1]
         ]
 
@@ -1061,10 +1061,8 @@ class FragmentPair:
             new_graph.add_edge(*new_bond_tuple)
             if forbidden_bonds is not None:
                 if connection_forbidden(
-                    *[
-                        new_hatoms[internal_id].ncharge
-                        for internal_id in new_bond_tuple
-                    ],
+                    new_hatoms[new_bond_tuple[0]].ncharge,
+                    new_hatoms[new_bond_tuple[1]].ncharge,
                     forbidden_bonds,
                 ):
                     return None, None

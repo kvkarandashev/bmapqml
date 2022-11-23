@@ -981,7 +981,7 @@ class RandomWalk:
         self.update_global_histogram()
 
     # Acceptance rejection rules.
-    def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0]):
+    def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0], swap=False):
         self.MC_step_counter += 1
 
         accepted = self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
@@ -992,6 +992,8 @@ class RandomWalk:
         else:
             for new_tp, replica_id in zip(new_tps, replica_ids):
                 self.moves_since_changed[replica_id] += 1
+                if swap:
+                    continue
                 if self.keep_histogram and self.histogram_save_rejected:
                     tp_in_histogram = new_tp in self.histogram
                     if tp_in_histogram:
@@ -1264,11 +1266,10 @@ class RandomWalk:
     def parallel_tempering_swap(self, replica_ids):
         self.num_attempted_tempering_swaps += 1
 
-        trial_tps = [
-            deepcopy(self.cur_tps[replica_ids[1]]),
-            deepcopy(self.cur_tps[replica_ids[0]]),
-        ]
-        accepted = self.accept_reject_move(trial_tps, 0.0, replica_ids=replica_ids)
+        trial_tps = [self.cur_tps[replica_ids[1]], self.cur_tps[replica_ids[0]]]
+        accepted = self.accept_reject_move(
+            trial_tps, 0.0, replica_ids=replica_ids, swap=True
+        )
         if accepted:
             self.num_accepted_tempering_swaps += 1
 

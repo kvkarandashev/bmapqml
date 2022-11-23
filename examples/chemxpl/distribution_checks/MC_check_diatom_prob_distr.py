@@ -46,9 +46,8 @@ global_change_params = {
     "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
 }
 
-# Initial point for all replicas is CC#CC.
+# Initialize all replicas at Cl2, which is a local minimum.
 init_cg = str2ChemGraph("17@1:17")
-# init_cg=str2ChemGraph("6#4")
 
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(len(betas))]
 
@@ -62,10 +61,11 @@ rw = RandomWalk(
     min_function=min_func,
     init_egcs=init_egcs,
     keep_histogram=True,
-    keep_full_trajectory=True,
+    keep_full_trajectory=False,
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
+    track_histogram_size=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)

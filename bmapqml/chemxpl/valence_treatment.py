@@ -111,7 +111,6 @@ def list2colors(obj_list):
     return colors
 
 
-# Auxiliary class mainly used to keep valences in check.
 class HeavyAtom:
     def __init__(
         self,
@@ -121,6 +120,9 @@ class HeavyAtom:
         coordination_number=None,
         possible_valences=None,
     ):
+        """
+        Class storing information about a heavy atom and the hydrogens connected to it.
+        """
         self.ncharge = int_atom_checked(atom_symbol)
         if valence is None:
             valence = self.smallest_valid_valence(
@@ -193,6 +195,14 @@ class HeavyAtom:
             return val_list[-1]
         else:
             return val_list
+
+    def mincopy(self):
+        """
+        Not %100 sure whether this should be made __deepcopy__ instead.
+        """
+        return HeavyAtom(
+            atom_symbol=self.ncharge, valence=self.valence, nhydrogens=self.nhydrogens
+        )
 
     # Procedures for ordering.
     def get_comparison_list(self):
