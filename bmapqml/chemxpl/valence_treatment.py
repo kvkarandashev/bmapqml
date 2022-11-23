@@ -339,19 +339,12 @@ class ChemGraph:
         adj_mat=None,
         nuclear_charges=None,
         hydrogen_autofill=False,
-        resonance_structure_orders=None,
-        resonance_structure_map=None,
-        resonance_structure_inverse_map=None,
         hydrogen_numbers=None,
     ):
         self.graph = graph
         self.hatoms = hatoms
         self.bond_orders = bond_orders
         self.all_bond_orders = all_bond_orders
-        # Resonance structures.
-        self.resonance_structure_orders = resonance_structure_orders
-        self.resonance_structure_map = resonance_structure_map
-        self.resonance_structure_inverse_map = resonance_structure_inverse_map
 
         if self.hatoms is not None:
             if nuclear_charges is None:
