@@ -1,14 +1,13 @@
 # The script verifies that Monte Carlo trajectories generated with RandomWalk objects follow the correct distribution when no bias is applied.
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.random_walk import RandomWalk
-import random
+import random, sys
 import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound
 from bmapqml.chemxpl.utils import print_distribution_analysis
 from bmapqml.chemxpl.minimized_functions import Diatomic_barrier
 from copy import deepcopy
 
-# from sortedcontainers import SortedDict
 
 random.seed(1)
 np.random.seed(1)
@@ -61,7 +60,7 @@ rw = RandomWalk(
     min_function=min_func,
     init_egcs=init_egcs,
     keep_histogram=True,
-    keep_full_trajectory=False,
+    keep_full_trajectory=True,
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
@@ -69,7 +68,7 @@ rw = RandomWalk(
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
-    print(MC_step, rw.cur_tps)
+    print(MC_step + 1, rw.cur_tps)
 
 # How to make a restart file in the end. (Unnecessary with make_restart_frequency set.)
 rw.make_restart()
@@ -77,6 +76,11 @@ rw.make_restart()
 print_distribution_analysis(
     rw.histogram, betas, val_lbound=-0.5, val_ubound=2.5, num_bins=3
 )
+
+if len(sys.argv) >= 2:
+    if sys.argv[1] == "PRINT_TRAJ":
+        for i, tps in enumerate(rw.ordered_trajectory()):
+            print(i, *tps)
 
 # The following is a short analysis for easy verification that the distribution is the correct one.
 

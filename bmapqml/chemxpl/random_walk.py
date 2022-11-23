@@ -276,6 +276,10 @@ def tp_or_chemgraph(tp):
         return tp.chemgraph()
 
 
+global_step_traj_storage_label = "global"
+nonglobal_step_traj_storage_label = "local"
+
+
 class TrajectoryPoint:
     def __init__(
         self,
@@ -297,8 +301,9 @@ class TrajectoryPoint:
         if num_visits is not None:
             num_visits = deepcopy(num_visits)
         self.num_visits = num_visits
-        self.visit_step_ids = None
-        self.visit_global_step_ids = None
+
+        self.visit_step_ids = {}
+        self.visit_step_num_ids = {}
 
         self.first_MC_step_encounter = None
         self.first_global_MC_step_encounter = None
@@ -441,6 +446,28 @@ class TrajectoryPoint:
         self.egc.chemgraph.copy_extra_data_to(
             other_tp.egc.chemgraph, linear_storage=linear_storage
         )
+
+    def add_visit_step_id(
+        self, step_id, beta_id, step_type=global_step_traj_storage_label
+    ):
+        if step_type not in self.visit_step_ids:
+            self.visit_step_ids[step_type] = {}
+            self.visit_step_num_ids[step_type] = {}
+        if beta_id not in self.visit_step_num_ids[step_type]:
+            self.visit_step_num_ids[step_type][beta_id] = 0
+            self.visit_step_ids[step_type][beta_id] = np.array([-1])
+        if (
+            self.visit_step_num_ids[step_type][beta_id]
+            == self.visit_step_ids[step_type][beta_id].shape[0]
+        ):
+            self.visit_step_ids[step_type][beta_id] = np.append(
+                self.visit_step_ids[step_type][beta_id],
+                np.repeat(-1, self.visit_step_num_ids[step_type][beta_id]),
+            )
+        self.visit_step_ids[step_type][beta_id][
+            self.visit_step_num_ids[step_type][beta_id]
+        ] = step_id
+        self.visit_step_num_ids[step_type][beta_id] += 1
 
     def chemgraph(self):
         return self.egc.chemgraph
@@ -1465,12 +1492,10 @@ class RandomWalk:
                     self.histogram[cur_tp_index].first_acceptance_replica = replica_id
 
                 if self.keep_full_trajectory:
-                    if self.histogram[cur_tp_index].visit_step_ids is None:
-                        self.histogram[cur_tp_index].visit_step_ids = [
-                            [] for _ in range(self.num_replicas)
-                        ]
-                    self.histogram[cur_tp_index].visit_step_ids[replica_id].append(
-                        self.MC_step_counter
+                    self.histogram[cur_tp_index].add_visit_step_id(
+                        self.MC_step_counter,
+                        replica_id,
+                        step_type=nonglobal_step_traj_storage_label,
                     )
                 if self.visit_num_count_acceptance:
                     self.update_num_visits(cur_tp_index, replica_id)
@@ -1480,13 +1505,11 @@ class RandomWalk:
             for replica_id, cur_tp in enumerate(self.cur_tps):
                 cur_tp_index = self.histogram.index(cur_tp)
                 if self.keep_full_trajectory:
-                    if self.histogram[cur_tp_index].visit_global_step_ids is None:
-                        self.histogram[cur_tp_index].visit_global_step_ids = [
-                            [] for _ in range(self.num_replicas)
-                        ]
-                    self.histogram[cur_tp_index].visit_global_step_ids[
-                        replica_id
-                    ].append(self.global_MC_step_counter)
+                    self.histogram[cur_tp_index].add_visit_step_id(
+                        self.global_MC_step_counter,
+                        replica_id,
+                        step_type=global_step_traj_storage_label,
+                    )
                 if not self.visit_num_count_acceptance:
                     self.update_num_visits(cur_tp_index, replica_id)
 
@@ -1693,19 +1716,25 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
     if global_MC_step_counter is None:
         global_MC_step_counter = 0
         for tp in histogram:
-            if tp.visit_global_step_ids is not None:
-                for replica_visits in tp.visit_global_step_ids:
-                    if len(replica_visits) != 0:
-                        global_MC_step_counter = max(
-                            global_MC_step_counter, max(replica_visits)
-                        )
+            if global_step_traj_storage_label in tp.visit_step_ids:
+                for max_visit_id, visit_ids in zip(
+                    tp.visit_step_ids[global_step_traj_storage_label].values(),
+                    tp.visit_step_num_ids[global_step_traj_storage_label].values(),
+                ):
+                    global_MC_step_counter = max(
+                        global_MC_step_counter, visit_ids[max_visit_id]
+                    )
+    print("TTT", global_MC_step_counter)
     output = np.zeros((global_MC_step_counter + 1, num_replicas), dtype=int)
     output[:, :] = -1
     for tp_id, tp in enumerate(histogram):
-        if tp.visit_global_step_ids is not None:
-            for replica_id, replica_visits in enumerate(tp.visit_global_step_ids):
-                for replica_visit in replica_visits:
-                    output[replica_visit, replica_id] = tp_id
+        if global_step_traj_storage_label in tp.visit_step_ids:
+            cur_vsi_dict = tp.visit_step_ids[global_step_traj_storage_label]
+            cur_vsni_dict = tp.visit_step_num_ids[global_step_traj_storage_label]
+            for replica_id, max_visit_id in cur_vsni_dict.items():
+                visits = cur_vsi_dict[replica_id][:max_visit_id]
+                for v in visits:
+                    output[v, replica_id] = tp_id
     for step_id in range(global_MC_step_counter):
         true_step_id = step_id + 1
         for replica_id in range(num_replicas):
