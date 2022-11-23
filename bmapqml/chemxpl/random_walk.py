@@ -28,7 +28,7 @@ from .modify import (
     change_bond_order_valence,
     valence_bond_change_possibilities,
 )
-from .utils import rdkit_to_egc, egc_to_rdkit
+from .utils import rdkit_to_egc, egc_to_rdkit, default_minfunc_name
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
 from .valence_treatment import (
     sorted_tuple,
@@ -683,7 +683,7 @@ class RandomWalk:
         no_exploration: bool = False,
         no_exploration_smove_adjust: bool = False,
         restricted_tps: list or None = None,
-        min_function_name: str = "MIN_FUNCTION",
+        min_function_name: str = default_minfunc_name,
         num_saved_candidates: int or None = None,
         keep_full_trajectory: bool = False,
         restart_file: str or None = None,
@@ -793,6 +793,7 @@ class RandomWalk:
         self.num_accepted_cross_couplings = 0
 
         self.num_attempted_simple_moves = 0
+        self.num_valid_simple_moves = 0
         self.num_accepted_simple_moves = 0
 
         self.num_attempted_tempering_swaps = 0
@@ -1173,6 +1174,9 @@ class RandomWalk:
         )
         if new_tp is None:
             return False
+
+        self.num_valid_simple_moves += 1
+
         new_tps = self.hist_checked_tps([new_tp])
         accepted = self.accept_reject_move(
             new_tps, prob_balance, replica_ids=[replica_id]
@@ -1579,6 +1583,7 @@ class RandomWalk:
             "num_valid_cross_couplings": self.num_valid_cross_couplings,
             "num_accepted_cross_couplings": self.num_accepted_cross_couplings,
             "num_attempted_simple_moves": self.num_attempted_simple_moves,
+            "num_valid_simple_moves": self.num_valid_simple_moves,
             "num_accepted_simple_moves": self.num_accepted_simple_moves,
             "num_attempted_tempering_swaps": self.num_attempted_tempering_swaps,
             "num_accepted_tempering_swaps": self.num_accepted_tempering_swaps,
@@ -1617,6 +1622,7 @@ class RandomWalk:
         ]
 
         self.num_attempted_simple_moves = recovered_data["num_attempted_simple_moves"]
+        self.num_valid_simple_moves = recovered_data["num_valid_simple_moves"]
         self.num_accepted_simple_moves = recovered_data["num_accepted_simple_moves"]
 
         self.num_attempted_tempering_swaps = recovered_data[

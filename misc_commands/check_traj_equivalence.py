@@ -46,6 +46,7 @@ extra_data_keys = [
     "num_valid_cross_couplings",
     "num_accepted_cross_couplings",
     "num_attempted_simple_moves",
+    "num_valid_simple_moves",
     "num_accepted_simple_moves",
     "num_attempted_tempering_swaps",
     "num_accepted_tempering_swaps",

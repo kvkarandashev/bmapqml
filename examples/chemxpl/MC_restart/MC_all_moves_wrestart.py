@@ -6,7 +6,7 @@ from bmapqml.chemxpl.minimized_functions import OrderSlide, ConstrainedQuant
 from bmapqml.chemxpl.minimized_functions.mol_constraints import NoProtonation
 from copy import deepcopy
 import numpy as np
-import sys, os
+import sys
 
 num_MC_steps = int(sys.argv[1])
 

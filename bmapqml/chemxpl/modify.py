@@ -1268,14 +1268,15 @@ def randomized_cross_coupling(
     if len(pair_fragment_sizes) == 0:
         return None, None
 
-    tot_choice_prob_ratio = float(len(pair_fragment_sizes))
+    # tot_choice_prob_ratio is the ratio of probability of the trial move divided by probability of the inverse move.
+    tot_choice_prob_ratio = 1.0 / float(len(pair_fragment_sizes))
 
     final_pair_fragment_sizes = random.choice(pair_fragment_sizes)
 
     membership_vectors = []
     for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes):
         origin_choices = cg.unrepeated_atom_list()
-        tot_choice_prob_ratio *= len(origin_choices)
+        tot_choice_prob_ratio /= len(origin_choices)
         membership_vectors.append(
             randomized_split_membership_vector(cg, origin_choices, fragment_size)
         )
@@ -1290,7 +1291,7 @@ def randomized_cross_coupling(
     if len(mdtuples) == 0:
         return None, None
 
-    tot_choice_prob_ratio *= len(mdtuples)
+    tot_choice_prob_ratio /= len(mdtuples)
 
     final_md_tuple = random.choice(mdtuples)
 
@@ -1309,7 +1310,7 @@ def randomized_cross_coupling(
                 ].chemgraph().copy_extra_data_to(new_cg_pair[new_cg_id])
 
     # Account for probability of choosing the correct fragment sizes to do the inverse move.
-    tot_choice_prob_ratio /= len(
+    tot_choice_prob_ratio *= len(
         possible_pair_fragment_sizes(new_cg_pair, **ppfs_kwargs)
     )
     # Account for probability of choosing the necessary resonance structure.
@@ -1319,12 +1320,12 @@ def randomized_cross_coupling(
     ]
     backwards_mdtuples = matching_dict_tuples(*backwards_fragment_pairs)
 
-    tot_choice_prob_ratio /= len(backwards_mdtuples)
+    tot_choice_prob_ratio *= len(backwards_mdtuples)
 
     for new_cg in new_cg_pair:
-        tot_choice_prob_ratio /= len(new_cg.unrepeated_atom_list())
+        tot_choice_prob_ratio *= len(new_cg.unrepeated_atom_list())
 
-    return new_cg_pair, -np.log(tot_choice_prob_ratio)
+    return new_cg_pair, np.log(tot_choice_prob_ratio)
 
 
 def no_forbidden_bonds(egc: ExtGraphCompound, forbidden_bonds: None or list = None):
