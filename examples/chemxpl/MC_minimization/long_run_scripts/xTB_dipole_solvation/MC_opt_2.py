@@ -37,7 +37,9 @@ make_restart_frequency = 2000
 num_MC_steps = 50000  # 50000
 
 bias_coeffs = {"none": None, "weak": 0.2, "stronger": 0.4}
-vbeta_bias_coeffs = {"none": None, "weak": 0.01, "stronger": 0.02}
+# vbeta_bias_coeffs = {"none": None, "weak": 0.01, "stronger": 0.02}
+# Disabled biasing of greedy replicas in order they systematically checked all minimization options instead.
+vbeta_bias_coeffs = {"none": None, "weak": None, "stronger": None}
 
 
 # bias_coeff = None
@@ -59,7 +61,7 @@ randomized_change_params = {
 global_change_params = {
     "num_parallel_tempering_tries": 64,
     "num_genetic_tries": 64,
-    "prob_dict": {"simple": 0.3, "genetic": 0.3, "tempering": 0.3},
+    "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
 }
 
 num_replicas = len(betas)
@@ -92,6 +94,7 @@ rw = RandomWalk(
     max_histogram_size=None,
     track_histogram_size=True,
     linear_storage=True,
+    greedy_delete_checked_paths=True,
 )
 
 for MC_step in range(num_MC_steps):

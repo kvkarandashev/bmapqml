@@ -943,11 +943,15 @@ class FragmentPair:
                         if rsr_id not in saved_all_bond_orders:
                             saved_all_bond_orders[rsr_id] = {}
                             self.affected_resonance_structures.append(rsr_id)
-                        resonance_structure_orders_iterators.append(
-                            range(
-                                len(self.chemgraph.resonance_structure_orders[rsr_id])
+                            resonance_structure_orders_iterators.append(
+                                range(
+                                    len(
+                                        self.chemgraph.resonance_structure_orders[
+                                            rsr_id
+                                        ]
+                                    )
+                                )
                             )
-                        )
                         if rsr_id not in resonance_structure_affected_bonds:
                             resonance_structure_affected_bonds[rsr_id] = []
                         resonance_structure_affected_bonds[rsr_id].append(bond_tuple)

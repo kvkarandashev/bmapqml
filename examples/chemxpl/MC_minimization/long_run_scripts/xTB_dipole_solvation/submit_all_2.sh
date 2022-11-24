@@ -5,7 +5,7 @@ dump_directory="/store/common/konst/chemxpl_related/minimization_runs_xTB_dipole
 
 gap_constraints=("weak" "strong")
 
-quantities=("solvation" "dipole")
+quantities=("solvation_energy" "dipole")
 
 bias_strengths=("stronger" "weak" "none")
 
@@ -29,7 +29,7 @@ do
         for quantity in ${quantities[@]}
         do
             cur_job_name=${job_name}_${bias_strength}_${gap_constraint}_${quantity}
-            min_func_file=$cur_directory/constr_${quantity}_gap_constr_${gap_constraint}_morfeus_xTB_data_water.pkl
+            min_func_file=$cur_directory/morfeus_xTB_water_${quantity}_${gap_constraint}.pkl
             final_dump_directory=$dump_directory/${cur_job_name}
 
             mkdir -p $final_dump_directory
