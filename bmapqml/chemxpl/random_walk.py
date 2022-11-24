@@ -317,6 +317,8 @@ class TrajectoryPoint:
         # Information for keeping detailed balance.
         self.possibility_dict = None
 
+        self.modified_possibility_dict = None
+
         self.calculated_data = {}
 
     # TO-DO better way to write this?
@@ -414,6 +416,29 @@ class TrajectoryPoint:
             return 0
         else:
             return self.num_visits[replica_id]
+
+    def mod_poss_dict_subdict(self, full_modification_path):
+        cur_subdict = self.modified_possibility_dict
+        for choice in full_modification_path:
+            cur_subdict = cur_subdict[choice]
+        return cur_subdict
+
+    def delete_mod_poss_dict(self, full_modification_path):
+        subdict = self.mod_poss_dict_subdict(full_modification_path[:-1])
+        if isinstance(subdict, list):
+            subdict.remove(full_modification_path[-1])
+        if isinstance(subdict, dict):
+            del subdict[full_modification_path[-1]]
+
+    def delete_mod_path(self, full_modification_path):
+        fmp_len = len(full_modification_path)
+        while len(self.modified_possibility_dict) != 0:
+            self.delete_mod_poss_dict(full_modification_path[:fmp_len])
+            fmp_len -= 1
+            if fmp_len == 0:
+                break
+            if len(self.mod_poss_dict_subdict(full_modification_path[:fmp_len])) != 0:
+                break
 
     def copy_extra_data_to(self, other_tp, linear_storage=False, omit_data=None):
         """
@@ -586,14 +611,24 @@ def randomized_change(
     tp: TrajectoryPoint,
     change_prob_dict=full_change_list,
     visited_tp_list: list or None = None,
+    delete_chosen_mod_path: bool = False,
     **other_kwargs
 ):
     """
     Randomly modify a TrajectoryPoint object.
     visited_tp_list : list of TrajectoryPoint objects for which data is available.
     """
+    if delete_chosen_mod_path:
+        if tp.modified_possibility_dict is None:
+            tp.modified_possibility_dict = deepcopy(tp.possibilities())
+        full_possibility_dict = tp.modified_possibility_dict
+        if len(full_possibility_dict) == 0:
+            return None, None
+    else:
+        full_possibility_dict = tp.possibilities()
+
     cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
-        tp.possibilities(), change_prob_dict
+        full_possibility_dict, change_prob_dict
     )
     possibility_dict_label = change_possibility_label[cur_change_procedure]
     possibility_dict = lookup_or_none(other_kwargs, possibility_dict_label)
@@ -601,6 +636,9 @@ def randomized_change(
     modification_path, forward_prob = random_choice_from_nested_dict(
         possibilities, choices=possibility_dict
     )
+
+    if delete_chosen_mod_path:
+        tp.delete_mod_path([cur_change_procedure] + modification_path)
 
     total_forward_prob += forward_prob
 
@@ -723,6 +761,7 @@ class RandomWalk:
         visit_num_count_acceptance: bool = False,
         linear_storage: bool = True,
         compress_restart: bool = False,
+        greedy_delete_checked_paths: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -749,6 +788,7 @@ class RandomWalk:
         linear_storage : whether objects saved to the histogram contain data whose size scales more than linearly with molecule size
         compress_restart : whether restart files are compressed by default
         randomized_change_params : parameters defining the sampled chemical space and how the sampling is done; see description of init_randomized_params for more thorough explanation.
+        greedy_delete_checked_paths : for greedy replicas take a modification path with simple moves only once.
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -849,6 +889,7 @@ class RandomWalk:
             self.histogram = starting_histogram
 
         self.delete_temp_data = delete_temp_data
+        self.greedy_delete_checked_paths = greedy_delete_checked_paths
 
         self.init_cur_tps(init_egcs)
 
@@ -1194,11 +1235,16 @@ class RandomWalk:
     def MC_step(self, replica_id=0, **dummy_kwargs):
         self.num_attempted_simple_moves += 1
 
+        if self.greedy_delete_checked_paths:
+            delete_chosen_mod_path = self.virtual_beta_id(replica_id)
+        else:
+            delete_chosen_mod_path = False
         changed_tp = self.cur_tps[replica_id]
         changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance = randomized_change(
             changed_tp,
             visited_tp_list=self.histogram,
+            delete_chosen_mod_path=delete_chosen_mod_path,
             **self.used_randomized_change_params
         )
         if new_tp is None:
@@ -1724,7 +1770,6 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
                     global_MC_step_counter = max(
                         global_MC_step_counter, visit_ids[max_visit_id]
                     )
-    print("TTT", global_MC_step_counter)
     output = np.zeros((global_MC_step_counter + 1, num_replicas), dtype=int)
     output[:, :] = -1
     for tp_id, tp in enumerate(histogram):
