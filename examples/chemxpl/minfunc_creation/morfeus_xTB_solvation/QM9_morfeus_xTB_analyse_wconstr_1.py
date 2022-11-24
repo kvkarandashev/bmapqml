@@ -70,6 +70,8 @@ minfunc_quant_signs = {"dipole": -1, "solvation_energy": 1}
 valid_entries = []
 
 for entry in entry_list:
+    if "arrs" not in entry:
+        continue
     if entry["arrs"]["energy"] is None:
         continue
     if entry["mean"]["energy"] is None:
@@ -79,16 +81,16 @@ for entry in entry_list:
 egcs = []
 
 for entry in valid_entries:
-    cg_str = entry["chemgraph_str"]
+    cg_str = entry["chemgraph"]
     cg = str2ChemGraph(cg_str)
     egcs.append(ExtGraphCompound(chemgraph=cg, additional_data=entry))
 
 print_data(egcs, "ENTRIES WITH CONVERGED CALCULATIONS")
 
-size_constraints = {"nhatoms_range": [1, 15]}
+size_constraints = {"nhatoms_range": [1, 9]}
 
 bond_constraints = {
-    "not_protonated": [5, 8, 9, 14, 15, 16, 17, 35],
+    "not_protonated": [8, 9],
     "forbidden_bonds": [
         (7, 7),
         (8, 8),
@@ -96,10 +98,8 @@ bond_constraints = {
         (7, 8),
         (7, 9),
         (8, 9),
-        (15, 15),
-        (16, 16),
     ],
-}  # , "possible_elements" : ["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br"]}
+}
 
 gap_constraints = {"weak": 0.09126989358754387, "strong": 0.17735152497325582}
 
@@ -174,13 +174,6 @@ for constr_name, constr_val in gap_constraints.items():
                     solvent=solvent,
                 )
                 pkl_name = (
-                    "morfeus_xTB_"
-                    + solvent
-                    + "_"
-                    + quant
-                    + "_"
-                    + constr_name
-                    + "_"
-                    + ".pkl"
+                    "morfeus_xTB_" + solvent + "_" + quant + "_" + constr_name + ".pkl"
                 )
                 dump2pkl(min_func, pkl_name)
