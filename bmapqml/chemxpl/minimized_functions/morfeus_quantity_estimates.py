@@ -402,6 +402,8 @@ class LinComb_Morfeus_xTB_code:
         self.call_counter = 0
 
     def __call__(self, trajectory_point_in):
+        self.call_counter += 1
+
         xTB_res_dict = trajectory_point_in.calc_or_lookup(
             {self.xTB_res_dict_name: morfeus_FF_xTB_code_quants},
             kwargs_dict={
@@ -426,7 +428,6 @@ class LinComb_Morfeus_xTB_code:
                     cur_val < self.cq_lower_bounds[quant_id]
                 ):
                     return None
-        self.call_counter += 1
         for quant, coeff, add_mult, add_mult_power in zip(
             self.quantities,
             self.coefficients,

@@ -18,6 +18,7 @@ element_name = {
     17: "Cl",
     18: "Ar",
     19: "K",
+    35: "Br",
 }
 # Possible valence values.
 valences_int = {

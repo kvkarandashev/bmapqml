@@ -54,7 +54,14 @@ def InChI_to_egc(InChI_string, egc_hydrogen_autofill=False):
     return rdkit_to_egc(mol, egc_hydrogen_autofill=egc_hydrogen_autofill)
 
 
-# TO-DO in later stages combine with graph_to_rdkit function in G2S.
+rdkit_bond_type = {
+    1: Chem.rdchem.BondType.SINGLE,
+    2: Chem.rdchem.BondType.DOUBLE,
+    3: Chem.rdchem.BondType.TRIPLE,
+    4: Chem.rdchem.BondType.QUADRUPLE,
+}
+
+# TODO in later stages combine with graph_to_rdkit function in G2S.
 def egc_to_rdkit(egc):
     # create empty editable mol object
     mol = Chem.RWMol()
@@ -76,29 +83,14 @@ def egc_to_rdkit(egc):
             # add relevant bond type (there are many more of these)
             if bond == 0:
                 continue
-            elif bond == 1:
-                bond_type = Chem.rdchem.BondType.SINGLE
-                mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
-            elif bond == 2:
-                bond_type = Chem.rdchem.BondType.DOUBLE
-                mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
-            elif bond >= 3:
-                bond_type = Chem.rdchem.BondType.TRIPLE
-                mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
+            else:
+                mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bond])
 
     # Convert RWMol to Mol object
     mol = mol.GetMol()
-    # TO-DO: Do we need to sanitize?
+    # TODO: Do we need to sanitize?
     Chem.SanitizeMol(mol)
     return mol
-
-
-rdkit_bond_type = {
-    1: Chem.rdchem.BondType.SINGLE,
-    2: Chem.rdchem.BondType.DOUBLE,
-    3: Chem.rdchem.BondType.TRIPLE,
-    4: Chem.rdchem.BondType.QUADRUPLE,
-}
 
 
 def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
