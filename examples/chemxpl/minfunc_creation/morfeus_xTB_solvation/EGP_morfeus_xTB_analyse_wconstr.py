@@ -96,6 +96,15 @@ bond_constraints = {
         (7, 8),
         (7, 9),
         (8, 9),
+        (7, 17),
+        (8, 17),
+        (9, 17),
+        (17, 17),
+        (7, 35),
+        (8, 35),
+        (9, 35),
+        (17, 35),
+        (35, 35),
         (15, 15),
         (16, 16),
     ],
@@ -174,13 +183,12 @@ for constr_name, constr_val in gap_constraints.items():
                     solvent=solvent,
                 )
                 pkl_name = (
-                    "morfeus_xTB_"
+                    "egp_morfeus_xTB_"
                     + solvent
                     + "_"
                     + quant
                     + "_"
                     + constr_name
-                    + "_"
                     + ".pkl"
                 )
                 dump2pkl(min_func, pkl_name)

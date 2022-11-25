@@ -22,10 +22,28 @@ init_SMILES = "C"
 
 init_egc = SMILES_to_egc(init_SMILES)
 
-possible_elements = ["C", "N", "O", "F", "S", "B"]
+possible_elements = ['B', 'C', 'N', 'O', 'F', 'Si', 'P', 'S', 'Cl', 'Br']
 
-# forbidden_bonds = [(7, 9), (8, 9), (9, 9)]
-forbidden_bonds = [(7, 7), (7, 8), (8, 8), (7, 9), (8, 9), (9, 9), (16, 16)]
+not_protonated=[5, 8, 9, 14, 15, 16, 17, 35]
+forbidden_bonds = [
+        (7, 7),
+        (7, 8),
+        (8, 8),
+        (7, 9),
+        (8, 9),
+        (9, 9),
+        (7, 17),
+        (8, 17),
+        (9, 17),
+        (17, 17),
+        (7, 35),
+        (8, 35),
+        (9, 35),
+        (17, 35),
+        (35, 35),
+        (15, 15),
+        (16, 16),
+]
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
 # There are two "greedy" replicas here to verify Guido's comment on checking they don't merge into one.
@@ -37,7 +55,8 @@ make_restart_frequency = 2000
 num_MC_steps = 50000  # 50000
 
 bias_coeffs = {"none": None, "weak": 0.2, "stronger": 0.4}
-vbeta_bias_coeffs = {"none": None, "weak": 0.01, "stronger": 0.02}
+#vbeta_bias_coeffs = {"none": None, "weak": 0.01, "stronger": 0.02}
+vbeta_bias_coeffs = {"none": None, "weak": None, "stronger": None}
 
 
 # bias_coeff = None
@@ -48,18 +67,18 @@ vbeta_bias_coeff = bias_coeffs[bias_strength]
 
 randomized_change_params = {
     "max_fragment_num": 1,
-    "nhatoms_range": [1, 9],
-    "final_nhatoms_range": [1, 9],
+    "nhatoms_range": [1, 15],
+    "final_nhatoms_range": [1, 15],
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
-    "not_protonated": [5, 8, 9, 16],
+    "not_protonated": not_protonated,
     "added_bond_orders": [1, 2, 3],
 }
 global_change_params = {
     "num_parallel_tempering_tries": 64,
     "num_genetic_tries": 64,
-    "prob_dict": {"simple": 0.3, "genetic": 0.3, "tempering": 0.3},
+    "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
 }
 
 num_replicas = len(betas)
@@ -94,6 +113,7 @@ rw = RandomWalk(
     max_histogram_size=None,
     track_histogram_size=True,
     linear_storage=True,
+    greedy_delete_checked_paths=True,
 )
 
 if os.path.isfile(restart_file_name):
