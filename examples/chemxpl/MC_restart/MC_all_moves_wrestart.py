@@ -2,10 +2,11 @@ from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.random_walk import RandomWalk
 import random, math
 from bmapqml.chemxpl import ExtGraphCompound
-from bmapqml.chemxpl.minimized_functions import OrderSlide
+from bmapqml.chemxpl.minimized_functions import OrderSlide, ConstrainedQuant
+from bmapqml.chemxpl.minimized_functions.mol_constraints import NoProtonation
 from copy import deepcopy
 import numpy as np
-import sys, os
+import sys
 
 num_MC_steps = int(sys.argv[1])
 
@@ -21,9 +22,11 @@ if len(sys.argv) == 4:
     if sys.argv[3].startswith("make_restart_frequency="):
         make_restart_frequency = int(sys.argv[3].split("=")[1])
 
-possible_elements = ["C", "N"]
+possible_elements = ["C", "N", "O"]
 
 forbidden_bonds = [(7, 7)]
+
+no_protonation = [8]
 
 ln2 = math.log(2.0)
 
@@ -54,19 +57,28 @@ negcs = len(betas)
 
 init_egcs = [ExtGraphCompound(chemgraph=deepcopy(init_cg)) for _ in range(negcs)]
 
-min_func = OrderSlide([6, 7])
+min_func_true = OrderSlide([6, 7, 8])
+
+min_func_name = "OrderSlide"
+
+constr = NoProtonation(no_protonation)
+
+min_func_constr = ConstrainedQuant(min_func_true, min_func_name)
+
+delete_temp_data = [min_func_name]  # None
 
 rw = RandomWalk(
     bias_coeff=bias_coeff,
     randomized_change_params=randomized_change_params,
     bound_enforcing_coeff=bound_enforcing_coeff,
     betas=betas,
-    min_function=min_func,
+    min_function=min_func_constr,
     init_egcs=init_egcs,
     restart_file=dump_restart_name,
     make_restart_frequency=make_restart_frequency,
     keep_histogram=True,
     keep_full_trajectory=True,
+    delete_temp_data=delete_temp_data,
 )
 
 if init_restart_file is None:
@@ -84,3 +96,11 @@ mr_kwargs = {}
 if make_restart_frequency is not None:
     mr_kwargs = {"restart_file": "final_restart.pkl"}
 rw.make_restart(**mr_kwargs)
+
+num_order_slides = 0
+
+for entry in rw.histogram:
+    if min_func_name in entry.calculated_data:
+        num_order_slides += 1
+
+print("Number of OrderSlide entries stored in histogram:", num_order_slides)

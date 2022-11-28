@@ -14,7 +14,7 @@ class Diatomic_barrier:
         # Mainly used for testing purposes.
         self.call_counter = 0
 
-    def __call__(self, trajectory_point_in: TrajectoryPoint) -> float:
+    def __call__(self, trajectory_point_in: TrajectoryPoint) -> int:
         self.call_counter += 1
         cg = trajectory_point_in.egc.chemgraph
         return self.ncharge_pot(cg) + self.bond_pot(cg)
@@ -22,14 +22,14 @@ class Diatomic_barrier:
     def ncharge_pot(self, cg):
         if cg.hatoms[0].ncharge == cg.hatoms[1].ncharge:
             if cg.hatoms[0].ncharge == self.larger_nuclear_charge:
-                return 1.0
+                return 1
             else:
-                return 0.0
+                return 0
         else:
-            return 2.0
+            return 2
 
     def bond_pot(self, cg):
-        return float(cg.bond_order(0, 1) - 1)
+        return cg.bond_order(0, 1) - 1
 
 
 class OrderSlide:
@@ -80,7 +80,7 @@ class NumHAtoms:
     def int_output(self, trajectory_point_in):
         cur_nha = trajectory_point_in.egc.num_heavy_atoms()
         if self.intervals is None:
-            return float(cur_nha)
+            return cur_nha
         else:
             for interval_id, val_interval in enumerate(self.intervals):
                 if isinstance(val_interval, int):
@@ -93,7 +93,7 @@ class NumHAtoms:
 
     def __call__(self, trajectory_point_in: TrajectoryPoint):
         self.call_counter += 1
-        return float(self.int_output(trajectory_point_in))
+        return self.int_output(trajectory_point_in)
 
 
 class ChargeSum(ZeroFunc):

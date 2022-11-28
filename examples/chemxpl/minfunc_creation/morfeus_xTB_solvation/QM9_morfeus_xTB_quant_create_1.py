@@ -22,9 +22,13 @@ all_data = loadpkl(data_file_name)
 
 quantities_of_interest = ["dipole", "solvation_energy"]
 
-gap_constraints = ["weak", "strong"]
+gap_constraints = ["none", "weak", "strong"]
 
-reference_gap_molecules = {"weak": "C=CC=CC=CC=C", "strong": "C1=CC=CC=C1"}
+reference_gap_molecules = {
+    "none": None,
+    "weak": "C=CC=CC=CC=C",
+    "strong": "C1=CC=CC=C1",
+}
 
 gap_name = "HOMO_LUMO_gap"
 
@@ -69,15 +73,18 @@ func_component_lists = {
 
 for gap_constraint in gap_constraints:
     ref_SMILES = reference_gap_molecules[gap_constraint]
-    ref_tp = TrajectoryPoint(egc=SMILES_to_egc(ref_SMILES))
-    ref_gap = morfeus_FF_xTB_code_quants(
-        ref_tp,
-        num_conformers=16,
-        num_attempts=1,
-        ff_type="MMFF94",
-        quantities=[gap_name],
-        remaining_rho=0.9,
-    )["mean"][gap_name]
+    if ref_SMILES is None:
+        ref_gap = 0.0
+    else:
+        ref_tp = TrajectoryPoint(egc=SMILES_to_egc(ref_SMILES))
+        ref_gap = morfeus_FF_xTB_code_quants(
+            ref_tp,
+            num_conformers=16,
+            num_attempts=1,
+            ff_type="MMFF94",
+            quantities=[gap_name],
+            remaining_rho=0.9,
+        )["mean"][gap_name]
     print("Constraining gaps:", gap_constraint, ref_gap, ref_SMILES)
 
     for func_name, func_component_list in func_component_lists.items():

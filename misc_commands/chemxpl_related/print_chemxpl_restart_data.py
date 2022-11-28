@@ -19,8 +19,10 @@ else:
 num_first_encounters = np.zeros((traj_ncut + 1,), dtype=int)
 discovered_min = [None for _ in range(traj_ncut + 1)]
 for tp in histogram:
+    cur_val = tp.calculated_data[min_func_name]
+    if cur_val is None:
+        continue
     if tp.first_global_MC_step_encounter <= traj_ncut:
-        cur_val = tp.calculated_data[min_func_name]
         cur_step = tp.first_global_MC_step_encounter
         num_first_encounters[cur_step] += 1
         if (discovered_min[cur_step] is None) or (discovered_min[cur_step] > cur_val):

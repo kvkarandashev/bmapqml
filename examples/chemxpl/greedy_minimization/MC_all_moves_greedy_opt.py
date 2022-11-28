@@ -2,27 +2,25 @@
 # to demonstrate how RandomWalk class can be used to Monte Carlo optimization.
 
 from bmapqml.chemxpl.valence_treatment import ChemGraph
-from bmapqml.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.random_walk import RandomWalk, gen_exp_beta_array
 import random
 import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound
 from bmapqml.chemxpl.minimized_functions import OrderSlide
 from copy import deepcopy
 
-random.seed(1)
-np.random.seed(1)
+random.seed(2)
+np.random.seed(2)
 
 possible_elements = ["C", "N", "O", "F"]
 
 forbidden_bonds = [(7, 7), (8, 8), (9, 9), (7, 8), (7, 9), (8, 9)]
 
-ln2 = np.log(2.0)
-
 # For each beta defined here RandomWalk would create a replica that
 # These replicas interact with each other via parallel tempering and ``genetic tempering'' moves.
 # None corresponds to a replica that undergoes greedy stochastic optimization.
 
-betas = [None, ln2, ln2 / 2.0, ln2 / 4.0]
+betas = gen_exp_beta_array(4, 1.0, 4, max_real_beta=4.0)
 
 num_MC_steps = 10000  # 100000
 
@@ -36,12 +34,11 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
-    "chain_addition_tuple_possibilities": True,
 }
 global_change_params = {
-    "num_parallel_tempering_tries": 5,
     "num_genetic_tries": 5,
-    "prob_dict": {"simple": 0.5, "genetic": 0.25, "tempering": 0.25},
+    "num_tempering_tries": 5,
+    "prob_dict": {"simple": 0.75, "genetic": 0.25},
 }
 
 init_ncharges = [6]
@@ -70,6 +67,7 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="larger_mols_restart.pkl",
+    greedy_delete_checked_paths=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)

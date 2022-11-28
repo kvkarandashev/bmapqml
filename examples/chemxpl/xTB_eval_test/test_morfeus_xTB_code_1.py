@@ -2,6 +2,7 @@ from bmapqml.chemxpl.utils import SMILES_to_egc, xyz2mol_extgraph
 from bmapqml.chemxpl.random_walk import TrajectoryPoint
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     morfeus_FF_xTB_code_quants,
+    gen_atom_energies,
 )
 import numpy as np
 import sys
@@ -39,6 +40,9 @@ quantities = [
     "normalized_atomization_energy",
     "num_evals",
 ]
+# Make sure that all atom energies have been calculated in advance.
+gen_atom_energies(egc.nuclear_charges, solvent=solvent)
+
 tp = TrajectoryPoint(egc=egc)
 res_dict = morfeus_FF_xTB_code_quants(
     tp,

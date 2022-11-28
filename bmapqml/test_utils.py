@@ -37,7 +37,7 @@ class logfile:
     def randomized_export_3D_arr(self, mat_wders, seed):
         random_generator = random.Random(seed)
         format_string = "{} {} "
-        for i in range(3):
+        for _ in range(3):
             format_string += " " + def_float_format
         format_string += "\n"
         if self.not_empty:
@@ -54,8 +54,8 @@ class logfile:
                     )
 
 
-def dirs_xyz_list(QM9_dir):
-    output = glob.glob(QM9_dir + "/*.xyz")
+def dirs_xyz_list(xyz_dir):
+    output = glob.glob(xyz_dir + "/*.xyz")
     output.sort()
     return output
 

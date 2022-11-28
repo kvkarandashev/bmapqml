@@ -5,9 +5,9 @@
 from g2s import GraphCompound
 from g2s.utils import calculate_distances
 import numpy as np
-from .valence_treatment import ChemGraph, hatom_state_coords
+from .valence_treatment import ChemGraph
 from .periodic import max_ecn
-import math, itertools
+import math
 
 
 class ExtGraphCompound(GraphCompound):
@@ -21,6 +21,7 @@ class ExtGraphCompound(GraphCompound):
         elements=None,
         hydrogen_autofill=False,
         bond_orders=None,
+        additional_data={},
     ):
         """
         An "extended" inheritor to the GraphCompound object.
@@ -52,9 +53,8 @@ class ExtGraphCompound(GraphCompound):
                 self.adjacency_matrix[atom_id1, atom_id2] = self.chemgraph.bond_order(
                     atom_id1, atom_id2
                 )
-        self.additional_data = (
-            {}
-        )  # In case we want to attach more data to the same entry.
+        # In case we want to attach more data to the same entry.
+        self.additional_data = additional_data
 
     #   Largely copies what's done in G2S, but make sure coordinates are changed too.
     #   It also helps a lot to sort by just moving hydrogens to the end of the self.nuclear_charges without shuffling the heavy atoms.
