@@ -5,6 +5,7 @@ from rdkit.Chem.rdmolfiles import MolToSmiles
 from g2s.constants import periodic_table
 from .ext_graph_compound import ExtGraphCompound
 import copy
+import numpy as np
 
 
 class RdKitFailure(Exception):
@@ -76,7 +77,6 @@ def egc_to_rdkit(egc):
     # add bonds between adjacent atoms
     for ix, row in enumerate(egc.true_adjmat()):
         for iy, bond in enumerate(row):
-
             # only traverse half the matrix
             if (iy <= ix) or (iy >= egc.num_atoms()):
                 continue
@@ -85,6 +85,53 @@ def egc_to_rdkit(egc):
                 continue
             else:
                 mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bond])
+
+    # Convert RWMol to Mol object
+    mol = mol.GetMol()
+    # TODO: Do we need to sanitize?
+    Chem.SanitizeMol(mol)
+    return mol
+
+
+def chemgraph_to_rdkit(cg, explicit_hydrogens=True, resonance_struct_adj=None):
+    """
+    Create an rdkit mol object from a ChemGraph object.
+    """
+    # create empty editable mol object
+    mol = Chem.RWMol()
+    nhydrogens = np.zeros((cg.nhatoms(),), dtype=int)
+
+    # add atoms to mol and keep track of index
+    node_to_idx = {}
+    for atom_id, ha in enumerate(cg.hatoms):
+        a = Chem.Atom(periodic_table[ha.ncharge])
+        mol_idx = mol.AddAtom(a)
+        node_to_idx[atom_id] = mol_idx
+        nhydrogens[atom_id] = ha.nhydrogens
+
+    # add bonds between adjacent atoms
+    for ix in range(cg.nhatoms()):
+        for iy in cg.neighbors(ix):
+            if iy < ix:
+                continue
+            btuple = (ix, iy)
+            bo = cg.bond_orders[btuple]
+            if resonance_struct_adj is not None:
+                res_struct_id = cg.resonance_structure_map[btuple]
+                if res_struct_id in resonance_struct_adj:
+                    bo = cg.aa_all_bond_orders(*btuple, unsorted=True)[
+                        resonance_struct_adj[res_struct_id]
+                    ]
+            # add relevant bond type (there are many more of these)
+            mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bo])
+
+    # TODO Didn't I have a DEFAULT_ATOM somewhere?
+    if explicit_hydrogens:
+        for ha_id, nhyd in enumerate(nhydrogens):
+            for _ in range(nhyd):
+                a = Chem.Atom(1)
+                hidx = mol.AddAtom(a)
+                mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
 
     # Convert RWMol to Mol object
     mol = mol.GetMol()
