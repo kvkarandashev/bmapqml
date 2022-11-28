@@ -22,7 +22,6 @@ else:
 
 best_candidates = SortedList()
 
-
 for entry in cur_data["histogram"]:
     if entry.first_global_MC_step_encounter <= traj_ncut:
         cur_val = entry.calculated_data[min_func_name]
@@ -39,13 +38,17 @@ for cand_id, cand in enumerate(best_candidates):
     for val_name, val in tp.calculated_data.items():
         if isinstance(val, float):
             extra_string += val_name + "=" + str(val) + " "
-    try:
-        coord_info = morfeus_coord_info_from_tp(tp)
+
+    coord_info = morfeus_coord_info_from_tp(tp, num_attempts=128)
+    coords = coord_info["coordinates"]
+    if coords is None:
+        xyz_output = open(xyz_name, "w")
+        print(cand_id, tp, cand.func_val, file=xyz_output)
+        xyz_output.close()
+    else:
         write_xyz_file(
-            coord_info["coordinates"],
+            coords,
             xyz_name,
             nuclear_charges=coord_info["nuclear_charges"],
             extra_string=extra_string[:-1],
         )
-    except FFInconsistent:
-        print(cand_id, tp, cand.func_val)
