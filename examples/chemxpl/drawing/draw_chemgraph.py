@@ -42,6 +42,7 @@ draw_fragment_pair_to_file(
     highlight_fragment_colors=[(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
     highlight_fragment_boundary=None,
     highlightAtomRadius=0.4,
+    highlightBondWidthMultiplier=12,
 )
 
 draw_fragment_pair_to_file(
@@ -51,4 +52,7 @@ draw_fragment_pair_to_file(
     highlight_fragment_colors=[(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
     highlight_fragment_boundary=(0.0, 1.0, 0.0),
     highlightAtomRadius=0.4,
+    highlightBondWidthMultiplier=12,
+    bondLineWidth=3,
+    baseFontSize=0.8,
 )

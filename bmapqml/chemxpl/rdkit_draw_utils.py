@@ -25,6 +25,9 @@ class ChemGraphDrawing:
         highlightBondTupleColors=None,
         highlightAtomRadius=None,
         highlightAtomRadii=None,
+        highlightBondWidthMultiplier=None,
+        bondLineWidth=None,
+        baseFontSize=None,
     ):
 
         self.base_init(
@@ -32,8 +35,11 @@ class ChemGraphDrawing:
             chemgraph=chemgraph,
             SMILES=SMILES,
             bw_palette=bw_palette,
+            highlightBondWidthMultiplier=highlightBondWidthMultiplier,
             kekulize=kekulize,
             explicit_hydrogens=explicit_hydrogens,
+            bondLineWidth=bondLineWidth,
+            baseFontSize=baseFontSize,
         )
         self.highlight_init(
             highlightAtoms=highlightAtoms,
@@ -53,10 +59,13 @@ class ChemGraphDrawing:
         chemgraph=None,
         SMILES=None,
         bw_palette=True,
+        highlightBondWidthMultiplier=None,
         size=(300, 300),
         resonance_struct_adj=None,
         kekulize=False,
         explicit_hydrogens=False,
+        bondLineWidth=None,
+        baseFontSize=None,
     ):
         if chemgraph is None:
             if SMILES is not None:
@@ -76,9 +85,15 @@ class ChemGraphDrawing:
         self.bw_palette = bw_palette
         self.drawing = rdMolDraw2D.MolDraw2DCairo(*size)
 
+        do = self.drawing.drawOptions()
         if bw_palette:
-            do = self.drawing.drawOptions()
             do.useBWAtomPalette()
+        if highlightBondWidthMultiplier is not None:
+            do.highlightBondWidthMultiplier = highlightBondWidthMultiplier
+        if bondLineWidth is not None:
+            do.bondLineWidth = bondLineWidth
+        if baseFontSize is not None:
+            do.baseFontSize = baseFontSize
 
     def highlight_init(
         self,
@@ -197,8 +212,11 @@ class FragmentPairDrawing(ChemGraphDrawing):
         size=(300, 300),
         resonance_struct_adj=None,
         highlight_fragment_colors=[(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+        bondLineWidth=None,
         highlight_fragment_boundary=None,
         highlightAtomRadius=None,
+        highlightBondWidthMultiplier=None,
+        baseFontSize=None,
     ):
         # Initialize all basic quantities.
         self.base_init(
@@ -206,6 +224,9 @@ class FragmentPairDrawing(ChemGraphDrawing):
             bw_palette=bw_palette,
             size=size,
             resonance_struct_adj=resonance_struct_adj,
+            highlightBondWidthMultiplier=highlightBondWidthMultiplier,
+            bondLineWidth=bondLineWidth,
+            baseFontSize=baseFontSize,
         )
         # For starters only highlight the bonds connecting the two fragments.
         self.highlight_init(highlightAtomRadius=highlightAtomRadius)
