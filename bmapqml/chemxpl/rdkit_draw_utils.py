@@ -1,10 +1,21 @@
 # Collection of routines that use rdkit.Chem.Draw for easy display of objects used throughout the chemxpl module.
 from rdkit.Chem.Draw import rdMolDraw2D
 from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc
-from .ext_graph_compound import ExtGraphCompound
 from rdkit.Chem.rdmolops import RemoveHs
 from copy import deepcopy
 import numpy as np
+from .valence_treatment import ChemGraph
+from .modify import FragmentPair
+import itertools
+
+# Some colors that I think look good on print.
+RED = (1.0, 0.0, 0.0)
+GREEN = (0.0, 1.0, 0.0)
+BLUE = (0.0, 0.0, 1.0)
+
+LIGHTRED = (1.0, 0.5, 0.5)
+LIGHTGREEN = (0.5, 1.0, 0.5)
+LIGHTBLUE = (0.5, 0.5, 1.0)
 
 
 class ChemGraphDrawing:
@@ -28,8 +39,11 @@ class ChemGraphDrawing:
         highlightBondWidthMultiplier=None,
         bondLineWidth=None,
         baseFontSize=None,
+        resonance_struct_adj=None,
     ):
-
+        """
+        Create an RdKit illustration depicting a partially highlighted ChemGraph.
+        """
         self.base_init(
             size=size,
             chemgraph=chemgraph,
@@ -40,6 +54,7 @@ class ChemGraphDrawing:
             explicit_hydrogens=explicit_hydrogens,
             bondLineWidth=bondLineWidth,
             baseFontSize=baseFontSize,
+            resonance_struct_adj=resonance_struct_adj,
         )
         self.highlight_init(
             highlightAtoms=highlightAtoms,
@@ -218,6 +233,9 @@ class FragmentPairDrawing(ChemGraphDrawing):
         highlightBondWidthMultiplier=None,
         baseFontSize=None,
     ):
+        """
+        Create an RdKit illustration depicting a FragmentPair with atoms and bonds highlighted according to membership.
+        """
         # Initialize all basic quantities.
         self.base_init(
             chemgraph=fragment_pair.chemgraph,
@@ -245,8 +263,23 @@ class FragmentPairDrawing(ChemGraphDrawing):
             for fragment_highlight, vertices in zip(
                 self.highlight_fragment_colors, fragment_pair.sorted_vertices
             ):
-                self.highlight_atoms(vertices, fragment_highlight, wbonds=True)
+                if fragment_highlight is not None:
+                    self.highlight_atoms(vertices, fragment_highlight, wbonds=True)
         self.prepare_and_draw()
+
+
+def ObjDrawing(obj, **kwargs):
+    if isinstance(obj, ChemGraph):
+        return ChemGraphDrawing(obj, **kwargs)
+    if isinstance(obj, FragmentPair):
+        return FragmentPairDrawing(obj, **kwargs)
+
+
+class BeforeAfterIllustration:
+    def __init__(self, cg, change_procedure, modification_path):
+        """
+        Create a pair of illustrations corresponding to a
+        """
 
 
 def draw_chemgraph_to_file(cg, filename, **kwargs):
@@ -263,3 +296,41 @@ def draw_fragment_pair_to_file(fragment_pair, filename, **kwargs):
     """
     fpd = FragmentPairDrawing(fragment_pair=fragment_pair, **kwargs)
     fpd.save(filename)
+
+
+def all_possible_resonance_struct_adj(obj):
+    """
+    All values of resonance_struct_adj dictionnary appearing in *Drawing objects that are valid for a given object.
+    """
+    if isinstance(obj, ChemGraph):
+        cg = obj
+    else:
+        cg = obj.chemgraph
+    iterators = [
+        list(range(len(res_struct_orders)))
+        for res_struct_orders in cg.resonance_structure_orders
+    ]
+    if len(iterators) == 0:
+        return [None]
+    output = []
+    for res_adj_ids in itertools.product(*iterators):
+        new_dict = {}
+        for reg_id, adj_id in enumerate(res_adj_ids):
+            new_dict[reg_id] = adj_id
+        output.append(new_dict)
+    return output
+
+
+def draw_all_possible_resonance_structures(
+    obj, filename_prefix, file_suffix=".png", **kwargs
+):
+    """
+    Draw variants of an object with all possible resonance structures.
+    """
+    for rsa_id, resonance_struct_adj in enumerate(
+        all_possible_resonance_struct_adj(obj)
+    ):
+        cur_drawing = ObjDrawing(
+            obj, resonance_struct_adj=resonance_struct_adj, **kwargs
+        )
+        cur_drawing.save(filename_prefix + str(rsa_id) + file_suffix)

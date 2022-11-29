@@ -2,6 +2,9 @@ from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.rdkit_draw_utils import (
     draw_chemgraph_to_file,
     draw_fragment_pair_to_file,
+    RED,
+    GREEN,
+    BLUE,
 )
 from bmapqml.chemxpl.modify import FragmentPair
 import numpy as np
@@ -15,9 +18,9 @@ draw_chemgraph_to_file(
     "test_cg_1.png",
     size=(300, 200),
     highlightAtoms=[2, 3],
-    highlightAtomColor=(0.0, 1.0, 0.0),
+    highlightAtomColor=GREEN,
     highlightBondTuples=[(1, 2), (2, 3)],
-    highlightBondTupleColor=(0.0, 0.0, 1.0),
+    highlightBondTupleColor=BLUE,
     highlightAtomRadius=0.4,
 )
 
@@ -26,10 +29,10 @@ draw_chemgraph_to_file(
     "test_cg_2.png",
     size=(300, 200),
     highlightAtoms=[2, 3],
-    highlightAtomColor=(0.0, 1.0, 0.0),
+    highlightAtomColor=GREEN,
     highlight_connecting_bonds=True,
     highlightBondTuples=[(0, 1)],
-    highlightBondTupleColor=(0.0, 0.0, 1.0),
+    highlightBondTupleColor=RED,
     highlightAtomRadius=0.4,
 )
 
@@ -39,7 +42,7 @@ draw_fragment_pair_to_file(
     fp,
     "test_frag_1.png",
     size=(300, 200),
-    highlight_fragment_colors=[(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+    highlight_fragment_colors=[RED, GREEN],
     highlight_fragment_boundary=None,
     highlightAtomRadius=0.4,
     highlightBondWidthMultiplier=12,
@@ -49,8 +52,8 @@ draw_fragment_pair_to_file(
     fp,
     "test_frag_2.png",
     size=(300, 200),
-    highlight_fragment_colors=[(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
-    highlight_fragment_boundary=(0.0, 1.0, 0.0),
+    highlight_fragment_colors=[RED, BLUE],
+    highlight_fragment_boundary=GREEN,
     highlightAtomRadius=0.4,
     highlightBondWidthMultiplier=12,
     bondLineWidth=3,

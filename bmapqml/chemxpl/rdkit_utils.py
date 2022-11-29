@@ -117,11 +117,12 @@ def chemgraph_to_rdkit(cg, explicit_hydrogens=True, resonance_struct_adj=None):
             btuple = (ix, iy)
             bo = cg.bond_orders[btuple]
             if resonance_struct_adj is not None:
-                res_struct_id = cg.resonance_structure_map[btuple]
-                if res_struct_id in resonance_struct_adj:
-                    bo = cg.aa_all_bond_orders(*btuple, unsorted=True)[
-                        resonance_struct_adj[res_struct_id]
-                    ]
+                if btuple in cg.resonance_structure_map:
+                    res_struct_id = cg.resonance_structure_map[btuple]
+                    if res_struct_id in resonance_struct_adj:
+                        bo = cg.aa_all_bond_orders(*btuple, unsorted=True)[
+                            resonance_struct_adj[res_struct_id]
+                        ]
             # add relevant bond type (there are many more of these)
             mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bo])
 

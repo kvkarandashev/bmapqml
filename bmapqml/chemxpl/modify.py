@@ -1194,13 +1194,14 @@ def possible_pair_fragment_sizes(
     return output
 
 
-def randomized_split_membership_vector(cg, origin_choices, fragment_size):
+def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
     """
     Randomly create a membership vector that can be used to split ChemGraph object into a FragmentPair object.
     """
     membership_vector = np.zeros(cg.nhatoms(), dtype=int)
 
-    origin_choices = cg.unrepeated_atom_list()
+    if origin_choices is None:
+        origin_choices = cg.unrepeated_atom_list()
 
     start_id = random.choice(origin_choices)
 
@@ -1260,7 +1261,9 @@ def randomized_cross_coupling(
         origin_choices = cg.unrepeated_atom_list()
         tot_choice_prob_ratio /= len(origin_choices)
         membership_vectors.append(
-            randomized_split_membership_vector(cg, origin_choices, fragment_size)
+            randomized_split_membership_vector(
+                cg, fragment_size, origin_choices=origin_choices
+            )
         )
 
     fragment_pairs = [
