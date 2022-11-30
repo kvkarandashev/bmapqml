@@ -159,8 +159,6 @@ def egc_change_func(
             [modification_path[0]],
             [added_bond_order],
         )
-    if change_function is change_valence:
-        return change_function(egc_in, modification_path[0], modification_path[1])
     if change_function is replace_heavy_atom:
         return change_function(
             egc_in,

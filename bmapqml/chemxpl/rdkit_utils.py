@@ -3,8 +3,10 @@ from rdkit.Chem import AllChem
 from rdkit.Chem.rdmolops import GetAdjacencyMatrix
 from rdkit.Chem.rdmolfiles import MolToSmiles
 from g2s.constants import periodic_table
+from .valence_treatment import ChemGraph, default_valence
 from .ext_graph_compound import ExtGraphCompound
 import copy
+import numpy as np
 
 
 class RdKitFailure(Exception):
@@ -76,7 +78,6 @@ def egc_to_rdkit(egc):
     # add bonds between adjacent atoms
     for ix, row in enumerate(egc.true_adjmat()):
         for iy, bond in enumerate(row):
-
             # only traverse half the matrix
             if (iy <= ix) or (iy >= egc.num_atoms()):
                 continue
@@ -90,6 +91,79 @@ def egc_to_rdkit(egc):
     mol = mol.GetMol()
     # TODO: Do we need to sanitize?
     Chem.SanitizeMol(mol)
+    return mol
+
+
+def chemgraph_to_rdkit(
+    cg: ChemGraph,
+    explicit_hydrogens=True,
+    resonance_struct_adj=None,
+    extra_valence_hydrogens=False,
+    get_rw_mol=False,
+):
+    """
+    Create an rdkit mol object from a ChemGraph object.
+    """
+    # create empty editable mol object
+    mol = Chem.RWMol()
+    nhydrogens = np.zeros((cg.nhatoms(),), dtype=int)
+
+    # add atoms to mol and keep track of index
+    node_to_idx = {}
+    for atom_id, ha in enumerate(cg.hatoms):
+        a = Chem.Atom(periodic_table[ha.ncharge])
+        mol_idx = mol.AddAtom(a)
+        node_to_idx[atom_id] = mol_idx
+        nhydrogens[atom_id] = ha.nhydrogens
+
+    # add bonds between adjacent atoms
+    for ix in range(cg.nhatoms()):
+        for iy in cg.neighbors(ix):
+            if iy < ix:
+                continue
+            btuple = (ix, iy)
+            bo = cg.bond_orders[btuple]
+            if resonance_struct_adj is not None:
+                if btuple in cg.resonance_structure_map:
+                    res_struct_id = cg.resonance_structure_map[btuple]
+                    if res_struct_id in resonance_struct_adj:
+                        bo = cg.aa_all_bond_orders(*btuple, unsorted=True)[
+                            resonance_struct_adj[res_struct_id]
+                        ]
+            # add relevant bond type (there are many more of these)
+            mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bo])
+
+    # TODO Didn't I have a DEFAULT_ATOM somewhere?
+    if explicit_hydrogens:
+        for ha_id, nhyd in enumerate(nhydrogens):
+            for _ in range(nhyd):
+                a = Chem.Atom(1)
+                hidx = mol.AddAtom(a)
+                mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
+    elif extra_valence_hydrogens:
+        for ha_id, ha in enumerate(cg.hatoms):
+            if (resonance_struct_adj is None) or (ha.possible_valences is None):
+                cur_valence = ha.valence
+            else:
+                # TODO do we need a function for finding which resonance structure contains a given atom?
+                for i, extra_val_ids in enumerate(cg.resonance_structure_inverse_map):
+                    if ha_id in extra_val_ids:
+                        cur_valence = ha.possible_valences[
+                            cg.resonance_structure_valence_vals[i][
+                                resonance_struct_adj[res_struct_id]
+                            ]
+                        ]
+            if cur_valence != default_valence(ha.ncharge):
+                for _ in range(ha.nhydrogens):
+                    a = Chem.Atom(1)
+                    hidx = mol.AddAtom(a)
+                    mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
+
+    if not get_rw_mol:
+        # Convert RWMol to Mol object
+        mol = mol.GetMol()
+        # TODO: Do we need to sanitize?
+        Chem.SanitizeMol(mol)
     return mol
 
 

@@ -20,9 +20,6 @@ from igraph.operators import disjoint_union
 from ..utils import canonical_atomtype
 from ..data import NUCLEAR_CHARGE
 
-# TODO delete post-testing
-from .rdkit_utils import chemgraph_to_canonical_rdkit
-
 
 def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
     if len(atom_id_list) == 0:
@@ -65,9 +62,9 @@ def atom_replacement_possibilities(
         replaced_iac = int_atom_checked(replaced_atom)
     if inserted_valence is None:
         if default_valences is None:
-            inserted_valence = default_valences[inserted_iac]
-        else:
             inserted_valence = default_valence(inserted_iac)
+        else:
+            inserted_valence = default_valences[inserted_iac]
     if not_protonated is not None:
         cant_be_protonated = inserted_iac in not_protonated
     cg = egc.chemgraph
@@ -553,9 +550,9 @@ def valence_change_remove_atoms_possibilities(
     removed_atom_ncharge = int_atom_checked(removed_atom_type)
 
     if default_valences is None:
-        default_removed_valence = default_valences[removed_atom_ncharge]
-    else:
         default_removed_valence = default_valence(removed_atom_ncharge)
+    else:
+        default_removed_valence = default_valences[removed_atom_ncharge]
 
     cg = egc.chemgraph
 
@@ -1194,13 +1191,14 @@ def possible_pair_fragment_sizes(
     return output
 
 
-def randomized_split_membership_vector(cg, origin_choices, fragment_size):
+def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
     """
     Randomly create a membership vector that can be used to split ChemGraph object into a FragmentPair object.
     """
     membership_vector = np.zeros(cg.nhatoms(), dtype=int)
 
-    origin_choices = cg.unrepeated_atom_list()
+    if origin_choices is None:
+        origin_choices = cg.unrepeated_atom_list()
 
     start_id = random.choice(origin_choices)
 
@@ -1260,7 +1258,9 @@ def randomized_cross_coupling(
         origin_choices = cg.unrepeated_atom_list()
         tot_choice_prob_ratio /= len(origin_choices)
         membership_vectors.append(
-            randomized_split_membership_vector(cg, origin_choices, fragment_size)
+            randomized_split_membership_vector(
+                cg, fragment_size, origin_choices=origin_choices
+            )
         )
 
     fragment_pairs = [
