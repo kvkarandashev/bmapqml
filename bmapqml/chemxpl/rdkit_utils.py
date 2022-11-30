@@ -3,6 +3,7 @@ from rdkit.Chem import AllChem
 from rdkit.Chem.rdmolops import GetAdjacencyMatrix
 from rdkit.Chem.rdmolfiles import MolToSmiles
 from g2s.constants import periodic_table
+from .valence_treatment import ChemGraph, default_valence
 from .ext_graph_compound import ExtGraphCompound
 import copy
 import numpy as np
@@ -93,7 +94,12 @@ def egc_to_rdkit(egc):
     return mol
 
 
-def chemgraph_to_rdkit(cg, explicit_hydrogens=True, resonance_struct_adj=None):
+def chemgraph_to_rdkit(
+    cg: ChemGraph,
+    explicit_hydrogens=True,
+    resonance_struct_adj=None,
+    extra_valence_hydrogens=False,
+):
     """
     Create an rdkit mol object from a ChemGraph object.
     """
@@ -133,6 +139,24 @@ def chemgraph_to_rdkit(cg, explicit_hydrogens=True, resonance_struct_adj=None):
                 a = Chem.Atom(1)
                 hidx = mol.AddAtom(a)
                 mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
+    elif extra_valence_hydrogens:
+        for ha_id, ha in enumerate(cg.hatoms):
+            if (resonance_struct_adj is None) or (ha.possible_valences is None):
+                cur_valence = ha.valence
+            else:
+                # TODO do we need a function for finding which resonance structure contains a given atom?
+                for i, extra_val_ids in enumerate(cg.resonance_structure_inverse_map):
+                    if ha_id in extra_val_ids:
+                        cur_valence = ha.possible_valences[
+                            cg.resonance_structure_valence_vals[i][
+                                resonance_struct_adj[res_struct_id]
+                            ]
+                        ]
+            if cur_valence != default_valence(ha.ncharge):
+                for _ in range(ha.nhydrogens):
+                    a = Chem.Atom(1)
+                    hidx = mol.AddAtom(a)
+                    mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
 
     # Convert RWMol to Mol object
     mol = mol.GetMol()
