@@ -5,6 +5,7 @@ from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
 )
 from bmapqml.chemxpl.random_walk import CandidateCompound
 from bmapqml.utils import loadpkl
+from bmapqml.chemxpl.rdkit_draw_utils import draw_chemgraph_to_file
 from sortedcontainers import SortedList
 import sys
 
@@ -31,10 +32,18 @@ for entry in cur_data["histogram"]:
             while len(best_candidates) > num_best_candidates:
                 del best_candidates[-1]
 
+file_prefix = "best_candidate_"
+
 for cand_id, cand in enumerate(best_candidates):
-    xyz_name = "best_candidate_" + str(cand_id) + ".xyz"
+    file_basename = "best_candidate_" + str(cand_id)
+    xyz_name = file_basename + ".xyz"
+    image_name = file_basename + ".png"
+
     extra_string = ""
     tp = cand.tp
+    draw_chemgraph_to_file(
+        tp.egc.chemgraph, image_name, size=(600, 400), bw_palette=False
+    )
     for val_name, val in tp.calculated_data.items():
         if isinstance(val, float):
             extra_string += val_name + "=" + str(val) + " "

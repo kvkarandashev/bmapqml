@@ -99,6 +99,7 @@ def chemgraph_to_rdkit(
     explicit_hydrogens=True,
     resonance_struct_adj=None,
     extra_valence_hydrogens=False,
+    get_rw_mol=False,
 ):
     """
     Create an rdkit mol object from a ChemGraph object.
@@ -158,10 +159,11 @@ def chemgraph_to_rdkit(
                     hidx = mol.AddAtom(a)
                     mol.AddBond(node_to_idx[ha_id], hidx, rdkit_bond_type[1])
 
-    # Convert RWMol to Mol object
-    mol = mol.GetMol()
-    # TODO: Do we need to sanitize?
-    Chem.SanitizeMol(mol)
+    if not get_rw_mol:
+        # Convert RWMol to Mol object
+        mol = mol.GetMol()
+        # TODO: Do we need to sanitize?
+        Chem.SanitizeMol(mol)
     return mol
 
 

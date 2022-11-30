@@ -1,6 +1,8 @@
 # Collection of routines that use rdkit.Chem.Draw for easy display of objects used throughout the chemxpl module.
+from rdkit import Chem
 from rdkit.Chem.Draw import rdMolDraw2D
-from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc
+from rdkit.Chem import RemoveHs, rdAbbreviations
+from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
 import numpy as np
 from .valence_treatment import ChemGraph, sorted_tuple
@@ -14,12 +16,14 @@ from .modify import (
     change_valence,
     change_valence_add_atoms,
     change_valence_remove_atoms,
-    valence_change_add_atoms_possibilities,
-    valence_change_remove_atoms_possibilities,
     change_bond_order_valence,
 )
-from rdkit.Chem import rdAbbreviations
-from .random_walk import TrajectoryPoint, full_change_list
+from .random_walk import (
+    TrajectoryPoint,
+    full_change_list,
+    egc_change_func,
+)
+from .ext_graph_compound import ExtGraphCompound
 from .periodic import element_name
 
 # Some colors that I think look good on print.
@@ -56,6 +60,7 @@ class ChemGraphDrawing:
         resonance_struct_adj=None,
         abbrevs=None,
         abbreviate_max_coverage=1.0,
+        post_added_bonds=None,
     ):
         """
         Create an RdKit illustration depicting a partially highlighted ChemGraph.
@@ -82,6 +87,7 @@ class ChemGraphDrawing:
             highlightAtomRadii=highlightAtomRadii,
             abbrevs=abbrevs,
             abbreviate_max_coverage=abbreviate_max_coverage,
+            post_added_bonds=post_added_bonds,
         )
         self.prepare_and_draw()
 
@@ -108,6 +114,7 @@ class ChemGraphDrawing:
         highlightAtomRadii=None,
         abbrevs=None,
         abbreviate_max_coverage=1.0,
+        post_added_bonds=None,
     ):
         if chemgraph is None:
             if SMILES is not None:
@@ -158,6 +165,8 @@ class ChemGraphDrawing:
                 self.highlightAtoms, self.highlightAtomColor
             )
 
+        self.post_added_bonds = post_added_bonds
+
     def highlight_atoms(self, atom_ids, highlight_color, wbonds=False, overwrite=False):
         if highlight_color is None:
             return
@@ -205,7 +214,12 @@ class ChemGraphDrawing:
             resonance_struct_adj=self.resonance_struct_adj,
             explicit_hydrogens=self.explicit_hydrogens,
             extra_valence_hydrogens=True,
+            get_rw_mol=True,
         )
+        # Hydrogen atoms are added anyway via extra_valence_hydrogens to mark valences, they need to be deleted.
+        self.check_rdkit_mol_extra_mods()
+        if not self.explicit_hydrogens:
+            self.mol = RemoveHs(self.mol)
         if self.abbrevs is not None:
             used_abbrevs = rdAbbreviations.GetDefaultAbbreviations()
             self.full_mol = self.mol
@@ -234,6 +248,15 @@ class ChemGraphDrawing:
             highlightBondColors=highlightBondColors,
             highlightAtomRadii=self.highlightAtomRadii,
         )
+
+    def check_rdkit_mol_extra_mods(self):
+        if self.post_added_bonds is not None:
+            for pab in self.post_added_bonds:
+                self.mol.AddBond(pab[0], pab[1], rdkit_bond_type[pab[2]])
+        # Convert RWMol to Mol object
+        self.mol = self.mol.GetMol()
+        # TODO: Do we need to sanitize?
+        Chem.SanitizeMol(self.mol)
 
     def save(self, filename):
         self.drawing.WriteDrawingText(filename)
@@ -315,6 +338,8 @@ valence_changes = [
     change_valence_add_atoms,
     change_valence_remove_atoms,
 ]
+atom_removals = [remove_heavy_atom, change_valence_remove_atoms]
+atom_additions = [add_heavy_atom_chain, change_valence_add_atoms]
 
 
 class ModificationPathIllustration(ChemGraphDrawing):
@@ -374,12 +399,12 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if self.change_function == remove_heavy_atom:
             orig_atoms = [self.modification_path[1][0]]
         if self.change_function == change_valence_remove_atoms:
-            orig_atoms = self.modification_path[2][0]
-        if self.change_function in [remove_heavy_atom, change_valence_remove_atoms]:
+            orig_atoms = list(self.modification_path[2][0])
+        if self.change_function in atom_removals:
             neigh_atom = self.chemgraph.neighbors(orig_atoms[0])[0]
             return orig_atoms + [neigh_atom]
 
-        if self.change_function in [add_heavy_atom_chain, change_valence_add_atoms]:
+        if self.change_function in atom_additions:
             return []
 
         if self.change_function in bond_changes:
@@ -397,8 +422,8 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if self.change_function in bond_changes:
             return self.change_atoms()
 
-        if self.change_function == remove_heavy_atom:
-            return [self.change_atoms()[1]]
+        if self.change_function in atom_removals:
+            return [self.change_atoms()[-1]]
 
         if self.change_function in [add_heavy_atom_chain, change_valence_add_atoms]:
             return [self.modification_path[1]]
@@ -409,14 +434,95 @@ class ModificationPathIllustration(ChemGraphDrawing):
         raise Exception()
 
 
-# class BeforeAfterIllustration:
-#    def __init__(self, cg, modification_path, change_function, **other_image_params):
-#        """
-#        Create a pair of illustrations corresponding to a modification_path.
-#        """
-#        from .random_walk import egc_change_func
-#
-#        new_cg = egc_change_func(cg, modification_path, change_function)
+def first_mod_path(tp):
+    output = []
+    subd = tp.modified_possibility_dict
+    while isinstance(subd, list) or isinstance(subd, dict):
+        if isinstance(subd, list):
+            output.append(subd[0])
+            subd = None
+        if isinstance(subd, dict):
+            new_key = list(subd.keys())[0]
+            subd = subd[new_key]
+            output.append(new_key)
+    return output
+
+
+def all_mod_paths(cg, **randomized_change_params):
+    cur_tp = TrajectoryPoint(cg=cg)
+    cur_tp.init_possibility_info(**randomized_change_params)
+    cur_tp.modified_possibility_dict = cur_tp.possibility_dict
+    output = []
+    while cur_tp.modified_possibility_dict != {}:
+        full_mod_path = first_mod_path(cur_tp)
+        output.append(deepcopy(full_mod_path))
+        cur_tp.delete_mod_path(full_mod_path)
+    return output
+
+
+default_randomized_change_params = {
+    "change_prob_dict": full_change_list,
+    "possible_elements": ["C"],
+    "added_bond_orders": [1],
+    "chain_addition_tuple_possibilities": False,
+    "bond_order_changes": [-1, 1],
+    "bond_order_valence_changes": [-2, 2],
+    "max_fragment_num": 1,
+    "added_bond_orders_val_change": [1, 2],
+}
+
+
+class NoAfter(Exception):
+    pass
+
+
+class BeforeAfterIllustration:
+    def __init__(
+        self,
+        cg,
+        modification_path,
+        change_function,
+        prefixes=["forward_", "inv_"],
+        randomized_change_params=default_randomized_change_params,
+        **other_image_params
+    ):
+        """
+        Create a pair of illustrations corresponding to a modification_path.
+        """
+
+        self.prefixes = prefixes
+        egc = ExtGraphCompound(chemgraph=cg)
+        new_egc = egc_change_func(egc, modification_path, change_function)
+        if new_egc is None:
+            raise NoAfter
+
+        new_cg = new_egc.chemgraph
+
+        inv_mod_path = None
+        for full_mod_path in all_mod_paths(new_cg, **randomized_change_params):
+            inv_egc = egc_change_func(new_egc, full_mod_path[1:], full_mod_path[0])
+            if inv_egc == egc:
+                inv_mod_path = full_mod_path
+                break
+        if inv_mod_path is None:
+            raise Exception()
+        self.chemgraphs = [cg, new_cg]
+        self.modification_paths = [modification_path, inv_mod_path[1:]]
+        self.change_functions = [change_function, inv_mod_path[0]]
+        self.illustrations = []
+        for cur_cg, cur_mod_path, cur_change_function in zip(
+            self.chemgraphs, self.modification_paths, self.change_functions
+        ):
+            self.illustrations.append(
+                ModificationPathIllustration(
+                    cur_cg, cur_mod_path, cur_change_function, **other_image_params
+                )
+            )
+
+    def save(self, base_filename):
+        for ill, pref in zip(self.illustrations, self.prefixes):
+            filename = pref + base_filename
+            ill.save(filename)
 
 
 def draw_chemgraph_to_file(cg, filename, **kwargs):
@@ -473,40 +579,14 @@ def draw_all_possible_resonance_structures(
         cur_drawing.save(filename_prefix + str(rsa_id) + filename_suffix)
 
 
-def first_mod_path(tp):
-    output = []
-    subd = tp.modified_possibility_dict
-    while isinstance(subd, list) or isinstance(subd, dict):
-        if isinstance(subd, list):
-            output.append(subd[0])
-            subd = None
-        if isinstance(subd, dict):
-            new_key = list(subd.keys())[0]
-            subd = subd[new_key]
-            output.append(new_key)
-    return output
-
-
-default_randomized_change_params = {
-    "change_prob_dict": full_change_list,
-    "possible_elements": ["C"],
-    "added_bond_orders": [1],
-    "chain_addition_tuple_possibilities": False,
-    "bond_order_changes": [-1, 1],
-    "bond_order_valence_changes": [-2, 2],
-    "max_fragment_num": 1,
-    "added_bond_orders_val_change": [1, 2],
-}
-
-
 def draw_all_modification_possibilities(
     cg,
     filename_prefix,
     filename_suffix=".png",
     randomized_change_params=default_randomized_change_params,
+    draw_pairs=True,
     **kwargs
 ):
-    cur_tp = TrajectoryPoint(cg=cg)
     # Check that cg satisfies the randomized_change_params_dict
     randomized_change_params = deepcopy(randomized_change_params)
 
@@ -515,14 +595,23 @@ def draw_all_modification_possibilities(
         if el not in randomized_change_params["possible_elements"]:
             randomized_change_params["possible_elements"].append(el)
 
-    cur_tp.init_possibility_info(**randomized_change_params)
-    cur_tp.modified_possibility_dict = cur_tp.possibility_dict
-    counter = 0
-    while cur_tp.modified_possibility_dict != {}:
-        full_mod_path = first_mod_path(cur_tp)
-        counter += 1
-        mpi = ModificationPathIllustration(
-            cg, full_mod_path[1:], full_mod_path[0], **kwargs
-        )
-        cur_tp.delete_mod_path(full_mod_path)
+    creator_kwargs = deepcopy(kwargs)
+    if draw_pairs:
+        creator = BeforeAfterIllustration
+        creator_kwargs = {
+            **creator_kwargs,
+            "randomized_change_params": randomized_change_params,
+        }
+    else:
+        creator = ModificationPathIllustration
+
+    for counter, full_mod_path in enumerate(
+        all_mod_paths(cg, **randomized_change_params)
+    ):
+        try:
+            mpi = creator(cg, full_mod_path[1:], full_mod_path[0], **creator_kwargs)
+        except NoAfter:
+            mpi = ModificationPathIllustration(
+                cg, full_mod_path[1:], full_mod_path[0], **kwargs
+            )
         mpi.save(filename_prefix + str(counter) + filename_suffix)
