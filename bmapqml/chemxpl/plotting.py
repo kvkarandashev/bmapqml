@@ -61,9 +61,12 @@ class Analyze:
         for run in tqdm(self.results, disable=not self.verbose):
 
             
-            obj = loadpkl(run,compress=True)
-
+            obj = loadpkl(run,compress=False)
+            
             HISTOGRAM = self.to_dataframe(obj["histogram"])
+            #shuffle the histogram
+            HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
+            HISTOGRAM["loss"] = HISTOGRAM["Dipole"]**2 + HISTOGRAM["HOMO_LUMO_gap"]**2
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
                 traj = np.array(ordered_trajectory(obj["histogram"]))
@@ -155,6 +158,51 @@ class Analyze:
 
         HISTOGRAM.to_csv("results.csv", index=False)
 
+
+    def pareto_correct(self, HISTOGRAM):
+        try:
+            from scipy.spatial import ConvexHull
+        except:
+            print("Please install scipy")
+            exit()
+
+        #pdb.set_trace()
+        HISTOGRAM = HISTOGRAM.sort_values("Dipole", ascending=True)
+        hull = ConvexHull(np.array([HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values]).T)
+        pareto =   np.unique(hull.simplices.flatten())
+        PARETO = HISTOGRAM.iloc[pareto]
+        points = np.array([PARETO["Dipole"].values, PARETO["HOMO_LUMO_gap"].values]).T
+
+        x, y = points[:,0], points[:,1]
+        max_x = [np.max(points[:,0]), 0]
+        max_y = [0, np.max(points[:,1])]
+
+        #add max_x and max_y to points
+        points = np.vstack((points, max_x))
+        points = np.vstack((points, max_y))
+        #points = points[points[:,0].argsort()]
+
+        leftmost = np.argmin(x)
+        rightmost = np.argmax(x)
+
+        #compute a diagonal line between the leftmost and rightmost point
+        a = (y[rightmost] - y[leftmost])/(x[rightmost] - x[leftmost])
+        b = y[leftmost] - a*x[leftmost]
+
+        #find points above the diagonal line
+        above = y > a*x + b
+        #find points below the diagonal line
+        #below = y < a*x + b
+        
+        #find the points that are above the diagonal line and have the highest y value
+        PARETO_CORRECTED = PARETO[above]
+
+
+        return PARETO_CORRECTED
+
+
+
+
     def pareto(self, HISTOGRAM, maxX=True, maxY=True):
 
         """
@@ -189,7 +237,7 @@ class Analyze:
         PARETO = HISTOGRAM.iloc[np.array(inds)]
         if self.verbose:
             print("Pareto optimal solutions:")
-            print(PARETO.sort_values("xTB_MMFF94_morfeus_electrolyte"))
+            print(PARETO.sort_values("loss"))
 
         return PARETO
 
@@ -223,9 +271,9 @@ class Analyze:
         if self.mode == "optimization":
             SMILES, VALUES = self.convert_from_tps(obj)
             df["SMILES"] = SMILES
-            df["Dipole"] = VALUES[:, 0]
-            df["HOMO_LUMO_gap"] = VALUES[:, 1]
-            df["xTB_MMFF94_morfeus_electrolyte"] = VALUES[:, 2]
+            df["ENCONTER"] = VALUES[:,0]
+            df["Dipole"] = VALUES[:, 1]
+            df["HOMO_LUMO_gap"] = VALUES[:, 2]
 
         elif self.mode == "sampling":
             SMILES, VALUES = self.convert_from_tps(obj)
@@ -245,22 +293,30 @@ class Analyze:
 
         SMILES = []
         VALUES = []
+        ENCOUNTER =[]
 
         if self.mode == "optimization":
             for tp in mols:
-                try:
-                    curr_data = tp.calculated_data
+                #try:
+                #pdb.set_trace()
+                curr_data = tp.calculated_data["xTB_res"]["mean"]
+                smiles,step, dipole, gap =trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),tp.first_MC_step_encounter,curr_data["dipole"], curr_data["HOMO_LUMO_gap"]
+                #print(smiles, dipole, gap)
+                if dipole != None and gap != None:
                     VALUES.append(
                         [
-                            float(curr_data["Dipole"]),
-                            float(curr_data["HOMO_LUMO_gap"]),
-                            float(curr_data["xTB_MMFF94_morfeus_electrolyte"]),
+                            int(step),
+                            float(dipole),
+                            float(gap),
                         ]
                     )
-                    SMILES.append(curr_data["coord_info"]["canon_rdkit_SMILES"])
-                except:
-                    if self.verbose:
-                        print("Could not convert to smiles")
+
+                    ENCOUNTER.append(step)
+                    SMILES.append(smiles)
+                #pdb.set_trace()
+                #except:
+                #    if self.verbose:
+                #        print("Could not convert to smiles")
 
         elif self.mode == "sampling":
             for tp in mols:
@@ -356,7 +412,7 @@ class Analyze:
             cmap = cm.coolwarm(np.linspace(0, 1, n_temps))
             for c, T in zip(cmap, range(n_temps)[:3]):
 
-                sel_temp = traj[T]["xTB_MMFF94_morfeus_electrolyte"]
+                sel_temp = traj[T]["loss"]
                 N = np.arange(len(sel_temp))
                 ax1.scatter(N, sel_temp, s=5, color=c, alpha=0.5)
                 ax1.plot(N, sel_temp, "-", alpha=0.1)
@@ -375,7 +431,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self, HISTOGRAM, PARETO, ALL_PARETOS=False):
+    def plot_pareto(self, HISTOGRAM, PARETO,PARETO_CORRECTED ): #, ALL_PARETOS=False):
         """
         Plot the pareto optimal solutions.
         """
@@ -393,7 +449,7 @@ class Analyze:
         fig, ax1 = plt.subplots(figsize=(8, 8))
         P1 = HISTOGRAM["Dipole"].values
         P2 = HISTOGRAM["HOMO_LUMO_gap"].values
-        summe = HISTOGRAM["xTB_MMFF94_morfeus_electrolyte"].values
+        summe = HISTOGRAM["ENCONTER"].values
 
         sc = ax1.scatter(P1, P2, s=4, c=summe)
         plt.xlabel("Dipole" + " (a.u.)", fontsize=21)
@@ -418,10 +474,12 @@ class Analyze:
         ax1.xaxis.set_ticks_position("bottom")
         ax1.spines["left"].set_position(("axes", -0.05))
 
-        plt.plot(PARETO["Dipole"], PARETO["HOMO_LUMO_gap"], "o", color="black")
-        plt.plot(PARETO["Dipole"], PARETO["HOMO_LUMO_gap"], "k-", linewidth=2)
+        plt.plot(PARETO["Dipole"], PARETO["HOMO_LUMO_gap"], "o-", color="black")
+        plt.plot(PARETO_CORRECTED["Dipole"], PARETO_CORRECTED["HOMO_LUMO_gap"], ls="--", linewidth=2, color="red")
 
         alpha = 0.5
+
+        """
         if ALL_PARETOS != False:
             cmap = iter(cm.rainbow(np.linspace(0, 1, len(ALL_PARETOS))))
             for color, hist in zip(cmap, ALL_PARETOS):
@@ -441,6 +499,8 @@ class Analyze:
                     alpha=alpha,
                     linewidth=0.5,
                 )
+        """
+
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         # plt.savefig("pareto.pdf")
@@ -534,7 +594,7 @@ class Analyze:
         # plt.savefig("spread.pdf")
         plt.savefig("spread.png", dpi=600)
 
-    def plot_chem_space(self, HISTOGRAM, label="xTB_MMFF94_morfeus_electrolyte"):
+    def plot_chem_space(self, HISTOGRAM, label="loss"):
         """
         Make a PCA plot of the chemical space.
         """
