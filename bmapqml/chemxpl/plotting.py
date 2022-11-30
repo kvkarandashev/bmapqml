@@ -166,7 +166,6 @@ class Analyze:
             print("Please install scipy")
             exit()
 
-        #pdb.set_trace()
         HISTOGRAM = HISTOGRAM.sort_values("Dipole", ascending=True)
         hull = ConvexHull(np.array([HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values]).T)
         pareto =   np.unique(hull.simplices.flatten())
@@ -180,7 +179,6 @@ class Analyze:
         #add max_x and max_y to points
         points = np.vstack((points, max_x))
         points = np.vstack((points, max_y))
-        #points = points[points[:,0].argsort()]
 
         leftmost = np.argmin(x)
         rightmost = np.argmax(x)

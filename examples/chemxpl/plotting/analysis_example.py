@@ -7,7 +7,21 @@ import matplotlib.pyplot as plt
 #ana   = Analyze("/store/jan/trash/plotting_data2/restart_examples/", verbose=True)
 
 ana   = Analyze("/data/jan/konstantin/xTB_dipsolv_opt_1_none_strong_dipole/data_xTB_dipsolv_opt_1_none_strong_dipole_1/results/*", verbose=True)
+#this will give you dataframes with the following columns:
+# - index, smiles, When it was first encountered, Dipole, gap, Dipole**2 +  gap**2
 ALL_HISTOGRAMS, GLOBAL_HISTOGRAM,ALL_TRAJECTORIES = ana.parse_results()
+
+
+
+#The one with the proper convex whose only flaw was including too many point. *too many points in the convex hull
+PARETO              = ana.pareto(GLOBAL_HISTOGRAM)
+#The red line from the last plot
+PARETO_CORRECTED    = ana.pareto_correct(GLOBAL_HISTOGRAM)
+ana.plot_pareto(GLOBAL_HISTOGRAM,PARETO,PARETO_CORRECTED) # , ALL_PARETOS=ALL_HISTOGRAMS)
+pdb.set_trace()
+
+exit()
+
 
 
 """
@@ -36,15 +50,6 @@ pdb.set_trace()
 """
 
 
-#The one with the proper convex whose only flaw was including too many point. *too many points in the convex hull
-PARETO              = ana.pareto(GLOBAL_HISTOGRAM)
-#The red line from the last plot
-PARETO_CORRECTED    = ana.pareto_correct(GLOBAL_HISTOGRAM)
-ana.plot_pareto(GLOBAL_HISTOGRAM,PARETO,PARETO_CORRECTED) # , ALL_PARETOS=ALL_HISTOGRAMS)
-pdb.set_trace()
-
-
-exit()
 ana.plot_result_spread(ALL_HISTOGRAMS, label="xTB_MMFF94_morfeus_electrolyte")
 #remember 8 different trajectories and 8 different temperatures
 #first index is the seed, second index is the temperature
