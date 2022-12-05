@@ -1143,7 +1143,7 @@ def random_connect_fragments(
     return new_mols, new_membership_vectors
 
 
-def possible_fragment_sizes(
+def possible_fragment_size_bounds(
     cg, fragment_ratio_range=[0.0, 1.0], fragment_size_range=None
 ):
     """
@@ -1158,40 +1158,68 @@ def possible_fragment_sizes(
     for j in range(2):
         if bounds[j] == 0:
             bounds[j] = 1
-    return range(bounds[0], bounds[1] + 1)
+    return bounds
 
 
-# TODO: is there an analytic way to randomly choose a size tuple that does not involve creating a list?
-def possible_pair_fragment_sizes(
-    cg_pair, nhatoms_range=None, **possible_fragment_sizes_kwargs
-):
-    """
-    Possible sizes of fragments for ChemGraph objects in cg_pair that lead to cross-coupled molecules satisfying size constraints enforced by nhatoms_range and other keyword arguments.
-    """
-    possible_fragment_sizes_iterators = []
-    for cg in cg_pair:
-        possible_fragment_sizes_iterators.append(
-            possible_fragment_sizes(cg, **possible_fragment_sizes_kwargs)
+# TODO: is there an analytic way to randomly choose a size tuple that does not involve all of this?
+class PossiblePairFragSizesIterator:
+    def __init__(
+        self, cg1, cg2, nhatoms_range=None, **possible_fragment_size_bounds_kwargs
+    ):
+        self.frag_size_bounds1 = possible_fragment_size_bounds(
+            cg1, **possible_fragment_size_bounds_kwargs
         )
-    output = []
-    for size_tuple in itertools.product(*possible_fragment_sizes_iterators):
-        if nhatoms_range is not None:
-            unfit = False
-            for cg, ordered_size_tuple in zip(
-                cg_pair, itertools.permutations(size_tuple)
-            ):
-                new_mol_size = (
-                    cg.nhatoms() + ordered_size_tuple[1] - ordered_size_tuple[0]
-                )
-                if (new_mol_size < nhatoms_range[0]) or (
-                    new_mol_size > nhatoms_range[1]
-                ):
-                    unfit = True
-                    break
-            if unfit:
-                continue
-        output.append(size_tuple)
-    return output
+        self.frag_size_bounds2 = possible_fragment_size_bounds(
+            cg2, **possible_fragment_size_bounds_kwargs
+        )
+        if nhatoms_range is None:
+            self.min_diff = None
+            self.max_diff = None
+        else:
+            self.min_diff = max(
+                nhatoms_range[0] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[1]
+            )
+            self.max_diff = min(
+                nhatoms_range[1] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[0]
+            )
+        self.nhatoms_range = None
+
+    def __iter__(self):
+        self.init_iter()
+        return self
+
+    def init_iter(self):
+        self.frag_size1 = self.frag_size_bounds1[0]
+        self.frag_size2 = self.frag_size_bounds2[0] - 1
+        self.set_cur_max_frag_size2()
+
+    def set_cur_max_frag_size2(self):
+        self.cur_max_frag_size2 = min(
+            self.frag_size_bounds2[1], self.frag_size1 + self.max_diff
+        )
+
+    def __next__(self):
+        if self.frag_size2 == self.cur_max_frag_size2:
+            if self.frag_size1 == self.frag_size_bounds1[1]:
+                raise StopIteration
+            self.frag_size1 += 1
+            self.set_cur_max_frag_size2()
+            self.frag_size2 = max(
+                self.frag_size_bounds2[0], self.frag_size1 + self.min_diff
+            )
+        else:
+            self.frag_size2 += 1
+        return self.frag_size1, self.frag_size2
+
+    def after_iter(self, iter_id):
+        self.init_iter()
+        for _ in range(iter_id):
+            _ = self.__next__()
+        return self.__next__()
+
+
+def PPFSI_counter(*args, **kwargs):
+    return sum(1 for _ in PossiblePairFragSizesIterator(*args, **kwargs))
 
 
 def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
@@ -1243,21 +1271,25 @@ def randomized_cross_coupling(
     Break two ChemGraph objects into two FragmentPair objects; the fragments are then re-coupled into two new ChemGraph objects.
     """
 
-    ppfs_kwargs = {
+    ppfsb_kwargs = {
         "nhatoms_range": nhatoms_range,
         "fragment_ratio_range": cross_coupling_fragment_ratio_range,
         "fragment_size_range": cross_coupling_fragment_size_range,
     }
 
-    pair_fragment_sizes = possible_pair_fragment_sizes(cg_pair, **ppfs_kwargs)
+    num_pair_fragment_sizes = PPFSI_counter(*cg_pair, **ppfsb_kwargs)
 
-    if len(pair_fragment_sizes) == 0:
+    if num_pair_fragment_sizes == 0:
         return None, None
 
     # tot_choice_prob_ratio is the ratio of probability of the trial move divided by probability of the inverse move.
-    tot_choice_prob_ratio = 1.0 / float(len(pair_fragment_sizes))
+    tot_choice_prob_ratio = 1.0 / num_pair_fragment_sizes
 
-    final_pair_fragment_sizes = random.choice(pair_fragment_sizes)
+    final_pair_fragment_size_tuple_id = random.randrange(num_pair_fragment_sizes)
+
+    final_pair_fragment_sizes = PossiblePairFragSizesIterator(
+        *cg_pair, **ppfsb_kwargs
+    ).after_iter(final_pair_fragment_size_tuple_id)
 
     membership_vectors = []
     for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes):
@@ -1298,9 +1330,7 @@ def randomized_cross_coupling(
                 ].chemgraph().copy_extra_data_to(new_cg_pair[new_cg_id])
 
     # Account for probability of choosing the correct fragment sizes to do the inverse move.
-    tot_choice_prob_ratio *= len(
-        possible_pair_fragment_sizes(new_cg_pair, **ppfs_kwargs)
-    )
+    tot_choice_prob_ratio *= PPFSI_counter(*new_cg_pair, **ppfsb_kwargs)
     # Account for probability of choosing the necessary resonance structure.
     backwards_fragment_pairs = [
         FragmentPair(new_cg, new_membership_vector)
