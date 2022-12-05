@@ -1,3 +1,5 @@
+# TODO rewrite all functions in terms of classes that track number of calls and successful coordinate construction?
+
 from morfeus.conformer import ConformerEnsemble, K_B, HARTREE
 from ..utils import (
     chemgraph_to_canonical_rdkit,

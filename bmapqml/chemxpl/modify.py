@@ -1,6 +1,9 @@
 # TODO Perhaps add support for atoms with higher valences being added directly?
 # TODO check that the currently commenting change_valence function exception is correct
 
+# TODO does it make more sense to have .5-1. default sizes for LIGHTBLUE fragment?
+# TODO even more randomness in fragment choice as an option? Is detailed balance viable?
+
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
 from .valence_treatment import (
@@ -259,7 +262,6 @@ def bond_change_possibilities(
     exclude_equivalent=True,
     **other_kwargs,
 ):
-
     output = []
     cg = egc.chemgraph
     hatoms = cg.hatoms
@@ -1142,7 +1144,7 @@ def random_connect_fragments(
 
 
 def possible_fragment_sizes(
-    cg, fragment_ratio_range=[0.0, 0.5], fragment_size_range=None
+    cg, fragment_ratio_range=[0.0, 1.0], fragment_size_range=None
 ):
     """
     Possible fragment sizes for a ChemGraph objects satisfying enforced constraints.
@@ -1152,13 +1154,14 @@ def possible_fragment_sizes(
     else:
         bounds = [int(r * cg.nhatoms()) for r in fragment_ratio_range]
     if bounds[1] >= cg.nhatoms():
-        bounds[1] = cg.nhatoms - 1
+        bounds[1] = cg.nhatoms() - 1
     for j in range(2):
         if bounds[j] == 0:
             bounds[j] = 1
     return range(bounds[0], bounds[1] + 1)
 
 
+# TODO: is there an analytic way to randomly choose a size tuple that does not involve creating a list?
 def possible_pair_fragment_sizes(
     cg_pair, nhatoms_range=None, **possible_fragment_sizes_kwargs
 ):
@@ -1226,13 +1229,16 @@ def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
 
 def randomized_cross_coupling(
     cg_pair: list,
-    cross_coupling_fragment_ratio_range: list or None = [0.0, 0.5],
+    cross_coupling_fragment_ratio_range: list or None = [0.0, 1.0],
     cross_coupling_fragment_size_range: list or None = None,
     forbidden_bonds: list or None = None,
     nhatoms_range: list or None = None,
     visited_tp_list: list or None = None,
     **dummy_kwargs,
 ):
+    if any(cg.nhatoms() == 1 for cg in cg_pair):
+        return None, None
+
     """
     Break two ChemGraph objects into two FragmentPair objects; the fragments are then re-coupled into two new ChemGraph objects.
     """

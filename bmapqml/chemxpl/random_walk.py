@@ -3,6 +3,9 @@
 # TODO Somehow unify all instances where simulation histogram is modified.
 # TODO sorted betas + parallel tempering just neighboring points as an option?
 
+# TODO add a toy problem with a history-dependent minimized function to check that re-import from restart works properly.
+# TODO add a restart example with dumped histogram.
+
 from sortedcontainers import SortedList
 from .ext_graph_compound import ExtGraphCompound
 from .modify import (
@@ -321,7 +324,6 @@ class TrajectoryPoint:
 
     # TO-DO better way to write this?
     def init_possibility_info(self, **kwargs):
-
         # self.bond_order_change_possibilities is None - to check whether the init_* procedure has been called before.
         # self.egc.chemgraph.canonical_permutation - to check whether egc.chemgraph.changed() has been called.
         if self.possibility_dict is None:
@@ -344,7 +346,13 @@ class TrajectoryPoint:
                 else:
                     pos_label_vals = lookup_or_none(kwargs, pos_label)
                     if pos_label_vals is None:
-                        continue
+                        raise Exception(
+                            "Randomized change parameter "
+                            + pos_label
+                            + " undefined, leading to problems with "
+                            + str(change_procedure)
+                            + ". Check code input!"
+                        )
                     for pos_label_val in pos_label_vals:
                         cur_possibilities = cur_pos_generator(
                             self.egc, pos_label_val, **kwargs
@@ -1660,6 +1668,7 @@ class RandomWalk:
             "numpy_rng_state": np.random.get_state(),
             "random_rng_state": random.getstate(),
             "min_function_name": self.min_function_name,
+            "min_function": self.min_function,
             "betas": self.betas,
         }
         if self.keep_histogram:
@@ -1706,6 +1715,7 @@ class RandomWalk:
             self.histogram = recovered_data["histogram"]
         if self.num_saved_candidates is not None:
             self.saved_candidates = recovered_data["saved_candidates"]
+        self.min_function = recovered_data["min_function"]
         np.random.set_state(recovered_data["numpy_rng_state"])
         random.setstate(recovered_data["random_rng_state"])
 

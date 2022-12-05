@@ -1,4 +1,5 @@
 # Collection of routines that use rdkit.Chem.Draw for easy display of objects used throughout the chemxpl module.
+# TODO PROPER ABBREVIATION SUPPORT! MAY CRASH WITH HIGHLIGHTS!
 from rdkit import Chem
 from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Chem import RemoveHs, rdAbbreviations
@@ -6,9 +7,9 @@ from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
 import numpy as np
 from .valence_treatment import ChemGraph, sorted_tuple
-from .modify import FragmentPair
-import itertools
+import itertools, random, os
 from .modify import (
+    FragmentPair,
     add_heavy_atom_chain,
     remove_heavy_atom,
     replace_heavy_atom,
@@ -17,6 +18,9 @@ from .modify import (
     change_valence_add_atoms,
     change_valence_remove_atoms,
     change_bond_order_valence,
+    randomized_split_membership_vector,
+    matching_dict_tuples,
+    random_connect_fragments,
 )
 from .random_walk import (
     TrajectoryPoint,
@@ -256,7 +260,7 @@ class ChemGraphDrawing:
         # Convert RWMol to Mol object
         self.mol = self.mol.GetMol()
         # TODO: Do we need to sanitize?
-        Chem.SanitizeMol(self.mol)
+        # Chem.SanitizeMol(self.mol)
 
     def save(self, filename):
         self.drawing.WriteDrawingText(filename)
@@ -278,9 +282,9 @@ class FragmentPairDrawing(ChemGraphDrawing):
         bw_palette=True,
         size=(300, 300),
         resonance_struct_adj=None,
-        highlight_fragment_colors=[(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+        highlight_fragment_colors=[LIGHTRED, LIGHTBLUE],
         bondLineWidth=None,
-        highlight_fragment_boundary=None,
+        highlight_fragment_boundary=LIGHTGREEN,
         highlightAtomRadius=None,
         highlightBondWidthMultiplier=None,
         baseFontSize=None,
@@ -585,10 +589,14 @@ def draw_all_modification_possibilities(
     filename_suffix=".png",
     randomized_change_params=default_randomized_change_params,
     draw_pairs=True,
+    dump_directory=None,
     **kwargs
 ):
     # Check that cg satisfies the randomized_change_params_dict
     randomized_change_params = deepcopy(randomized_change_params)
+
+    if "possible_elements" not in randomized_change_params:
+        randomized_change_params["possible_elements"] = []
 
     for ha in cg.hatoms:
         el = element_name[ha.ncharge]
@@ -605,6 +613,10 @@ def draw_all_modification_possibilities(
     else:
         creator = ModificationPathIllustration
 
+    if dump_directory is not None:
+        workdir = os.getcwd()
+        os.chdir(dump_directory)
+
     for counter, full_mod_path in enumerate(
         all_mod_paths(cg, **randomized_change_params)
     ):
@@ -615,3 +627,43 @@ def draw_all_modification_possibilities(
                 cg, full_mod_path[1:], full_mod_path[0], **kwargs
             )
         mpi.save(filename_prefix + str(counter) + filename_suffix)
+
+    if dump_directory is not None:
+        os.chdir(workdir)
+
+
+def draw_successful_random_coupling(
+    cg_pair,
+    frag_sizes,
+    filename_prefixes=["old_", "new_"],
+    num_attempts=1,
+    filename_suffix=".png",
+    **kwargs
+):
+    for _ in range(num_attempts):
+        old_frag_pairs = []
+        for cg, frag_size in zip(cg_pair, frag_sizes):
+            membership_vector = randomized_split_membership_vector(cg, frag_size)
+            old_frag_pairs.append(FragmentPair(cg, membership_vector))
+        mdtuples = matching_dict_tuples(*old_frag_pairs)
+        if len(mdtuples) == 0:
+            continue
+        final_mdtuple = random.choice(mdtuples)
+        new_cg_pair, new_membership_vectors = random_connect_fragments(
+            old_frag_pairs, final_mdtuple
+        )
+        new_frag_pairs = [
+            FragmentPair(cg, membership_vector)
+            for cg, membership_vector in zip(new_cg_pair, new_membership_vectors)
+        ]
+        for filename_prefix, frag_pairs in zip(
+            filename_prefixes, [old_frag_pairs, new_frag_pairs]
+        ):
+            for frag_id, frag_pair in enumerate(frag_pairs):
+                draw_all_possible_resonance_structures(
+                    frag_pair,
+                    filename_prefix + str(frag_id) + "_",
+                    filename_suffix=filename_suffix,
+                    **kwargs
+                )
+        return
