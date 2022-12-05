@@ -1,4 +1,3 @@
-import pdb
 from bmapqml.utils import *
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
@@ -60,13 +59,10 @@ class Analyze:
 
         for run in tqdm(self.results, disable=not self.verbose):
 
-            
-            obj = loadpkl(run,compress=False)
-            
+            obj = loadpkl(run, compress=False)
+
             HISTOGRAM = self.to_dataframe(obj["histogram"])
-            #shuffle the histogram
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
-            HISTOGRAM["loss"] = HISTOGRAM["Dipole"]**2 + HISTOGRAM["HOMO_LUMO_gap"]**2
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
                 traj = np.array(ordered_trajectory(obj["histogram"]))
@@ -77,53 +73,23 @@ class Analyze:
                     CURR_TRAJECTORIES.append(TRAJECTORY)
                 ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
 
-
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
         self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
         self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=["SMILES"])
-        self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-        if len(self.LABELS) > 0:
-            if self.verbose:
-                print("Best 5 molecules")
+        if self.mode == "optimization":
+            self.DIPOLE, self.GAP = (
+                self.GLOBAL_HISTOGRAM["Dipole"].values,
+                self.GLOBAL_HISTOGRAM["HOMO_LUMO_gap"],
+            )
+            self.ENCOUNTER = self.GLOBAL_HISTOGRAM["ENCONTER"].values
+            self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-                for ind, label in enumerate(self.LABELS):
-                    print("{}".format(label))
-                    if ind < 2:
-                        BEST = self.GLOBAL_HISTOGRAM.sort_values(
-                            label, ascending=True
-                        ).tail()[::-1]
-                    else:
-                        BEST = self.GLOBAL_HISTOGRAM.sort_values(
-                            label, ascending=False
-                        ).tail()[::-1]
-
-                    print("==========================================================")
-                    print(BEST)
-                    print("==========================================================")
-
-            return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+            if len(self.LABELS) > 0:
+                return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
 
         else:
-            if self.verbose:
-                print("No Values could be extracted, only the SMILES were saved")
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
-
-    def load_parallel(self):
-        """
-        Load the results of the optimization in parallel using multiprocessing.
-        """
-
-        if self.verbose:
-            print("Loading results in parallel...")
-
-        from multiprocessing import Pool
-
-        pool = Pool(processes=12)
-        results = pool.map(loadtar, self.results)
-        pool.close()
-        pool.join()
-        return results
 
     def process_object(self, obj):
         HISTOGRAM = self.to_dataframe(obj["histogram"])
@@ -136,28 +102,12 @@ class Analyze:
 
         return HISTOGRAM, CURR_TRAJECTORIES
 
-    def parallel_process_all_objects(self):
-        """
-        Process all objects in parallel using multiprocessing
-        """
-        if self.verbose:
-            print("Processing in parallel...")
-
-        from multiprocessing import Pool
-
-        pool = Pool(processes=12)
-        results = pool.map(self.process_object, self.results_unpacked)
-        pool.close()
-        pool.join()
-        return results
-
     def export_csv(self, HISTOGRAM):
         """
         Export the histogram to a csv file.
         """
 
         HISTOGRAM.to_csv("results.csv", index=False)
-
 
     def pareto_correct(self, HISTOGRAM):
         try:
@@ -166,40 +116,12 @@ class Analyze:
             print("Please install scipy")
             exit()
 
-        HISTOGRAM = HISTOGRAM.sort_values("Dipole", ascending=True)
-        hull = ConvexHull(np.array([HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values]).T)
-        pareto =   np.unique(hull.simplices.flatten())
-        PARETO = HISTOGRAM.iloc[pareto]
-        points = np.array([PARETO["Dipole"].values, PARETO["HOMO_LUMO_gap"].values]).T
+        self.points = np.array([self.DIPOLE, self.GAP]).T
+        self.hull = ConvexHull(self.points)
+        pareto = np.unique(self.hull.simplices.flatten())
+        self.PARETO = HISTOGRAM.iloc[pareto]
 
-        x, y = points[:,0], points[:,1]
-        max_x = [np.max(points[:,0]), 0]
-        max_y = [0, np.max(points[:,1])]
-
-        #add max_x and max_y to points
-        points = np.vstack((points, max_x))
-        points = np.vstack((points, max_y))
-
-        leftmost = np.argmin(x)
-        rightmost = np.argmax(x)
-
-        #compute a diagonal line between the leftmost and rightmost point
-        a = (y[rightmost] - y[leftmost])/(x[rightmost] - x[leftmost])
-        b = y[leftmost] - a*x[leftmost]
-
-        #find points above the diagonal line
-        above = y > a*x + b
-        #find points below the diagonal line
-        #below = y < a*x + b
-        
-        #find the points that are above the diagonal line and have the highest y value
-        PARETO_CORRECTED = PARETO[above]
-
-
-        return PARETO_CORRECTED
-
-
-
+        return self.PARETO
 
     def pareto(self, HISTOGRAM, maxX=True, maxY=True):
 
@@ -235,8 +157,9 @@ class Analyze:
         PARETO = HISTOGRAM.iloc[np.array(inds)]
         if self.verbose:
             print("Pareto optimal solutions:")
-            print(PARETO.sort_values("loss"))
+            print(PARETO)
 
+        PARETO = PARETO.sort_values("Dipole", ascending=True)
         return PARETO
 
     def compute_representations(self, MOLS, nBits):
@@ -269,7 +192,7 @@ class Analyze:
         if self.mode == "optimization":
             SMILES, VALUES = self.convert_from_tps(obj)
             df["SMILES"] = SMILES
-            df["ENCONTER"] = VALUES[:,0]
+            df["ENCONTER"] = VALUES[:, 0]
             df["Dipole"] = VALUES[:, 1]
             df["HOMO_LUMO_gap"] = VALUES[:, 2]
 
@@ -291,15 +214,20 @@ class Analyze:
 
         SMILES = []
         VALUES = []
-        ENCOUNTER =[]
+        ENCOUNTER = []
 
         if self.mode == "optimization":
             for tp in mols:
-                #try:
-                #pdb.set_trace()
+                # try:
+                # pdb.set_trace()
                 curr_data = tp.calculated_data["xTB_res"]["mean"]
-                smiles,step, dipole, gap =trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),tp.first_MC_step_encounter,curr_data["dipole"], curr_data["HOMO_LUMO_gap"]
-                #print(smiles, dipole, gap)
+                smiles, step, dipole, gap = (
+                    trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),
+                    tp.first_MC_step_encounter,
+                    curr_data["dipole"],
+                    curr_data["HOMO_LUMO_gap"],
+                )
+                # print(smiles, dipole, gap)
                 if dipole != None and gap != None:
                     VALUES.append(
                         [
@@ -311,8 +239,8 @@ class Analyze:
 
                     ENCOUNTER.append(step)
                     SMILES.append(smiles)
-                #pdb.set_trace()
-                #except:
+                # pdb.set_trace()
+                # except:
                 #    if self.verbose:
                 #        print("Could not convert to smiles")
 
@@ -368,13 +296,10 @@ class Analyze:
         in_interval = (darr >= dl) & (darr <= dh)
         N = len(darr[in_interval])
 
-
         if return_mols == False:
             return N
         else:
             return N, SMILES_sampled[in_interval][:1000]
-
-
 
     def volume_of_nsphere(self, N, d):
         """
@@ -429,7 +354,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self, HISTOGRAM, PARETO,PARETO_CORRECTED ): #, ALL_PARETOS=False):
+    def plot_pareto(self, hline=None, vline=None):
         """
         Plot the pareto optimal solutions.
         """
@@ -445,11 +370,11 @@ class Analyze:
         plt.rc("figure", titlesize=fs)
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
-        P1 = HISTOGRAM["Dipole"].values
-        P2 = HISTOGRAM["HOMO_LUMO_gap"].values
-        summe = HISTOGRAM["ENCONTER"].values
+        # quantity_1 = self.DIPOLE #HISTOGRAM["Dipole"].values
+        # P2 = self.GAP #HISTOGRAM["HOMO_LUMO_gap"].values
+        # coloring = HISTOGRAM["ENCONTER"].values
 
-        sc = ax1.scatter(P1, P2, s=4, c=summe)
+        sc = ax1.scatter(self.DIPOLE, self.GAP, s=4, c=self.ENCOUNTER)
         plt.xlabel("Dipole" + " (a.u.)", fontsize=21)
         plt.ylabel(
             "Gap" + " (a.u.)",
@@ -461,7 +386,7 @@ class Analyze:
             weight=500,
         )
         clb = plt.colorbar(sc)
-        clb.set_label("Loss")
+        clb.set_label("Step encountered", fontsize=21)
 
         ax1.spines["right"].set_color("none")
         ax1.spines["top"].set_color("none")
@@ -472,36 +397,17 @@ class Analyze:
         ax1.xaxis.set_ticks_position("bottom")
         ax1.spines["left"].set_position(("axes", -0.05))
 
-        plt.plot(PARETO["Dipole"], PARETO["HOMO_LUMO_gap"], "o-", color="black")
-        plt.plot(PARETO_CORRECTED["Dipole"], PARETO_CORRECTED["HOMO_LUMO_gap"], ls="--", linewidth=2, color="red")
+        for simplex in self.hull.simplices:
+            plt.plot(
+                self.points[simplex, 0], self.points[simplex, 1], "o-", color="black"
+            )
 
-        alpha = 0.5
-
-        """
-        if ALL_PARETOS != False:
-            cmap = iter(cm.rainbow(np.linspace(0, 1, len(ALL_PARETOS))))
-            for color, hist in zip(cmap, ALL_PARETOS):
-                SUB_PARETO = self.pareto(hist)
-                plt.plot(
-                    SUB_PARETO["Dipole"],
-                    SUB_PARETO["HOMO_LUMO_gap"],
-                    "o",
-                    alpha=alpha,
-                    color=color,
-                )
-                plt.plot(
-                    SUB_PARETO["Dipole"],
-                    SUB_PARETO["HOMO_LUMO_gap"],
-                    "-",
-                    color=color,
-                    alpha=alpha,
-                    linewidth=0.5,
-                )
-        """
-
+        if hline is not None:
+            plt.axhline(y=hline, color="red", linestyle="--", linewidth=2)
+        if vline is not None:
+            plt.axvline(x=vline, color="red", linestyle="--", linewidth=2)
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        # plt.savefig("pareto.pdf")
         plt.savefig("pareto.png", dpi=600)
         plt.close("all")
 
@@ -548,7 +454,6 @@ class Analyze:
         ax1.spines["left"].set_position(("axes", -0.05))
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        # plt.savefig("steps.pdf")
         plt.savefig("steps.png", dpi=600)
         plt.close("all")
 
@@ -589,7 +494,6 @@ class Analyze:
         ax2.spines["left"].set_position(("axes", -0.05))
         plt.tight_layout()
 
-        # plt.savefig("spread.pdf")
         plt.savefig("spread.png", dpi=600)
 
     def plot_chem_space(self, HISTOGRAM, label="loss"):
