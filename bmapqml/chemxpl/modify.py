@@ -18,7 +18,7 @@ from .valence_treatment import (
     sorted_tuple,
 )
 from copy import deepcopy
-import random, itertools
+import random, itertools, bisect
 from igraph.operators import disjoint_union
 from ..utils import canonical_atomtype
 from ..data import NUCLEAR_CHARGE
@@ -1162,7 +1162,7 @@ def possible_fragment_size_bounds(
 
 
 # TODO: is there an analytic way to randomly choose a size tuple that does not involve all of this?
-class PossiblePairFragSizesIterator:
+class PossiblePairFragSizesGenerator:
     def __init__(
         self, cg1, cg2, nhatoms_range=None, **possible_fragment_size_bounds_kwargs
     ):
@@ -1173,53 +1173,45 @@ class PossiblePairFragSizesIterator:
             cg2, **possible_fragment_size_bounds_kwargs
         )
         if nhatoms_range is None:
-            self.min_diff = None
-            self.max_diff = None
+            min_diff = None
+            max_diff = None
         else:
-            self.min_diff = max(
+            min_diff = max(
                 nhatoms_range[0] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[1]
             )
-            self.max_diff = min(
+            max_diff = min(
                 nhatoms_range[1] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[0]
             )
-        self.nhatoms_range = None
 
-    def __iter__(self):
-        self.init_iter()
-        return self
+        num_frag_size1_poss = self.frag_size_bounds1[1] - self.frag_size_bounds1[0] + 1
 
-    def init_iter(self):
-        self.frag_size1 = self.frag_size_bounds1[0]
-        self.frag_size2 = self.frag_size_bounds2[0] - 1
-        self.set_cur_max_frag_size2()
+        self.frag_size2_poss_numbers = np.zeros(num_frag_size1_poss, dtype=int)
+        self.frag_size2_mins = np.zeros(num_frag_size1_poss, dtype=int)
 
-    def set_cur_max_frag_size2(self):
-        self.cur_max_frag_size2 = min(
-            self.frag_size_bounds2[1], self.frag_size1 + self.max_diff
-        )
+        for i in range(num_frag_size1_poss):
+            frag_size1 = self.frag_size_bounds1[0] + i
+            frag_size2_min = max(self.frag_size_bounds2[0], frag_size1 + min_diff)
+            frag_size2_max = min(self.frag_size_bounds2[1], frag_size1 + max_diff)
 
-    def __next__(self):
-        if self.frag_size2 == self.cur_max_frag_size2:
-            if self.frag_size1 == self.frag_size_bounds1[1]:
-                raise StopIteration
-            self.frag_size1 += 1
-            self.set_cur_max_frag_size2()
-            self.frag_size2 = max(
-                self.frag_size_bounds2[0], self.frag_size1 + self.min_diff
+            self.frag_size2_poss_numbers[i] = (
+                frag_size2_max
+                - frag_size2_min
+                + 1
+                + self.frag_size2_poss_numbers[i - 1]
             )
-        else:
-            self.frag_size2 += 1
-        return self.frag_size1, self.frag_size2
+            self.frag_size2_mins[i] = frag_size2_min
 
-    def after_iter(self, iter_id):
-        self.init_iter()
-        for _ in range(iter_id):
-            _ = self.__next__()
-        return self.__next__()
+    def tot_poss_count(self):
+        return self.frag_size2_poss_numbers[-1]
 
-
-def PPFSI_counter(*args, **kwargs):
-    return sum(1 for _ in PossiblePairFragSizesIterator(*args, **kwargs))
+    def poss_frag_sizes(self, poss_id):
+        frag_size1_id = bisect.bisect_right(self.frag_size2_poss_numbers, poss_id)
+        if frag_size1_id != 0:
+            poss_id -= self.frag_size2_poss_numbers[frag_size1_id - 1]
+        return (
+            self.frag_size_bounds1[0] + frag_size1_id,
+            self.frag_size2_mins[frag_size1_id] + poss_id,
+        )
 
 
 def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
@@ -1271,13 +1263,15 @@ def randomized_cross_coupling(
     Break two ChemGraph objects into two FragmentPair objects; the fragments are then re-coupled into two new ChemGraph objects.
     """
 
-    ppfsb_kwargs = {
+    ppfsg_kwargs = {
         "nhatoms_range": nhatoms_range,
         "fragment_ratio_range": cross_coupling_fragment_ratio_range,
         "fragment_size_range": cross_coupling_fragment_size_range,
     }
 
-    num_pair_fragment_sizes = PPFSI_counter(*cg_pair, **ppfsb_kwargs)
+    PPFSG = PossiblePairFragSizesGenerator(*cg_pair, **ppfsg_kwargs)
+
+    num_pair_fragment_sizes = PPFSG.tot_poss_count()
 
     if num_pair_fragment_sizes == 0:
         return None, None
@@ -1287,9 +1281,7 @@ def randomized_cross_coupling(
 
     final_pair_fragment_size_tuple_id = random.randrange(num_pair_fragment_sizes)
 
-    final_pair_fragment_sizes = PossiblePairFragSizesIterator(
-        *cg_pair, **ppfsb_kwargs
-    ).after_iter(final_pair_fragment_size_tuple_id)
+    final_pair_fragment_sizes = PPFSG.poss_frag_sizes(final_pair_fragment_size_tuple_id)
 
     membership_vectors = []
     for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes):
@@ -1330,7 +1322,9 @@ def randomized_cross_coupling(
                 ].chemgraph().copy_extra_data_to(new_cg_pair[new_cg_id])
 
     # Account for probability of choosing the correct fragment sizes to do the inverse move.
-    tot_choice_prob_ratio *= PPFSI_counter(*new_cg_pair, **ppfsb_kwargs)
+    tot_choice_prob_ratio *= PossiblePairFragSizesGenerator(
+        *new_cg_pair, **ppfsg_kwargs
+    ).tot_poss_count()
     # Account for probability of choosing the necessary resonance structure.
     backwards_fragment_pairs = [
         FragmentPair(new_cg, new_membership_vector)
