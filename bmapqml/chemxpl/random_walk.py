@@ -624,14 +624,17 @@ def randomized_change(
     Randomly modify a TrajectoryPoint object.
     visited_tp_list : list of TrajectoryPoint objects for which data is available.
     """
+    init_possibilities_kwargs = {"change_prob_dict": change_prob_dict, **other_kwargs}
     if delete_chosen_mod_path:
         if tp.modified_possibility_dict is None:
-            tp.modified_possibility_dict = deepcopy(tp.possibilities())
+            tp.modified_possibility_dict = deepcopy(
+                tp.possibilities(**init_possibilities_kwargs)
+            )
         full_possibility_dict = tp.modified_possibility_dict
         if len(full_possibility_dict) == 0:
             return None, None
     else:
-        full_possibility_dict = tp.possibilities()
+        full_possibility_dict = tp.possibilities(**init_possibilities_kwargs)
 
     cur_change_procedure, possibilities, total_forward_prob = random_choice_from_dict(
         full_possibility_dict, change_prob_dict
@@ -1246,7 +1249,6 @@ class RandomWalk:
         else:
             delete_chosen_mod_path = False
         changed_tp = self.cur_tps[replica_id]
-        changed_tp.init_possibility_info(**self.used_randomized_change_params)
         new_tp, prob_balance = randomized_change(
             changed_tp,
             visited_tp_list=self.histogram,
