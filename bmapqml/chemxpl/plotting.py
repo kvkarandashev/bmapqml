@@ -20,6 +20,29 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+fs = 24
+plt.rc("font", size=fs)
+plt.rc("axes", titlesize=fs)
+plt.rc("axes", labelsize=fs)
+plt.rc("xtick", labelsize=fs)
+plt.rc("ytick", labelsize=fs)
+plt.rc("legend", fontsize=fs)
+plt.rc("figure", titlesize=fs)
+plt.style.use("seaborn-whitegrid")
+
+
+def make_pretty(ax):
+    ax.spines["right"].set_color("none")
+    ax.spines["top"].set_color("none")
+    ax.spines["bottom"].set_position(("axes", -0.05))
+    ax.spines["bottom"].set_color("black")
+    ax.spines["left"].set_color("black")
+    ax.yaxis.set_ticks_position("left")
+    ax.xaxis.set_ticks_position("bottom")
+    ax.spines["left"].set_position(("axes", -0.05))
+    return ax
+
+
 
 class Analyze:
 
@@ -35,7 +58,7 @@ class Analyze:
     given as restart files in the tar format.
     """
 
-    def __init__(self, path, full_traj=False, verbose=False, mode="optimization"):
+    def __init__(self, path, full_traj=False, verbose=False):
 
         """
         mode : either optimization of dipole and gap = "optimization" or
@@ -46,7 +69,6 @@ class Analyze:
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
-        self.mode = mode
 
     def parse_results(self):
         if self.verbose:
@@ -77,37 +99,16 @@ class Analyze:
         self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
         self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=["SMILES"])
 
-        if self.mode == "optimization":
-            self.DIPOLE, self.GAP = (
-                self.GLOBAL_HISTOGRAM["Dipole"].values,
-                self.GLOBAL_HISTOGRAM["HOMO_LUMO_gap"],
-            )
-            self.ENCOUNTER = self.GLOBAL_HISTOGRAM["ENCONTER"].values
-            self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-            if len(self.LABELS) > 0:
-                return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+        self.DIPOLE, self.GAP = (
+            self.GLOBAL_HISTOGRAM["Dipole"].values,
+            self.GLOBAL_HISTOGRAM["HOMO_LUMO_gap"],
+        )
+        self.ENCOUNTER = self.GLOBAL_HISTOGRAM["ENCONTER"].values
+        self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-        else:
+        if len(self.LABELS) > 0:
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
-
-    def process_object(self, obj):
-        HISTOGRAM = self.to_dataframe(obj["histogram"])
-        traj = np.array(ordered_trajectory(obj["histogram"]))
-        CURR_TRAJECTORIES = []
-        for T in range(traj.shape[1]):
-            sel_temp = traj[:, T]
-            TRAJECTORY = self.to_dataframe(sel_temp)
-            CURR_TRAJECTORIES.append(TRAJECTORY)
-
-        return HISTOGRAM, CURR_TRAJECTORIES
-
-    def export_csv(self, HISTOGRAM):
-        """
-        Export the histogram to a csv file.
-        """
-
-        HISTOGRAM.to_csv("results.csv", index=False)
 
     def pareto_correct(self, HISTOGRAM):
         try:
@@ -162,25 +163,6 @@ class Analyze:
         PARETO = PARETO.sort_values("Dipole", ascending=True)
         return PARETO
 
-    def compute_representations(self, MOLS, nBits):
-        """
-        Compute the representations of all unique smiles in the random walk.
-        """
-
-        X = rdkit_descriptors.get_all_FP(MOLS, nBits=nBits, fp_type="MorganFingerprint")
-        return X
-
-    def compute_PCA(self, MOLS, nBits=2048):
-        """
-        Compute PCA
-        """
-
-        X = self.compute_representations(MOLS, nBits=nBits)
-        reducer = PCA(n_components=2)
-        reducer.fit(X)
-        X_2d = reducer.transform(X)
-        return X_2d
-
     def to_dataframe(self, obj):
         """
         Convert the trajectory point object to a dataframe
@@ -189,17 +171,11 @@ class Analyze:
 
         df = pd.DataFrame()
 
-        if self.mode == "optimization":
-            SMILES, VALUES = self.convert_from_tps(obj)
-            df["SMILES"] = SMILES
-            df["ENCONTER"] = VALUES[:, 0]
-            df["Dipole"] = VALUES[:, 1]
-            df["HOMO_LUMO_gap"] = VALUES[:, 2]
-
-        elif self.mode == "sampling":
-            SMILES, VALUES = self.convert_from_tps(obj)
-            df["SMILES"] = SMILES
-            df["VALUES"] = VALUES
+        SMILES, VALUES = self.convert_from_tps(obj)
+        df["SMILES"] = SMILES
+        df["ENCONTER"] = VALUES[:, 0]
+        df["Dipole"] = VALUES[:, 1]
+        df["HOMO_LUMO_gap"] = VALUES[:, 2]
 
         df = df.dropna()
         df = df.reset_index(drop=True)
@@ -216,44 +192,26 @@ class Analyze:
         VALUES = []
         ENCOUNTER = []
 
-        if self.mode == "optimization":
-            for tp in mols:
-                # try:
-                # pdb.set_trace()
-                curr_data = tp.calculated_data["xTB_res"]["mean"]
-                smiles, step, dipole, gap = (
-                    trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),
-                    tp.first_MC_step_encounter,
-                    curr_data["dipole"],
-                    curr_data["HOMO_LUMO_gap"],
+        for tp in mols:
+
+            curr_data = tp.calculated_data["xTB_res"]["mean"]
+            smiles, step, dipole, gap = (
+                trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),
+                tp.first_MC_step_encounter,
+                curr_data["dipole"],
+                curr_data["HOMO_LUMO_gap"],
+            )
+            if dipole != None and gap != None:
+                VALUES.append(
+                    [
+                        int(step),
+                        float(dipole),
+                        float(gap),
+                    ]
                 )
-                # print(smiles, dipole, gap)
-                if dipole != None and gap != None:
-                    VALUES.append(
-                        [
-                            int(step),
-                            float(dipole),
-                            float(gap),
-                        ]
-                    )
 
-                    ENCOUNTER.append(step)
-                    SMILES.append(smiles)
-                # pdb.set_trace()
-                # except:
-                #    if self.verbose:
-                #        print("Could not convert to smiles")
-
-        elif self.mode == "sampling":
-            for tp in mols:
-                try:
-                    curr_data = tp.calculated_data
-                    SMILES.append(curr_data["canonical_rdkit"][-1])
-                    VALUES.append(curr_data["chemspacesampler"])
-                except:
-                    if self.verbose:
-                        print("Could not convert to smiles")
-                    pass
+                ENCOUNTER.append(step)
+                SMILES.append(smiles)
 
         SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
 
@@ -272,61 +230,11 @@ class Analyze:
 
         return CANON_SMILES
 
-    def count_shell_value(self, curr_h, epsilon, return_mols=False):
-        in_interval = curr_h["VALUES"] == -epsilon
-
-        if return_mols:
-            return in_interval.sum(), curr_h["SMILES"][in_interval].values
-        else:
-            return in_interval.sum()
-
-    def count_shell(
-        self, X_init, SMILES_sampled, dl, dh, nBits=2048, return_mols=False
-    ):
-        """
-        Count the number of molecules in
-        the shell of radius dl and dh.
-        """
-        darr = np.zeros(len(SMILES_sampled))
-        for i, s in enumerate(SMILES_sampled):
-            darr[i] = np.linalg.norm(
-                X_init - self.compute_representations([s], nBits=nBits)
-            )
-
-        in_interval = (darr >= dl) & (darr <= dh)
-        N = len(darr[in_interval])
-
-        if return_mols == False:
-            return N
-        else:
-            return N, SMILES_sampled[in_interval][:1000]
-
-    def volume_of_nsphere(self, N, d):
-        """
-        Compute the volume of a n-sphere of radius d.
-        """
-
-        import mpmath
-
-        N = mpmath.mpmathify(N)
-        d = mpmath.mpmathify(d)
-
-        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * d**N
 
     def plot_trajectory_loss(self, ALL_TRAJECTORIES):
         """
         Compute the loss of the trajectories.
         """
-
-        fs = 24
-
-        plt.rc("font", size=fs)
-        plt.rc("axes", titlesize=fs)
-        plt.rc("axes", labelsize=fs)
-        plt.rc("xtick", labelsize=fs)
-        plt.rc("ytick", labelsize=fs)
-        plt.rc("legend", fontsize=fs)
-        plt.rc("figure", titlesize=fs)
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
@@ -340,17 +248,9 @@ class Analyze:
                 ax1.scatter(N, sel_temp, s=5, color=c, alpha=0.5)
                 ax1.plot(N, sel_temp, "-", alpha=0.1)
 
-        ax1.spines["right"].set_color("none")
-        ax1.spines["top"].set_color("none")
-        ax1.spines["bottom"].set_position(("axes", -0.05))
-        ax1.spines["bottom"].set_color("black")
-        ax1.spines["left"].set_color("black")
-        ax1.yaxis.set_ticks_position("left")
-        ax1.xaxis.set_ticks_position("bottom")
-        ax1.spines["left"].set_position(("axes", -0.05))
+        ax1 = make_pretty(ax1)
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        # plt.savefig("loss.pdf")
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
@@ -359,20 +259,7 @@ class Analyze:
         Plot the pareto optimal solutions.
         """
 
-        fs = 24
-
-        plt.rc("font", size=fs)
-        plt.rc("axes", titlesize=fs)
-        plt.rc("axes", labelsize=fs)
-        plt.rc("xtick", labelsize=fs)
-        plt.rc("ytick", labelsize=fs)
-        plt.rc("legend", fontsize=fs)
-        plt.rc("figure", titlesize=fs)
-
         fig, ax1 = plt.subplots(figsize=(8, 8))
-        # quantity_1 = self.DIPOLE #HISTOGRAM["Dipole"].values
-        # P2 = self.GAP #HISTOGRAM["HOMO_LUMO_gap"].values
-        # coloring = HISTOGRAM["ENCONTER"].values
 
         sc = ax1.scatter(self.DIPOLE, self.GAP, s=4, c=self.ENCOUNTER)
         plt.xlabel("Dipole" + " (a.u.)", fontsize=21)
@@ -388,14 +275,7 @@ class Analyze:
         clb = plt.colorbar(sc)
         clb.set_label("Step encountered", fontsize=21)
 
-        ax1.spines["right"].set_color("none")
-        ax1.spines["top"].set_color("none")
-        ax1.spines["bottom"].set_position(("axes", -0.05))
-        ax1.spines["bottom"].set_color("black")
-        ax1.spines["left"].set_color("black")
-        ax1.yaxis.set_ticks_position("left")
-        ax1.xaxis.set_ticks_position("bottom")
-        ax1.spines["left"].set_position(("axes", -0.05))
+        ax1 = make_pretty(ax1)
 
         for simplex in self.hull.simplices:
             plt.plot(
@@ -444,14 +324,7 @@ class Analyze:
         clb = plt.colorbar(sc)
         clb.set_label("step")
 
-        ax1.spines["right"].set_color("none")
-        ax1.spines["top"].set_color("none")
-        ax1.spines["bottom"].set_position(("axes", -0.05))
-        ax1.spines["bottom"].set_color("black")
-        ax1.spines["left"].set_color("black")
-        ax1.yaxis.set_ticks_position("left")
-        ax1.xaxis.set_ticks_position("bottom")
-        ax1.spines["left"].set_position(("axes", -0.05))
+        ax1 = make_pretty(ax1)
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         plt.savefig("steps.png", dpi=600)
@@ -484,14 +357,7 @@ class Analyze:
         sns.rugplot(data=DIFFERENT_SEEDS, x=label, palette="crest", height=0.1, ax=ax2)
         sns.violinplot(x=DIFFERENT_SEEDS[label], palette="Set3", ax=ax2)
         ax2.set_ylabel("#")
-        ax2.spines["right"].set_color("none")
-        ax2.spines["top"].set_color("none")
-        ax2.spines["bottom"].set_position(("axes", -0.05))
-        ax2.spines["bottom"].set_color("black")
-        ax2.spines["left"].set_color("black")
-        ax2.yaxis.set_ticks_position("left")
-        ax2.xaxis.set_ticks_position("bottom")
-        ax2.spines["left"].set_position(("axes", -0.05))
+        ax2  = make_pretty(ax2)
         plt.tight_layout()
 
         plt.savefig("spread.png", dpi=600)
@@ -521,14 +387,7 @@ class Analyze:
         print("Plot Chemical Space PCA")
         fig2, ax2 = plt.subplots(figsize=(8, 8))
 
-        ax2.spines["right"].set_color("none")
-        ax2.spines["top"].set_color("none")
-        ax2.spines["bottom"].set_position(("axes", -0.05))
-        ax2.spines["bottom"].set_color("black")
-        ax2.spines["left"].set_color("black")
-        ax2.yaxis.set_ticks_position("left")
-        ax2.xaxis.set_ticks_position("bottom")
-        ax2.spines["left"].set_position(("axes", -0.05))
+        ax2 = make_pretty(ax2)
 
         MOLS = HISTOGRAM["SMILES"]
         P = HISTOGRAM[label].values
@@ -562,3 +421,173 @@ class Analyze:
         # plt.savefig("PCA.pdf")
         plt.savefig("PCA.png", dpi=600)
         plt.close("all")
+
+
+
+
+
+
+
+
+
+class Analyze_Chemspace:
+    def __init__(self, path, full_traj=False, verbose=False):
+
+        """
+        mode : either optimization of dipole and gap = "optimization" or
+               sampling locally in chemical space = "sampling"
+        """
+
+        self.path = path
+        self.results = glob.glob(path)
+        self.verbose = verbose
+        self.full_traj = full_traj
+
+    def parse_results(self):
+        if self.verbose:
+            print("Parsing results...")
+            Nsim = len(self.results)
+            print("Number of simulations: {}".format(Nsim))
+
+        ALL_HISTOGRAMS = []
+        ALL_TRAJECTORIES = []
+
+        for run in tqdm(self.results, disable=not self.verbose):
+
+            obj = loadpkl(run, compress=False)
+
+            HISTOGRAM = self.to_dataframe(obj["histogram"])
+            HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
+            ALL_HISTOGRAMS.append(HISTOGRAM)
+            if self.full_traj:
+                traj = np.array(ordered_trajectory(obj["histogram"]))
+                CURR_TRAJECTORIES = []
+                for T in range(traj.shape[1]):
+                    sel_temp = traj[:, T]
+                    TRAJECTORY = self.to_dataframe(sel_temp)
+                    CURR_TRAJECTORIES.append(TRAJECTORY)
+                ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+
+        self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
+        self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
+        self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=["SMILES"])
+
+        return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+
+
+
+    def convert_from_tps(self, mols):
+        """
+        Convert the list of trajectory points molecules to SMILES strings.
+        tp_list: list of molecudfles as trajectory points
+        smiles_mol: list of rdkit molecules
+        """
+
+        SMILES = []
+        VALUES = []
+
+
+        for tp in mols:
+            try:
+                curr_data = tp.calculated_data
+                SMILES.append(curr_data["canonical_rdkit"][-1])
+                VALUES.append(curr_data["chemspacesampler"])
+            except:
+                if self.verbose:
+                    print("Could not convert to smiles")
+                pass
+
+        SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
+
+        return SMILES, VALUES
+
+
+    def compute_representations(self, MOLS, nBits):
+        """
+        Compute the representations of all unique smiles in the random walk.
+        """
+
+        X = rdkit_descriptors.get_all_FP(MOLS, nBits=nBits, fp_type="MorganFingerprint")
+        return X
+
+    def compute_PCA(self, MOLS, nBits=2048):
+        """
+        Compute PCA
+        """
+
+        X = self.compute_representations(MOLS, nBits=nBits)
+        reducer = PCA(n_components=2)
+        reducer.fit(X)
+        X_2d = reducer.transform(X)
+        return X_2d
+
+    def to_dataframe(self, obj):
+        """
+        Convert the trajectory point object to a dataframe
+        and extract xTB values if available.
+        """
+
+        df = pd.DataFrame()
+
+        SMILES, VALUES = self.convert_from_tps(obj)
+        df["SMILES"] = SMILES
+        df["VALUES"] = VALUES
+        df = df.dropna()
+        df = df.reset_index(drop=True)
+        return df
+
+    def count_shell_value(self, curr_h, epsilon, return_mols=False):
+        in_interval = curr_h["VALUES"] == -epsilon
+
+        if return_mols:
+            return in_interval.sum(), curr_h["SMILES"][in_interval].values
+        else:
+            return in_interval.sum()
+
+    def count_shell(
+        self, X_init, SMILES_sampled, dl, dh, nBits=2048, return_mols=False
+    ):
+        """
+        Count the number of molecules in
+        the shell of radius dl and dh.
+        """
+        darr = np.zeros(len(SMILES_sampled))
+        for i, s in enumerate(SMILES_sampled):
+            darr[i] = np.linalg.norm(
+                X_init - self.compute_representations([s], nBits=nBits)
+            )
+
+        in_interval = (darr >= dl) & (darr <= dh)
+        N = len(darr[in_interval])
+
+        if return_mols == False:
+            return N
+        else:
+            return N, SMILES_sampled[in_interval][:1000]
+
+    def make_canon(self, SMILES):
+        """
+        Convert to canonical smiles form.
+        """
+
+        CANON_SMILES = []
+        for smi in SMILES:
+
+            can = Chem.MolToSmiles(Chem.MolFromSmiles(smi), canonical=True)
+            CANON_SMILES.append(can)
+
+        return CANON_SMILES
+
+    def volume_of_nsphere(self, N, d):
+        """
+        Compute the volume of a n-sphere of radius d.
+        """
+
+        import mpmath
+
+        N = mpmath.mpmathify(N)
+        d = mpmath.mpmathify(d)
+
+        return (mpmath.pi ** (N / 2)) / (mpmath.gamma(N / 2 + 1)) * d**N
+
+
