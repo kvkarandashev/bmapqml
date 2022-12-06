@@ -51,8 +51,7 @@ betas = gen_exp_beta_array(4, 1.0, 32, max_real_beta=8.0)
 
 print("Chosen betas:", betas)
 
-# Making a lot of restarts because the bugs are hard to reproduce.
-make_restart_frequency = 100  # 2000
+make_restart_frequency = 2000
 num_MC_steps = 50000  # 50000
 
 bias_coeffs = {"none": None, "weak": 0.2, "stronger": 0.4}
@@ -115,7 +114,6 @@ rw = RandomWalk(
     track_histogram_size=True,
     linear_storage=True,
     greedy_delete_checked_paths=True,
-    debug=True,
 )
 
 if os.path.isfile(restart_file_name):

@@ -273,8 +273,9 @@ def lookup_or_none(dict_in, key):
 def tp_or_chemgraph(tp):
     if isinstance(tp, ChemGraph):
         return tp
-    else:
+    if isinstance(tp, TrajectoryPoint):
         return tp.chemgraph()
+    raise Exception()
 
 
 global_step_traj_storage_label = "global"
@@ -314,6 +315,9 @@ class TrajectoryPoint:
 
         self.first_encounter_replica = None
         self.first_acceptance_replica = None
+
+        # The last time minimized function was looked up for the trajectory point.
+        self.last_lookup_global_MC_step = None
 
         # Information for keeping detailed balance.
         self.possibility_dict = None
@@ -671,9 +675,16 @@ def randomized_change(
     inv_proc = inverse_procedure[cur_change_procedure]
     inv_pos_label = change_possibility_label[inv_proc]
     inv_poss_dict = lookup_or_none(other_kwargs, inv_pos_label)
-    inv_mod_path = inverse_mod_path(
-        new_egc, old_egc, cur_change_procedure, modification_path, **other_kwargs
-    )
+    # TODO delete post-testing?
+    try:
+        inv_mod_path = inverse_mod_path(
+            new_egc, old_egc, cur_change_procedure, modification_path, **other_kwargs
+        )
+    except KeyError:
+        print("NON-INVERTIBLE OPERATION")
+        print(old_egc, cur_change_procedure)
+        print(new_egc)
+        quit()
 
     inverse_possibilities, total_inverse_prob = random_choice_from_dict(
         new_tp.possibilities(),
@@ -771,6 +782,7 @@ class RandomWalk:
         linear_storage: bool = True,
         compress_restart: bool = False,
         greedy_delete_checked_paths: bool = False,
+        debug: bool = False,
     ):
         """
         Class that generates a trajectory over chemical space.
@@ -798,6 +810,7 @@ class RandomWalk:
         compress_restart : whether restart files are compressed by default
         randomized_change_params : parameters defining the sampled chemical space and how the sampling is done; see description of init_randomized_params for more thorough explanation.
         greedy_delete_checked_paths : for greedy replicas take a modification path with simple moves only once.
+        debug : simulation is run with extra checks (testing purposes).
         """
         self.num_replicas = num_replicas
         self.betas = betas
@@ -899,6 +912,8 @@ class RandomWalk:
 
         self.delete_temp_data = delete_temp_data
         self.greedy_delete_checked_paths = greedy_delete_checked_paths
+
+        self.debug = debug
 
         self.init_cur_tps(init_egcs)
 
@@ -1038,7 +1053,7 @@ class RandomWalk:
             return
         self.cur_tps = []
         for replica_id, egc in enumerate(init_egcs):
-            if egc_valid_wrt_change_params(egc, **self.randomized_change_params):
+            if self.egc_valid_wrt_change_params(egc):
                 added_tp = TrajectoryPoint(egc=egc)
             else:
                 raise InvalidStartingMolecules
@@ -1057,8 +1072,17 @@ class RandomWalk:
         self.update_histogram(list(range(self.num_replicas)))
         self.update_global_histogram()
 
+    def egc_valid_wrt_change_params(self, egc):
+        """
+        Check that egc is valid with respect to chemical space specifications.
+        """
+        return egc_valid_wrt_change_params(egc, **self.randomized_change_params)
+
     # Acceptance rejection rules.
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0], swap=False):
+        if self.debug:
+            self.check_move_validity(new_tps, replica_ids)
+
         self.MC_step_counter += 1
 
         accepted = self.acceptance_rule(new_tps, prob_balance, replica_ids=replica_ids)
@@ -1090,6 +1114,19 @@ class RandomWalk:
                     self.histogram2pkl()
 
         return accepted
+
+    def check_move_validity(self, new_tps, replica_ids):
+        """
+        Introduced for testing purposes.
+        """
+        for new_tp in new_tps:
+            if not self.egc_valid_wrt_change_params(new_tp.egc):
+                print("INCONSISTENT TRAJECTORY POINTS")
+                print("INITIAL:")
+                print(*[self.cur_tps[replica_id] for replica_id in replica_ids])
+                print("PROPOSED:")
+                print(*new_tps)
+                quit()
 
     def acceptance_rule(self, new_tps, prob_balance, replica_ids=[0]):
 
@@ -1204,6 +1241,9 @@ class RandomWalk:
         return output
 
     def tp_pair_order_prob(self, replica_ids, tp_pair=None):
+        """
+        Probability that replicas are occupied either by the respective cur_tps members of tp_pair, as opposed to the positions being swapped.
+        """
         if tp_pair is None:
             tp_pair = [self.cur_tps[replica_id] for replica_id in replica_ids]
         cur_tot_pot_vals = [
@@ -1214,9 +1254,9 @@ class RandomWalk:
         switched_tot_pot_vals = [
             self.tot_pot(tp, replica_id)
             for tp, replica_id in zip(tp_pair, replica_ids[::-1])
-        ]
+        ]  # The reason we don't just switch cur_tot_pot_vals is to account for potential change of biasing potential between replicas.
         if self.virtual_beta_present(replica_ids):
-            if all([(self.betas[replica_id] is None) for replica_id in replica_ids]):
+            if all(self.virtual_beta_ids(replica_ids)):
                 return 0.5
             else:
                 cur_virt_min = self.min_over_virtual(cur_tot_pot_vals, replica_ids)
@@ -1228,17 +1268,17 @@ class RandomWalk:
                 if cur_virt_min < switched_virt_min:
                     return 1.0
                 else:
-                    return None
+                    return 0.0
         else:
             delta_pot = sum(cur_tot_pot_vals) - sum(switched_tot_pot_vals)
-            exp_val = exp_wexceptions(-delta_pot)
+            exp_val = exp_wexceptions(delta_pot)
             if np.isinf(exp_val):
-                return None
+                return 0.0
             else:
                 try:
                     return (1.0 + exp_val) ** (-1)
                 except FloatingPointError:
-                    return None
+                    return 0.0
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):
@@ -1269,7 +1309,10 @@ class RandomWalk:
 
         return accepted
 
-    def genetic_MC_step(self, replica_ids):
+    def trial_genetic_MC_step(self, replica_ids):
+        """
+        Trial move part of the genetic step.
+        """
         old_cg_pair = [
             self.cur_tps[replica_id].egc.chemgraph for replica_id in replica_ids
         ]
@@ -1278,22 +1321,9 @@ class RandomWalk:
             visited_tp_list=self.histogram,
             **self.used_randomized_change_params
         )
-        self.num_attempted_cross_couplings += 1
-        if new_cg_pair is not None:
-            if "nhatoms_range" in self.used_randomized_change_params:
-                nhatoms_range = self.used_randomized_change_params["nhatoms_range"]
-                invalid = False
-                for nm in new_cg_pair:
-                    invalid = (nm.nhatoms() < nhatoms_range[0]) or (
-                        nm.nhatoms() > nhatoms_range[1]
-                    )
-                    if invalid:
-                        break
-                if invalid:
-                    new_cg_pair = None
         if new_cg_pair is None:
-            return False
-        self.num_valid_cross_couplings += 1
+            return None, None
+
         new_pair_tps = self.hist_checked_tps(
             [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
         )
@@ -1301,17 +1331,28 @@ class RandomWalk:
             new_pair_shuffle_prob = self.tp_pair_order_prob(
                 replica_ids, tp_pair=new_pair_tps
             )
-            if (
-                new_pair_shuffle_prob is None
-            ):  # minimization function values for new_pair_tps have None and are thus invalid.
-                return False
+            if new_pair_shuffle_prob is None:  # a minimized function value is invalid
+                return None, None
             if random.random() > new_pair_shuffle_prob:  # shuffle
                 new_pair_shuffle_prob = 1.0 - new_pair_shuffle_prob
                 new_pair_tps = new_pair_tps[::-1]
             old_pair_shuffle_prob = self.tp_pair_order_prob(replica_ids)
-            if old_pair_shuffle_prob is None:
-                return True
             prob_balance += np.log(new_pair_shuffle_prob / old_pair_shuffle_prob)
+        return new_pair_tps, prob_balance
+
+    def genetic_MC_step(self, replica_ids):
+        """
+        Attempt a cross-coupled MC step.
+        """
+        self.num_attempted_cross_couplings += 1
+
+        new_pair_tps, prob_balance = self.trial_genetic_MC_step(replica_ids)
+
+        if new_pair_tps is None:
+            return False
+
+        self.num_valid_cross_couplings += 1
+
         accepted = self.accept_reject_move(
             new_pair_tps, prob_balance, replica_ids=replica_ids
         )
