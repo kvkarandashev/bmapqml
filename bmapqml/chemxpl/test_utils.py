@@ -1,8 +1,16 @@
 # Utils that mainly appear in tests or analysis of data.
 from ..data import NUCLEAR_CHARGE
 from sortedcontainers import SortedDict
-from .random_walk import randomized_change, TrajectoryPoint, RandomWalk
+from .random_walk import (
+    randomized_change,
+    TrajectoryPoint,
+    RandomWalk,
+    full_change_list,
+    random_choice_from_nested_dict,
+    egc_change_func,
+)
 import numpy as np
+import copy
 
 
 def elements_in_egc_list(egc_list, as_elements=True):
@@ -85,7 +93,7 @@ def check_one_sided_prop_probability(
         return output[0]
 
 
-def check_prop_probability(tp1, tp2_list, **one_sided_kwargs):
+def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
     """
     Check that simple MC moves satisfy detailed balance for a pair of trajectory point objects.
     """
@@ -101,6 +109,8 @@ def check_prop_probability(tp1, tp2_list, **one_sided_kwargs):
         true_list, forward_results
     ):
         print("CASE:", tp2)
+        if label_dict is not None:
+            print("CASE LABEL:", label_dict[str(tp2)])
         print("FORWARD:", forward_est_bal_mean, forward_est_bal_std)
         (
             inverse_est_bal_mean,
@@ -117,3 +127,37 @@ def check_prop_probability(tp1, tp2_list, **one_sided_kwargs):
             )
         except FloatingPointError:
             print("NO INVERSE MOVES OBSERVED, FORWARD PROBABILITY:", forward_est_obs)
+
+
+def generate_proc_example(tp, change_procedure, **other_kwargs):
+    tp_copy = copy.deepcopy(tp)
+    change_prob_dict = [change_procedure]
+    tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
+    try:
+        modification_path, _ = random_choice_from_nested_dict(
+            tp_copy.possibility_dict[change_procedure]
+        )
+    except KeyError:
+        return None
+    new_egc = egc_change_func(
+        tp_copy.egc, modification_path, change_procedure, **other_kwargs
+    )
+    return TrajectoryPoint(egc=new_egc)
+
+
+def generate_proc_sample_dict(
+    tp_init, change_prob_dict=full_change_list, **other_kwargs
+):
+    l = []
+    d = {}
+    for change_procedure in change_prob_dict:
+        tp_new = generate_proc_example(tp_init, change_procedure, **other_kwargs)
+        if tp_new is not None:
+            l.append(tp_new)
+            d[str(tp_new)] = change_procedure
+    return l, d
+
+
+def all_procedure_prop_probability_checks(tp_init, num_attempts=10000, **other_kwargs):
+    l, d = generate_proc_sample_dict(tp_init, **other_kwargs)
+    check_prop_probability(tp_init, l, label_dict=d, num_attempts=10000, **other_kwargs)

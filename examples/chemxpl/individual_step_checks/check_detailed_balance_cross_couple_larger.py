@@ -24,7 +24,7 @@ num_new_pairs = 4
 
 new_pairs = []
 
-attempts_to_generate = 10000
+attempts_to_generate = 40000
 
 for _ in range(attempts_to_generate):
     new_cg_pair, prob_bal = randomized_cross_coupling(cgs, nhatoms_range=nhatoms_range)
@@ -41,8 +41,8 @@ minimized_function = Diatomic_barrier(possible_nuclear_charges=[9, 17])
 
 ln2 = np.log(2.0)
 
-betas = [ln2, ln2 / 2.0]
-# betas=[ln2, ln2]
+# betas = [ln2, ln2 / 2.0]
+betas = [ln2, ln2]
 
 num_attempts = 10000
 

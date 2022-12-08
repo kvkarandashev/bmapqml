@@ -404,6 +404,7 @@ def canonical_SMILES_from_tp(tp):
     return chemgraph_to_canonical_rdkit(tp.egc.chemgraph, SMILES_only=True)
 
 
+# TODO do these routines belong to test_utils.py?
 def bin_index(val, val_lbound=None, val_ubound=None, num_bins=1):
     if val_lbound is None:
         return 0

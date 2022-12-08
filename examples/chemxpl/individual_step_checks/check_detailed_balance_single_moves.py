@@ -1,8 +1,8 @@
 # Randomly generate several molecules and then check that detailed balance is satisfied for each individual step.
 import random
 import numpy as np
-from bmapqml.chemxpl.random_walk import TrajectoryPoint, randomized_change
-from bmapqml.chemxpl.test_utils import check_prop_probability
+from bmapqml.chemxpl.random_walk import TrajectoryPoint
+from bmapqml.chemxpl.test_utils import all_procedure_prop_probability_checks
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 
 random.seed(1)
@@ -24,10 +24,7 @@ randomized_change_params = {
     "bond_order_valence_changes": [-2, 2],
 }
 
-neighbors = []
-while len(neighbors) != num_mols:
-    new_tp, _ = randomized_change(init_tp, **randomized_change_params)
-    if new_tp not in neighbors:
-        neighbors.append(new_tp)
 
-check_prop_probability(init_tp, neighbors, **randomized_change_params)
+all_procedure_prop_probability_checks(
+    init_tp, num_attempts=num_attempts, **randomized_change_params
+)
