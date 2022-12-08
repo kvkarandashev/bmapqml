@@ -11,6 +11,7 @@ import glob
 import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
+import pdb
 import seaborn as sns
 
 lg = RDLogger.logger()
@@ -28,19 +29,18 @@ plt.rc("xtick", labelsize=fs)
 plt.rc("ytick", labelsize=fs)
 plt.rc("legend", fontsize=fs)
 plt.rc("figure", titlesize=fs)
-plt.style.use("seaborn-whitegrid")
 
 
-def make_pretty(ax):
-    ax.spines["right"].set_color("none")
-    ax.spines["top"].set_color("none")
-    ax.spines["bottom"].set_position(("axes", -0.05))
-    ax.spines["bottom"].set_color("black")
-    ax.spines["left"].set_color("black")
-    ax.yaxis.set_ticks_position("left")
-    ax.xaxis.set_ticks_position("bottom")
-    ax.spines["left"].set_position(("axes", -0.05))
-    return ax
+def make_pretty(axi):
+    axi.spines["right"].set_color("none")
+    axi.spines["top"].set_color("none")
+    axi.spines["bottom"].set_position(("axes", -0.05))
+    axi.spines["bottom"].set_color("black")
+    axi.spines["left"].set_color("black")
+    axi.yaxis.set_ticks_position("left")
+    axi.xaxis.set_ticks_position("bottom")
+    axi.spines["left"].set_position(("axes", -0.05))
+    return axi
 
 
 
@@ -58,17 +58,14 @@ class Analyze:
     given as restart files in the tar format.
     """
 
-    def __init__(self, path, full_traj=False, verbose=False):
-
-        """
-        mode : either optimization of dipole and gap = "optimization" or
-               sampling locally in chemical space = "sampling"
-        """
+    def __init__(self, path, quanity="dipole", full_traj=False, verbose=False):
 
         self.path = path
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
+        self.quanity = quanity
+
 
     def parse_results(self):
         if self.verbose:
@@ -100,8 +97,8 @@ class Analyze:
         self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=["SMILES"])
 
 
-        self.DIPOLE, self.GAP = (
-            self.GLOBAL_HISTOGRAM["Dipole"].values,
+        self.X_QUANTITY, self.GAP = (
+            self.GLOBAL_HISTOGRAM["X_QUANTITY"].values,
             self.GLOBAL_HISTOGRAM["HOMO_LUMO_gap"],
         )
         self.ENCOUNTER = self.GLOBAL_HISTOGRAM["ENCONTER"].values
@@ -117,7 +114,7 @@ class Analyze:
             print("Please install scipy")
             exit()
 
-        self.points = np.array([self.DIPOLE, self.GAP]).T
+        self.points = np.array([self.X_QUANTITY, self.GAP]).T
         self.hull = ConvexHull(self.points)
         pareto = np.unique(self.hull.simplices.flatten())
         self.PARETO = HISTOGRAM.iloc[pareto]
@@ -130,7 +127,7 @@ class Analyze:
         Filter the histogram to keep only the pareto optimal solutions.
         """
 
-        Xs, Ys = HISTOGRAM["Dipole"].values, HISTOGRAM["HOMO_LUMO_gap"].values
+        Xs, Ys = HISTOGRAM["X_QUANTITY"].values, HISTOGRAM["HOMO_LUMO_gap"].values
         myList = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxX)
 
         p_front = [myList[0]]
@@ -160,7 +157,7 @@ class Analyze:
             print("Pareto optimal solutions:")
             print(PARETO)
 
-        PARETO = PARETO.sort_values("Dipole", ascending=True)
+        PARETO = PARETO.sort_values("X_QUANTITY", ascending=True)
         return PARETO
 
     def to_dataframe(self, obj):
@@ -174,7 +171,7 @@ class Analyze:
         SMILES, VALUES = self.convert_from_tps(obj)
         df["SMILES"] = SMILES
         df["ENCONTER"] = VALUES[:, 0]
-        df["Dipole"] = VALUES[:, 1]
+        df["X_QUANTITY"] = VALUES[:, 1]
         df["HOMO_LUMO_gap"] = VALUES[:, 2]
 
         df = df.dropna()
@@ -195,17 +192,18 @@ class Analyze:
         for tp in mols:
 
             curr_data = tp.calculated_data["xTB_res"]["mean"]
-            smiles, step, dipole, gap = (
+            #pdb.set_trace()
+            smiles, step, x_quantity, gap = (
                 trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),
                 tp.first_MC_step_encounter,
-                curr_data["dipole"],
+                curr_data[self.quanity],
                 curr_data["HOMO_LUMO_gap"],
             )
-            if dipole != None and gap != None:
+            if x_quantity != None and gap != None:
                 VALUES.append(
                     [
                         int(step),
-                        float(dipole),
+                        float(x_quantity),
                         float(gap),
                     ]
                 )
@@ -254,15 +252,15 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self, hline=None, vline=None):
+    def plot_pareto(self,name_plot, hline=None, vline=None):
         """
         Plot the pareto optimal solutions.
         """
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
-        sc = ax1.scatter(self.DIPOLE, self.GAP, s=4, c=self.ENCOUNTER)
-        plt.xlabel("Dipole" + " (a.u.)", fontsize=21)
+        sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.Greys)
+        plt.xlabel(self.quanity + " (a.u.)", fontsize=21)
         plt.ylabel(
             "Gap" + " (a.u.)",
             fontsize=21,
@@ -273,9 +271,11 @@ class Analyze:
             weight=500,
         )
         clb = plt.colorbar(sc)
-        clb.set_label("Step encountered", fontsize=21)
+        clb.set_label("step encountered", fontsize=21)
+
 
         ax1 = make_pretty(ax1)
+
 
         for simplex in self.hull.simplices:
             plt.plot(
@@ -283,12 +283,24 @@ class Analyze:
             )
 
         if hline is not None:
-            plt.axhline(y=hline, color="red", linestyle="--", linewidth=2)
+            plt.axhline(y=hline, color="red", linestyle="--", linewidth=2, label="Gap Cnstr.")
         if vline is not None:
-            plt.axvline(x=vline, color="red", linestyle="--", linewidth=2)
+            plt.axvline(x=vline, color="navy", linestyle="--", ymin=0,ymax=0.5, linewidth=2, label="Best Ref.")
+
+
+        #ax1.set_xlim(0, 6.0)
+        #ax1.set_ylim(0, 0.7)
+        #ax1.set_xticks([0,1,2,3,4,5,6])
+        #ax1.set_yticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7])
+        
+        ax1.axes.xaxis.set_visible(True)
+        ax1.axes.yaxis.set_visible(True)
+        plt.legend(loc="upper right", fontsize=21)
+        ax1.grid(True, linestyle='--', linewidth=0.5, color='grey')
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        plt.savefig("pareto.png", dpi=600)
+        #pdb.set_trace()
+        plt.savefig("{}_pareto.png".format(name_plot), dpi=600)
         plt.close("all")
 
     def plot_trajectory(self, TRAJECTORY):
@@ -307,11 +319,11 @@ class Analyze:
         plt.rc("figure", titlesize=fs)
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
-        p1 = TRAJECTORY["Dipole"].values
+        p1 = TRAJECTORY["X_QUANTITY"].values
         p2 = TRAJECTORY["HOMO_LUMO_gap"].values
         step = np.arange(len(p1))
         sc = ax1.scatter(p1, p2, s=4, c=step)
-        plt.xlabel("Dipole" + " (a.u.)", fontsize=21)
+        plt.xlabel(self.quanity + " (a.u.)", fontsize=21)
         plt.ylabel(
             "Gap" + " (a.u.)",
             fontsize=21,
