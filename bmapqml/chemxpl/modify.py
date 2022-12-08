@@ -1,8 +1,9 @@
 # TODO Perhaps add support for atoms with higher valences being added directly?
 # TODO check that the currently commenting change_valence function exception is correct
 
-# TODO does it make more sense to have .5-1. default sizes for LIGHTBLUE fragment?
 # TODO even more randomness in fragment choice as an option? Is detailed balance viable?
+
+# TODO change_bond_order does not seem to function properly with max_fragment_num None or not 1.
 
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound

@@ -9,6 +9,7 @@ from .random_walk import (
     minimized_change_list,
     random_choice_from_nested_dict,
     egc_change_func,
+    inverse_procedure,
 )
 import numpy as np
 import copy
@@ -99,7 +100,7 @@ def check_one_sided_prop_probability(
         trial_prob_arrays = {}
         observed_probs = {}
         for bal in est_bal:
-            bin_id = calc_bin_id(bal)
+            bin_id = calc_bin_id(bal, bin_size)
             if bin_id not in trial_prob_arrays:
                 trial_prob_arrays[bin_id] = []
                 observed_probs[bin_id] = 0.0
@@ -163,10 +164,10 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
                 print("OBSERVED RATIO:", np.log(forward_prob / inverse_prob))
 
 
-def generate_proc_example(tp, change_procedure, **other_kwargs):
+def generate_proc_example(tp, change_procedure, print_dicts=False, **other_kwargs):
     tp_copy = copy.deepcopy(tp)
     tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
-    tp_copy.modified_possibility_dict = tp_copy.possibility_dict
+    tp_copy.modified_possibility_dict = copy.deepcopy(tp_copy.possibility_dict)
     while tp_copy.modified_possibility_dict:
         modification_path, _ = random_choice_from_nested_dict(
             tp_copy.modified_possibility_dict[change_procedure]
@@ -175,7 +176,18 @@ def generate_proc_example(tp, change_procedure, **other_kwargs):
             tp_copy.egc, modification_path, change_procedure, **other_kwargs
         )
         if new_egc is not None:
-            return TrajectoryPoint(egc=new_egc)
+            tp_out = TrajectoryPoint(egc=new_egc)
+            if print_dicts:
+                inv_proc = inverse_procedure[change_procedure]
+                tp_out.init_possibility_info(
+                    change_prob_dict=[inv_proc], **other_kwargs
+                )
+                print("EXAMPLE FOR:", tp_copy, change_procedure)
+                print("NEW TP:", tp_out)
+                print("INVERSE PROC DICT:", tp_out.possibility_dict[inv_proc])
+                print("FORWARD PROC DICT:", tp_copy.possibility_dict[change_procedure])
+                tp_out.possibility_dict = None
+            return tp_out
         tp_copy.delete_mod_path([change_procedure, *modification_path])
     return None
 

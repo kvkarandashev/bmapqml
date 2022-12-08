@@ -40,9 +40,10 @@ randomized_change_params = {
     "nhatoms_range": [1, 9],
     "bond_order_changes": [-1, 1],
     "bond_order_valence_changes": [-2, 2],
+    "max_fragment_num": 1,
 }
 
 
 all_procedure_prop_probability_checks(
-    init_tp, num_attempts=num_attempts, **randomized_change_params
+    init_tp, num_attempts=num_attempts, print_dicts=True, **randomized_change_params
 )
