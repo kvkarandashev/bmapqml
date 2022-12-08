@@ -509,6 +509,7 @@ def valence_change_add_atoms_possibilities(
     return possibilities
 
 
+# ADD RESONANCE STRUCTURE INVARIANCE. SCROLL THROUGH THEM?
 def valence_change_remove_atoms_possibilities(
     egc,
     removed_atom_type,
@@ -564,15 +565,29 @@ def valence_change_remove_atoms_possibilities(
         if exclude_equivalent:
             if atom_equivalent_to_list_member(egc, ha_id, possibilities):
                 continue
-        if ha.possible_valences is None:
-            valence_options = [None]
+
+        res_reg_id = cg.single_atom_resonance_structure(ha_id)
+        if res_reg_id is None:
+            res_struct_ids = [None]
         else:
-            valence_options = range(len(ha.possible_valences))
+            res_struct_ids = list(
+                range(len(cg.resonance_structure_valence_vals[res_reg_id]))
+            )
+
+        saved_all_bond_orders = {}
+        for neigh in cg.neighbors(ha_id):
+            saved_all_bond_orders[neigh] = cg.aa_all_bond_orders(
+                ha_id, neigh, unsorted=True
+            )
 
         found_options = []
 
-        for val_opt in valence_options:
-            if val_opt is None:
+        for res_struct_id in res_struct_ids:
+            if res_reg_id is None:
+                val_opt = None
+            else:
+                val_opt = cg.resonance_structure_valence_vals[res_reg_id][res_struct_id]
+            if ha.possible_valences is None:
                 cur_valence = ha.valence
             else:
                 cur_valence = ha.possible_valences[val_opt]
@@ -594,14 +609,23 @@ def valence_change_remove_atoms_possibilities(
                     continue
                 removed_hatoms = []
                 for neigh in cg.neighbors(ha_id):
-                    if cg.bond_order(ha_id, neigh) != added_bond_order:
-                        continue
                     neigh_ha = cg.hatoms[neigh]
                     if neigh_ha.ncharge != removed_atom_ncharge:
                         continue
                     if cg.num_neighbors(neigh) != 1:
                         continue
-                    if neigh_ha.valence != default_removed_valence:
+                    if neigh_ha.possible_valences is None:
+                        neigh_valence = neigh_ha.valence
+                    else:
+                        neigh_valence = neigh_ha.possible_valences[val_opt]
+                    if neigh_valence != default_removed_valence:
+                        continue
+                    bos = saved_all_bond_orders[neigh]
+                    if (len(bos) == 1) or (res_struct_id is None):
+                        bo = bos[0]
+                    else:
+                        bo = bos[res_struct_id]
+                    if bo != added_bond_order:
                         continue
                     removed_hatoms.append(neigh)
                     if removed_nhatoms == len(removed_hatoms):
@@ -609,11 +633,13 @@ def valence_change_remove_atoms_possibilities(
                 if removed_nhatoms != len(removed_hatoms):
                     continue
                 found_options.append(added_bond_order)
-                poss_tuple = (tuple(removed_hatoms), val_opt)
+                poss_tuple = (tuple(removed_hatoms), res_struct_id)
                 if ha_id in possibilities:
                     possibilities[ha_id].append(poss_tuple)
                 else:
                     possibilities[ha_id] = [poss_tuple]
+            if len(avail_bond_orders) == len(found_options):
+                break
     return possibilities
 
 
@@ -909,7 +935,9 @@ def change_bond_order_valence(
 
 # Procedures for genetic algorithms.
 class FragmentPair:
-    def __init__(self, cg: ChemGraph, membership_vector: list or np.array):
+    def __init__(
+        self, cg: ChemGraph, membership_vector: list or np.array, affected_bonds=None
+    ):
         """
         Pair of fragments formed from one molecule split around the membership vector.
         cg : ChemGraph - the split molecule
@@ -922,9 +950,21 @@ class FragmentPair:
         self.membership_vector = membership_vector
         # Two list of vertices corresponding to the two grahments.
         self.sorted_vertices = sorted_by_membership(self.membership_vector)
-        self.affected_resonance_structures = []
+        self.affected_bonds = affected_bonds
+        self.init_affected_bonds()
+        self.init_affected_status_info()
 
+    def init_affected_bonds(self):
+        if self.affected_bonds is None:
+            self.affected_bonds = []
+            for i in self.sorted_vertices[0]:
+                for neigh in self.chemgraph.neighbors(i):
+                    if self.membership_vector[neigh] != 0:
+                        self.affected_bonds.append((i, neigh))
+
+    def init_affected_status_info(self):
         # Find resonance structures affected by the bond split.
+        self.affected_resonance_structures = []
         resonance_structure_orders_iterators = []
 
         resonance_structure_affected_bonds = {}
@@ -932,38 +972,29 @@ class FragmentPair:
 
         default_bond_order_dict = {}
 
-        for i in self.sorted_vertices[0]:
-            for neigh in self.chemgraph.neighbors(i):
-                if self.membership_vector[neigh] != 0:
-                    bond_tuple = (i, neigh)
-                    bond_stuple = sorted_tuple(*bond_tuple)
-                    if bond_stuple in self.chemgraph.resonance_structure_map:
-                        rsr_id = self.chemgraph.resonance_structure_map[bond_stuple]
-                        if rsr_id not in saved_all_bond_orders:
-                            saved_all_bond_orders[rsr_id] = {}
-                            self.affected_resonance_structures.append(rsr_id)
-                            resonance_structure_orders_iterators.append(
-                                range(
-                                    len(
-                                        self.chemgraph.resonance_structure_orders[
-                                            rsr_id
-                                        ]
-                                    )
-                                )
-                            )
-                        if rsr_id not in resonance_structure_affected_bonds:
-                            resonance_structure_affected_bonds[rsr_id] = []
-                        resonance_structure_affected_bonds[rsr_id].append(bond_tuple)
-                        saved_all_bond_orders[rsr_id][
-                            bond_tuple
-                        ] = self.chemgraph.aa_all_bond_orders(i, neigh, unsorted=True)
+        for bond_tuple in self.affected_bonds:
+            bond_stuple = sorted_tuple(*bond_tuple)
+            if bond_stuple in self.chemgraph.resonance_structure_map:
+                rsr_id = self.chemgraph.resonance_structure_map[bond_stuple]
+                if rsr_id not in saved_all_bond_orders:
+                    saved_all_bond_orders[rsr_id] = {}
+                    self.affected_resonance_structures.append(rsr_id)
+                    resonance_structure_orders_iterators.append(
+                        range(len(self.chemgraph.resonance_structure_orders[rsr_id]))
+                    )
+                if rsr_id not in resonance_structure_affected_bonds:
+                    resonance_structure_affected_bonds[rsr_id] = []
+                resonance_structure_affected_bonds[rsr_id].append(bond_tuple)
+                saved_all_bond_orders[rsr_id][
+                    bond_tuple
+                ] = self.chemgraph.aa_all_bond_orders(*bond_stuple, unsorted=True)
 
-                    else:
-                        cur_bo = self.chemgraph.bond_orders[bond_stuple]
-                        if cur_bo in default_bond_order_dict:
-                            default_bond_order_dict[cur_bo].append(bond_tuple)
-                        else:
-                            default_bond_order_dict[cur_bo] = [bond_tuple]
+            else:
+                cur_bo = self.chemgraph.bond_orders[bond_stuple]
+                if cur_bo in default_bond_order_dict:
+                    default_bond_order_dict[cur_bo].append(bond_tuple)
+                else:
+                    default_bond_order_dict[cur_bo] = [bond_tuple]
 
         if len(resonance_structure_orders_iterators) == 0:
             self.affected_status = [{"bonds": default_bond_order_dict, "valences": {}}]

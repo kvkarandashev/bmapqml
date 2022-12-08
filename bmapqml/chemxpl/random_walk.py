@@ -680,21 +680,20 @@ def randomized_change(
         inv_mod_path = inverse_mod_path(
             new_egc, old_egc, cur_change_procedure, modification_path, **other_kwargs
         )
+        inverse_possibilities, total_inverse_prob = random_choice_from_dict(
+            new_tp.possibilities(),
+            change_prob_dict,
+            get_probability_of=inv_proc,
+        )
+
+        inverse_prob = random_choice_from_nested_dict(
+            inverse_possibilities, inv_poss_dict, get_probability_of=inv_mod_path
+        )
     except KeyError:
         print("NON-INVERTIBLE OPERATION")
         print(old_egc, cur_change_procedure)
         print(new_egc)
         quit()
-
-    inverse_possibilities, total_inverse_prob = random_choice_from_dict(
-        new_tp.possibilities(),
-        change_prob_dict,
-        get_probability_of=inv_proc,
-    )
-
-    inverse_prob = random_choice_from_nested_dict(
-        inverse_possibilities, inv_poss_dict, get_probability_of=inv_mod_path
-    )
 
     total_inverse_prob += inverse_prob
 

@@ -6,6 +6,7 @@ from .random_walk import (
     TrajectoryPoint,
     RandomWalk,
     full_change_list,
+    minimized_change_list,
     random_choice_from_nested_dict,
     egc_change_func,
 )
@@ -61,8 +62,19 @@ def genetic_move_attempt(tp_init, **randomized_change_params):
 trial_attempt_funcs = {TrajectoryPoint: randomized_change, tuple: genetic_move_attempt}
 
 
+def calc_bin_id(x, bin_size=None):
+    if bin_size is None:
+        return 0
+    if np.abs(x) < 0.5 * bin_size:
+        return 0
+    output = int(x / bin_size - 0.5)
+    if x < 0.0:
+        output *= -1
+    return output
+
+
 def check_one_sided_prop_probability(
-    tp_init, tp_trial, num_attempts=10000, **randomized_change_params
+    tp_init, tp_trial, num_attempts=10000, bin_size=None, **randomized_change_params
 ):
     if isinstance(tp_trial, list):
         true_list = tp_trial
@@ -81,12 +93,24 @@ def check_one_sided_prop_probability(
         i = true_list.index(tp_new)
         est_balances[i].append(prob_balance)
         probs[i] += 1.0
+
     output = []
     for prob, est_bal in zip(probs, est_balances):
-        if len(est_bal) == 0:
-            output.append((0.0, 0.0, prob / num_attempts))
-        else:
-            output.append((np.mean(est_bal), np.std(est_bal), prob / num_attempts))
+        trial_prob_arrays = {}
+        observed_probs = {}
+        for bal in est_bal:
+            bin_id = calc_bin_id(bal)
+            if bin_id not in trial_prob_arrays:
+                trial_prob_arrays[bin_id] = []
+                observed_probs[bin_id] = 0.0
+            trial_prob_arrays[bin_id].append(bal)
+            observed_probs[bin_id] += 1.0
+        trial_prob_averages = {}
+        for bin_id, prob_arr in trial_prob_arrays.items():
+            trial_prob_averages[bin_id] = (np.mean(prob_arr), np.std(prob_arr))
+            observed_probs[bin_id] /= num_attempts
+        output.append((trial_prob_averages, observed_probs))
+
     if isinstance(tp_trial, list):
         return output
     else:
@@ -105,44 +129,55 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
     forward_results = check_one_sided_prop_probability(
         tp1, true_list, **one_sided_kwargs
     )
-    for tp2, (forward_est_bal_mean, forward_est_bal_std, forward_est_obs) in zip(
+    for tp2, (forward_trial_prob_averaged, forward_observed_probs) in zip(
         true_list, forward_results
     ):
         print("CASE:", tp2)
         if label_dict is not None:
             print("CASE LABEL:", label_dict[str(tp2)])
-        print("FORWARD:", forward_est_bal_mean, forward_est_bal_std)
         (
-            inverse_est_bal_mean,
-            inverse_est_bal_std,
-            inverse_est_obs,
+            inverse_trial_prob_averaged,
+            inverse_observed_probs,
         ) = check_one_sided_prop_probability(tp2, tp1, **one_sided_kwargs)
-        print("INVERSE:", inverse_est_bal_mean, inverse_est_bal_std)
-        try:
-            print(
-                "OBSERVED:",
-                forward_est_obs,
-                inverse_est_obs,
-                np.log(forward_est_obs / inverse_est_obs),
-            )
-        except FloatingPointError:
-            print("NO INVERSE MOVES OBSERVED, FORWARD PROBABILITY:", forward_est_obs)
+        hist_ids = list(inverse_observed_probs.keys())
+        for forward_hist_id in forward_observed_probs.keys():
+            inverted_fhi = -forward_hist_id
+            if inverted_fhi not in hist_ids:
+                hist_ids.append(inverted_fhi)
+        for hist_id in hist_ids:
+            print("BIN ID:", hist_id)
+            inverted_fhi = -hist_id
+            forward_present = inverted_fhi in forward_trial_prob_averaged
+            inverse_present = hist_id in inverse_trial_prob_averaged
+            if inverse_present:
+                inverse_prob = inverse_observed_probs[hist_id]
+                print("INVERSE:", *inverse_trial_prob_averaged[hist_id], inverse_prob)
+            else:
+                print("NO INVERSE STEPS")
+            if forward_present:
+                forward_prob = forward_observed_probs[hist_id]
+                print("FORWARD:", *forward_trial_prob_averaged[hist_id], forward_prob)
+            else:
+                print("NO FORWARD STEPS")
+            if forward_present and inverse_present:
+                print("OBSERVED RATIO:", np.log(forward_prob / inverse_prob))
 
 
 def generate_proc_example(tp, change_procedure, **other_kwargs):
     tp_copy = copy.deepcopy(tp)
-    change_prob_dict = [change_procedure]
     tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
-    try:
+    tp_copy.modified_possibility_dict = tp_copy.possibility_dict
+    while tp_copy.modified_possibility_dict:
         modification_path, _ = random_choice_from_nested_dict(
-            tp_copy.possibility_dict[change_procedure]
+            tp_copy.modified_possibility_dict[change_procedure]
         )
-    except KeyError:
-        return None
-    new_egc = egc_change_func(
-        tp_copy.egc, modification_path, change_procedure, **other_kwargs
-    )
-    return TrajectoryPoint(egc=new_egc)
+        new_egc = egc_change_func(
+            tp_copy.egc, modification_path, change_procedure, **other_kwargs
+        )
+        if new_egc is not None:
+            return TrajectoryPoint(egc=new_egc)
+        tp_copy.delete_mod_path([change_procedure, *modification_path])
+    return None
 
 
 def generate_proc_sample_dict(
@@ -160,4 +195,6 @@ def generate_proc_sample_dict(
 
 def all_procedure_prop_probability_checks(tp_init, num_attempts=10000, **other_kwargs):
     l, d = generate_proc_sample_dict(tp_init, **other_kwargs)
-    check_prop_probability(tp_init, l, label_dict=d, num_attempts=10000, **other_kwargs)
+    check_prop_probability(
+        tp_init, l, label_dict=d, num_attempts=num_attempts, **other_kwargs
+    )
