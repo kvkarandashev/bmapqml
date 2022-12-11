@@ -164,8 +164,14 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
                 print("OBSERVED RATIO:", np.log(forward_prob / inverse_prob))
 
 
-def generate_proc_example(tp, change_procedure, print_dicts=False, **other_kwargs):
+def generate_proc_example(
+    tp, change_procedure=None, new_tp=None, print_dicts=False, **other_kwargs
+):
     tp_copy = copy.deepcopy(tp)
+    if change_procedure is None:
+        change_list = full_change_list
+    else:
+        change_list = [change_procedure]
     tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
     tp_copy.modified_possibility_dict = copy.deepcopy(tp_copy.possibility_dict)
     while tp_copy.modified_possibility_dict:
@@ -177,6 +183,9 @@ def generate_proc_example(tp, change_procedure, print_dicts=False, **other_kwarg
         )
         if new_egc is not None:
             tp_out = TrajectoryPoint(egc=new_egc)
+            if new_tp is not None:
+                if tp_opt != new_tp:
+                    continue
             if print_dicts:
                 inv_proc = inverse_procedure[change_procedure]
                 tp_out.init_possibility_info(
@@ -198,7 +207,9 @@ def generate_proc_sample_dict(
     l = []
     d = {}
     for change_procedure in change_prob_dict:
-        tp_new = generate_proc_example(tp_init, change_procedure, **other_kwargs)
+        tp_new = generate_proc_example(
+            tp_init, change_procedure=change_procedure, **other_kwargs
+        )
         if tp_new is not None:
             l.append(tp_new)
             d[str(tp_new)] = change_procedure
