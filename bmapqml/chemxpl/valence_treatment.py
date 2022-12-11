@@ -4,7 +4,7 @@
 # TODO I have rewritten the way resonance structures are treated, as a result some subroutines used for representation generation
 # may not work.
 
-import itertools, copy
+import itertools, copy, random
 import numpy as np
 from igraph import Graph
 from igraph.operators import disjoint_union
@@ -17,7 +17,7 @@ from .periodic import (
     coord_num_hybrid,
 )
 from g2s.constants import periodic_table, atom_radii
-
+from .periodic import element_name
 
 try:
     from xyz2mol import int_atom
@@ -203,6 +203,9 @@ class HeavyAtom:
         return HeavyAtom(
             atom_symbol=self.ncharge, valence=self.valence, nhydrogens=self.nhydrogens
         )
+
+    def element_name(self):
+        return element_name[self.ncharge]
 
     # Procedures for ordering.
     def get_comparison_list(self):
@@ -1581,12 +1584,18 @@ def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> tuple:
     return adj_mat, nuclear_charges
 
 
-def str2ChemGraph(input_string: str) -> ChemGraph:
+def str2ChemGraph(input_string: str, shuffle=False) -> ChemGraph:
     """
     Converts a ChemGraph string representation into a ChemGraph object.
     input_string : string to be converted
+    shuffle : whether atom positions should be shuffled, introduced for testing purposes.
     """
     unchecked_adjmat, ncharges = chemgraph_str2unchecked_adjmat_ncharges(input_string)
+    if shuffle:
+        ids = list(range(len(ncharges)))
+        random.shuffle(ids)
+        ncharges = ncharges[ids]
+        unchecked_adjmat = unchecked_adjmat[ids][:, ids]
     return ChemGraph(nuclear_charges=ncharges, adj_mat=unchecked_adjmat)
 
 
