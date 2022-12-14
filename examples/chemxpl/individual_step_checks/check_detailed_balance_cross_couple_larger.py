@@ -5,7 +5,7 @@ from bmapqml.chemxpl.random_walk import TrajectoryPoint, randomized_change
 from bmapqml.chemxpl.test_utils import check_prop_probability
 from bmapqml.chemxpl.modify import randomized_cross_coupling
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
-from bmapqml.chemxpl.minimized_functions.toy_problems import Diatomic_barrier
+from bmapqml.chemxpl.minimized_functions.toy_problems import ChargeSum
 
 random.seed(1)
 np.random.seed(1)
@@ -26,8 +26,14 @@ new_pairs = []
 
 attempts_to_generate = 40000
 
+randomized_change_params = {
+    "nhatoms_range": nhatoms_range,
+    "cross_coupling_smallest_exchange_size": 2,
+}
+
+
 for _ in range(attempts_to_generate):
-    new_cg_pair, prob_bal = randomized_cross_coupling(cgs, nhatoms_range=nhatoms_range)
+    new_cg_pair, _ = randomized_cross_coupling(cgs, **randomized_change_params)
     if new_cg_pair is None:
         continue
     tnew_pair = tuple([TrajectoryPoint(cg=cg) for cg in new_cg_pair])
@@ -37,18 +43,15 @@ for _ in range(attempts_to_generate):
             break
 
 
-minimized_function = Diatomic_barrier(possible_nuclear_charges=[9, 17])
+minimized_function = ChargeSum()
 
 ln2 = np.log(2.0)
 
-# betas = [ln2, ln2 / 2.0]
-betas = [ln2, ln2]
+betas = [ln2, ln2 / 2.0]
+# betas = [ln2, ln2]
 
-num_attempts = 10000
+num_attempts = 40000
 
-randomized_change_params = {
-    "nhatoms_range": nhatoms_range,
-}
 
 print("BETAS:", betas)
 check_prop_probability(
@@ -58,4 +61,5 @@ check_prop_probability(
     num_attempts=num_attempts,
     min_function=minimized_function,
     betas=betas,
+    bin_size=0.01,
 )

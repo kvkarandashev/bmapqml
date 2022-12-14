@@ -2,7 +2,7 @@
 # Used to verify that the ordering part of the trial genetic step works correctly.
 import random
 import numpy as np
-from bmapqml.chemxpl.random_walk import TrajectoryPoint, randomized_change
+from bmapqml.chemxpl.random_walk import TrajectoryPoint
 from bmapqml.chemxpl.test_utils import check_prop_probability
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.chemxpl.minimized_functions.toy_problems import Diatomic_barrier
@@ -34,6 +34,7 @@ randomized_change_params = {
     "final_nhatoms_range": [1, 4],
     "possible_elements": ["F", "Cl"],
     "forbidden_bonds": None,
+    "cross_coupling_smallest_exchange_size": 0,
 }
 
 for betas in betas_list:

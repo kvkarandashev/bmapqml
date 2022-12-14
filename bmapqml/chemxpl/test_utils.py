@@ -6,7 +6,6 @@ from .random_walk import (
     TrajectoryPoint,
     RandomWalk,
     full_change_list,
-    minimized_change_list,
     random_choice_from_nested_dict,
     egc_change_func,
     inverse_procedure,
@@ -69,7 +68,7 @@ def calc_bin_id(x, bin_size=None):
         return 0
     if np.abs(x) < 0.5 * bin_size:
         return 0
-    output = int(x / bin_size - 0.5)
+    output = int(np.abs(x) / bin_size - 0.5)
     if x < 0.0:
         output *= -1
     return output
@@ -85,7 +84,6 @@ def check_one_sided_prop_probability(
     attempt_func = trial_attempt_funcs[type(tp_init)]
 
     est_balances = [[] for _ in true_list]
-    probs = np.zeros((len(true_list),))
     for _ in range(num_attempts):
         tp_new, prob_balance = attempt_func(tp_init, **randomized_change_params)
         if tp_new is None:
@@ -94,10 +92,9 @@ def check_one_sided_prop_probability(
             continue
         i = true_list.index(tp_new)
         est_balances[i].append(prob_balance)
-        probs[i] += 1.0
 
     output = []
-    for prob, est_bal in zip(probs, est_balances):
+    for est_bal in est_balances:
         trial_prob_arrays = {}
         observed_probs = {}
         for bal in est_bal:
@@ -119,7 +116,14 @@ def check_one_sided_prop_probability(
         return output[0]
 
 
-def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
+def log_ratio_rmse(num_attempts, *probs):
+    sqdev = sum(1.0 / prob - 1.0 for prob in probs)
+    return np.sqrt(sqdev / num_attempts)
+
+
+def check_prop_probability(
+    tp1, tp2_list, label_dict=None, num_attempts=10000, **one_sided_kwargs
+):
     """
     Check that simple MC moves satisfy detailed balance for a pair of trajectory point objects.
     """
@@ -129,7 +133,7 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
         true_list = [tp2_list]
     print("INITIAL MOLECULE:", tp1)
     forward_results = check_one_sided_prop_probability(
-        tp1, true_list, **one_sided_kwargs
+        tp1, true_list, num_attempts=num_attempts, **one_sided_kwargs
     )
     for tp2, (forward_trial_prob_averaged, forward_observed_probs) in zip(
         true_list, forward_results
@@ -140,7 +144,9 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
         (
             inverse_trial_prob_averaged,
             inverse_observed_probs,
-        ) = check_one_sided_prop_probability(tp2, tp1, **one_sided_kwargs)
+        ) = check_one_sided_prop_probability(
+            tp2, tp1, num_attempts=num_attempts, **one_sided_kwargs
+        )
         hist_ids = list(inverse_observed_probs.keys())
         for forward_hist_id in forward_observed_probs.keys():
             inverted_fhi = -forward_hist_id
@@ -157,25 +163,30 @@ def check_prop_probability(tp1, tp2_list, label_dict=None, **one_sided_kwargs):
             else:
                 print("NO INVERSE STEPS")
             if forward_present:
-                forward_prob = forward_observed_probs[hist_id]
-                print("FORWARD:", *forward_trial_prob_averaged[hist_id], forward_prob)
+                forward_prob = forward_observed_probs[inverted_fhi]
+                print(
+                    "FORWARD:", *forward_trial_prob_averaged[inverted_fhi], forward_prob
+                )
             else:
                 print("NO FORWARD STEPS")
             if forward_present and inverse_present:
-                print("OBSERVED RATIO:", np.log(forward_prob / inverse_prob))
+                print(
+                    "OBSERVED RATIO:",
+                    np.log(forward_prob / inverse_prob),
+                    "pm",
+                    log_ratio_rmse(num_attempts, forward_prob, inverse_prob),
+                )
 
 
 def generate_proc_example(
-    tp, change_procedure=None, new_tp=None, print_dicts=False, **other_kwargs
+    tp, change_procedure, new_tp=None, print_dicts=False, **other_kwargs
 ):
     tp_copy = copy.deepcopy(tp)
-    if change_procedure is None:
-        change_list = full_change_list
-    else:
-        change_list = [change_procedure]
+    tp_copy.possibility_dict = None
     tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
     tp_copy.modified_possibility_dict = copy.deepcopy(tp_copy.possibility_dict)
     while tp_copy.modified_possibility_dict:
+        print("AAAA", tp_copy.modified_possibility_dict)
         modification_path, _ = random_choice_from_nested_dict(
             tp_copy.modified_possibility_dict[change_procedure]
         )
@@ -185,7 +196,7 @@ def generate_proc_example(
         if new_egc is not None:
             tp_out = TrajectoryPoint(egc=new_egc)
             if new_tp is not None:
-                if tp_opt != new_tp:
+                if tp_out != new_tp:
                     continue
             if print_dicts:
                 inv_proc = inverse_procedure[change_procedure]
@@ -208,9 +219,7 @@ def generate_proc_sample_dict(
     l = []
     d = {}
     for change_procedure in change_prob_dict:
-        tp_new = generate_proc_example(
-            tp_init, change_procedure=change_procedure, **other_kwargs
-        )
+        tp_new = generate_proc_example(tp_init, change_procedure, **other_kwargs)
         if tp_new is not None:
             l.append(tp_new)
             d[str(tp_new)] = change_procedure

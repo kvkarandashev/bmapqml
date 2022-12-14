@@ -270,48 +270,73 @@ def valid_cross_connection(cg1, cg2, tlist1, tlist2, bo, forbidden_bonds=None):
 
 
 class BondOrderSortedTuplePermutations:
-    def __init__(self, bo_tuple_dict, other_tuples, cg, other_cg, forbidden_bonds=None):
+    def __init__(self, status1, status2, cg1, cg2, forbidden_bonds=None):
+        """
+        Generates permutations of tuples grouped by bond orders making sure no forbidden bonds are created.
+        """
+
+        # Check that the two dictionnaries are of similar dimensionality.
+        self.non_empty = False
+        self.bo_tuple_dict1 = status1["bonds"]
+        self.bo_tuple_dict2 = status2["bonds"]
+        if len(self.bo_tuple_dict1) != len(self.bo_tuple_dict2):
+            return
+        for bo1, bo_tuples1 in self.bo_tuple_dict1.items():
+            if bo1 not in self.bo_tuple_dict2:
+                return
+            if len(self.bo_tuple_dict2[bo1]) != len(bo_tuples1):
+                return
+        self.non_empty = True
+
+        # Initialize necessary quantities.
+        self.cg1 = cg1
+        self.cg2 = cg2
+        self.sorted_bos = sorted(self.bo_tuple_dict1.keys())
+
         self.forbidden_bonds = forbidden_bonds
-        self.cg = cg
-        self.other_cg = other_cg
-        self.other_tuples = other_tuples
-        self.sorted_bos = sorted(bo_tuple_dict.keys())
-        self.bo_ubounds = np.zeros((len(self.sorted_bos),), dtype=int)
         iterators = []
-        for i, bo in enumerate(self.sorted_bos):
-            bo_tuples = bo_tuple_dict[bo]
-            self.bo_ubounds[i] = self.bo_ubounds[i - 1] + len(bo_tuples)
-            iterators.append(itertools.permutations(bo_tuples))
+        for bo in self.sorted_bos:
+            bo_tuples1 = self.bo_tuple_dict1[bo]
+            iterators.append(itertools.permutations(bo_tuples1))
         self.iterator_product = itertools.product(*iterators)
 
+    def check_non_empty(self):
+        if not self.non_empty:
+            return False
+        try:
+            _ = self.__next__()
+            return True
+        except StopIteration:
+            return False
+
     def __iter__(self):
-        return self
+        if self.non_empty:
+            return self
+        else:
+            return iter(())
 
     def __next__(self):
         while True:
             finished = True
-            output = []
-            for k_id, (t, bo) in enumerate(
-                zip(self.iterator_product.__next__(), self.sorted_bos)
-            ):
-                if k_id == 0:
-                    lbound = 0
-                else:
-                    lbound = self.bo_ubounds[k_id - 1]
+            tuples1 = []
+            tuples2 = []
+            for t1, bo in zip(self.iterator_product.__next__(), self.sorted_bos):
+                t2 = self.bo_tuple_dict2[bo]
                 # Check swap validity
                 if not valid_cross_connection(
-                    self.cg,
-                    self.other_cg,
-                    t,
-                    self.other_tuples[lbound : self.bo_ubounds[k_id]],
+                    self.cg1,
+                    self.cg2,
+                    t1,
+                    t2,
                     bo,
                     forbidden_bonds=self.forbidden_bonds,
                 ):
                     finished = False
                     break
-                output += list(t)
+                tuples1 += list(t1)
+                tuples2 += list(t2)
             if finished:
-                return output
+                return tuples1, tuples2
 
 
 def cross_couple_outcomes(cg_pair, chosen_sizes, origin_points, forbidden_bonds=None):
@@ -325,14 +350,11 @@ def cross_couple_outcomes(cg_pair, chosen_sizes, origin_points, forbidden_bonds=
     new_chemgraph_pairs = []
     new_origin_points = None
     for status_id1, status1 in enumerate(frag1.affected_status):
+        # WE DON'T KNOW WHETHER STATUSES MATCH???
         tuples1 = bond_order_sorted_tuples(status1["bonds"])
         for status_id2, status2 in enumerate(frag2.affected_status):
-            for tuples2 in BondOrderSortedTuplePermutations(
-                status2["bonds"],
-                tuples1,
-                cg_pair[1],
-                cg_pair[0],
-                forbidden_bonds=forbidden_bonds,
+            for tuples1, tuples2 in BondOrderSortedTuplePermutations(
+                status1, status2, *cg_pair, forbidden_bonds=forbidden_bonds
             ):
                 new_chemgraph_1, new_membership_vector_1 = frag1.cross_couple(
                     frag2, tuples1, tuples2, status_id1, status_id2
@@ -394,34 +416,14 @@ def frag_size_status_list(cg, origin_point, max_num_affected_bonds=3):
     return output
 
 
-def frag_status_match(cg1, cg2, status1, status2, forbidden_bonds=None):
-    bonds1 = status1["bonds"]
-    bonds2 = status2["bonds"]
-    if len(bonds1) != len(bonds2):
-        return False
-    for bo1 in bonds1:
-        if bo1 not in bonds2:
-            return False
-    for bo1, tlist1 in bonds1.items():
-        if len(tlist1) != len(bonds2[bo1]):
-            return False
-    for bo1, tlist1 in bonds1.items():
-        for perm_tlist1 in itertools.permutations(tlist1):
-            if valid_cross_connection(
-                cg1, cg2, perm_tlist1, bonds2[bo1], bo1, forbidden_bonds=forbidden_bonds
-            ):
-                return True
-    return False
-
-
 def contains_matching_status(
     cg1, cg2, status_list1, status_list2, forbidden_bonds=None
 ):
     for status1 in status_list1:
         for status2 in status_list2:
-            if frag_status_match(
-                cg1, cg2, status1, status2, forbidden_bonds=forbidden_bonds
-            ):
+            if BondOrderSortedTuplePermutations(
+                status1, status2, cg1, cg2, forbidden_bonds=forbidden_bonds
+            ).check_non_empty():
                 return True
     return False
 
@@ -526,7 +528,7 @@ def randomized_cross_coupling(
     tot_choice_prob_ratio *= len(inverse_mfssl)
 
     inverse_cg_pairs, _ = cross_couple_outcomes(
-        new_cg_pair, chosen_sizes, new_origin_points
+        new_cg_pair, chosen_sizes, new_origin_points, forbidden_bonds=forbidden_bonds
     )
     tot_choice_prob_ratio *= len(inverse_cg_pairs)
 

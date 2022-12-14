@@ -77,6 +77,7 @@ rw = RandomWalk(
     restart_file="restart.pkl",
     linear_storage=True,
     make_restart_frequency=1000,
+    debug=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
