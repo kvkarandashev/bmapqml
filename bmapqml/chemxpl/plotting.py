@@ -259,7 +259,7 @@ class Analyze:
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
-        sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.Greys)
+        sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.viridis)
         plt.xlabel(self.quanity + " (a.u.)", fontsize=21)
         plt.ylabel(
             "Gap" + " (a.u.)",
@@ -285,7 +285,7 @@ class Analyze:
         if hline is not None:
             plt.axhline(y=hline, color="red", linestyle="--", linewidth=2, label="Gap Cnstr.")
         if vline is not None:
-            plt.axvline(x=vline, color="navy", linestyle="--", ymin=0,ymax=0.5, linewidth=2, label="Best Ref.")
+            plt.axvline(x=vline, color="navy", linestyle="--", label="Best Ref.")
 
 
         #ax1.set_xlim(0, 6.0)
@@ -295,7 +295,12 @@ class Analyze:
         
         ax1.axes.xaxis.set_visible(True)
         ax1.axes.yaxis.set_visible(True)
-        plt.legend(loc="upper right", fontsize=21)
+
+        if self.quanity == "dipole":
+            plt.legend(loc="upper right", fontsize=21)
+        else:
+            plt.legend(loc="upper left", fontsize=21)
+
         ax1.grid(True, linestyle='--', linewidth=0.5, color='grey')
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
