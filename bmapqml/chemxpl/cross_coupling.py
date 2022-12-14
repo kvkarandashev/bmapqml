@@ -4,6 +4,7 @@ from .valence_treatment import (
     sorted_by_membership,
     sorted_tuple,
     connection_forbidden,
+    max_bo,
 )
 import numpy as np
 import random, bisect, itertools
@@ -11,33 +12,67 @@ from igraph.operators import disjoint_union
 from copy import deepcopy
 
 
+class Frag2FragMapping:
+    def __init__(self, new_membership_vector, old_membership_vector, frag_id=0):
+        self.old_frag_ids = np.where(old_membership_vector == frag_id)[0]
+        self.new_frag_ids = np.where(new_membership_vector == frag_id)[0]
+
+    def __call__(self, old_id):
+        inside_id = bisect.bisect_left(self.old_frag_ids, old_id)
+        return self.new_frag_ids[inside_id]
+
+
 class FragmentPair:
     def __init__(
-        self, cg: ChemGraph, membership_vector: list or np.array, affected_bonds=None
+        self,
+        cg: ChemGraph,
+        origin_point: int,
+        neighborhood_size: int = 0,
     ):
         """
         Pair of fragments formed from one molecule split around the membership vector.
         cg : ChemGraph - the split molecule
-        membership_vector : list or NumPy array - list of integer values indicating which fragment a given HeavyAtom belongs to.
+        origin_point : int - origin point of the "core" fragment
+        neighborhood_size : int - distance between origin point and nodes included into the "core" fragment
         """
         self.chemgraph = cg
 
         self.chemgraph.init_resonance_structures()
 
-        self.membership_vector = membership_vector
+        self.origin_point = origin_point
+        self.neighborhood_size = neighborhood_size
+
+        self.membership_vector = np.ones((cg.nhatoms()), dtype=int)
+        self.membership_vector[origin_point] = 0
+
+        self.affected_bonds = [
+            (self.origin_point, neigh)
+            for neigh in self.chemgraph.neighbors(origin_point)
+        ]
+
+        while self.core_size() < neighborhood_size:
+            self.expand_core(update_affected_status=False)
+
         # Two list of vertices corresponding to the two grahments.
-        self.sorted_vertices = sorted_by_membership(self.membership_vector)
-        self.affected_bonds = affected_bonds
-        self.init_affected_bonds()
+        self.sorted_vertices = None
         self.init_affected_status_info()
 
-    def init_affected_bonds(self):
-        if self.affected_bonds is None:
-            self.affected_bonds = []
-            for i in self.sorted_vertices[0]:
-                for neigh in self.chemgraph.neighbors(i):
-                    if self.membership_vector[neigh] != 0:
-                        self.affected_bonds.append((i, neigh))
+    def expand_core(self, update_affected_status=True):
+        for old_ab in self.affected_bonds:
+            new_id = old_ab[1]
+            if self.membership_vector[new_id] == 1:
+                self.membership_vector[new_id] = -1  # mark border
+        self.affected_bonds = []
+        for border_id in np.where(self.membership_vector == -1)[0]:
+            self.membership_vector[border_id] = 0
+            for neigh in self.chemgraph.neighbors(border_id):
+                if self.membership_vector[neigh] == 1:
+                    self.affected_bonds.append((border_id, neigh))
+        if update_affected_status:
+            self.init_affected_status_info()
+
+    def core_size(self):
+        return np.sum(self.membership_vector == 0)
 
     def init_affected_status_info(self):
         # Find resonance structures affected by the bond split.
@@ -105,15 +140,32 @@ class FragmentPair:
                 if new_status not in self.affected_status:
                     self.affected_status.append(new_status)
 
+    def get_sorted_vertices(self, frag_id):
+        if self.sorted_vertices is None:
+            self.sorted_vertices = sorted_by_membership(self.membership_vector)
+        return self.sorted_vertices[frag_id]
+
     def adjusted_ha_valences(self, status_id, membership_id):
         vals = self.affected_status[status_id]["valences"]
         output = []
-        for i in self.sorted_vertices[membership_id]:
+        for i in self.get_sorted_vertices(membership_id):
             if i in vals:
                 output.append(vals[i])
             else:
                 output.append(self.chemgraph.hatoms[i].valence)
         return output
+
+    def get_frag_size(self, frag_id):
+        return len(self.get_sorted_vertices(frag_id))
+
+    def get_hatoms_sublist(self, frag_id):
+        return [
+            self.chemgraph.hatoms[ha_id].mincopy()
+            for ha_id in self.get_sorted_vertices(frag_id)
+        ]
+
+    def get_frag_subgraph(self, frag_id):
+        return self.chemgraph.graph.subgraph(self.get_sorted_vertices(frag_id))
 
     def cross_couple(
         self,
@@ -122,7 +174,6 @@ class FragmentPair:
         switched_bond_tuples_other: int,
         affected_status_id_self: int,
         affected_status_id_other: int,
-        forbidden_bonds=None,
     ):
         """
         Couple to another fragment.
@@ -130,55 +181,59 @@ class FragmentPair:
         affected_bonds_id_self, affected_bonds_id_other - which sets of affected bond orders the fragments are initialized with.
         """
 
-        remainder_subgraph = self.chemgraph.graph.subgraph(self.sorted_vertices[0])
-        other_frag_subgraph = other_fp.chemgraph.graph.subgraph(
-            other_fp.sorted_vertices[1]
-        )
+        frag_id_self = 0
+        frag_id_other = 1
 
-        nhatoms1 = len(self.sorted_vertices[0])
-        nhatoms2 = len(other_fp.sorted_vertices[1])
+        nhatoms_self = self.get_frag_size(frag_id_self)
+        nhatoms_other = other_fp.get_frag_size(frag_id_other)
 
         new_membership_vector = np.append(
-            np.zeros((nhatoms1,), dtype=int), np.ones((nhatoms2,), dtype=int)
+            np.zeros((nhatoms_self,), dtype=int), np.ones((nhatoms_other,), dtype=int)
         )
 
-        new_hatoms = [
-            self.chemgraph.hatoms[ha_id].mincopy() for ha_id in self.sorted_vertices[0]
-        ] + [
-            other_fp.chemgraph.hatoms[ha_id].mincopy()
-            for ha_id in other_fp.sorted_vertices[1]
-        ]
+        self_to_new = Frag2FragMapping(
+            new_membership_vector, self.membership_vector, frag_id=frag_id_self
+        )
+        other_to_new = Frag2FragMapping(
+            new_membership_vector, other_fp.membership_vector, frag_id=frag_id_other
+        )
 
-        new_hatoms_old_valences = self.adjusted_ha_valences(
-            affected_status_id_self, 0
-        ) + other_fp.adjusted_ha_valences(affected_status_id_other, 1)
-
-        new_graph = disjoint_union([remainder_subgraph, other_frag_subgraph])
-
+        # Check which bonds need to be created.
         created_bonds = []
 
-        for btuple1, btuple2 in zip(
+        for btuple_self, btuple_other in zip(
             switched_bond_tuples_self, switched_bond_tuples_other
         ):
-            internal_id1 = self.sorted_vertices[0].index(btuple1[0])
-            internal_id2 = other_fp.sorted_vertices[1].index(btuple2[1]) + nhatoms1
+            internal_id1 = self_to_new(btuple_self[0])
+            internal_id2 = other_to_new(btuple_other[1])
 
             new_bond_tuple = (internal_id1, internal_id2)
             if new_bond_tuple in created_bonds:
-                return None, None  # from detailed balance concerns
+                # This is done to prevent non-invertible formation of a bond of non-unity order.
+                return None, None
             else:
                 created_bonds.append(new_bond_tuple)
 
+        # "Sew" two graphs togther with the created bonds.
+        new_graph = disjoint_union(
+            [
+                self.get_frag_subgraph(frag_id_self),
+                other_fp.get_frag_subgraph(frag_id_other),
+            ]
+        )
+
+        for new_bond_tuple in created_bonds:
             new_graph.add_edge(*new_bond_tuple)
-            if forbidden_bonds is not None:
-                if connection_forbidden(
-                    new_hatoms[new_bond_tuple[0]].ncharge,
-                    new_hatoms[new_bond_tuple[1]].ncharge,
-                    forbidden_bonds,
-                ):
-                    return None, None
+
+        new_hatoms = self.get_hatoms_sublist(
+            frag_id_self
+        ) + other_fp.get_hatoms_sublist(frag_id_other)
 
         new_ChemGraph = ChemGraph(hatoms=new_hatoms, graph=new_graph)
+
+        new_hatoms_old_valences = self.adjusted_ha_valences(
+            affected_status_id_self, frag_id_self
+        ) + other_fp.adjusted_ha_valences(affected_status_id_other, frag_id_other)
 
         # Lastly, check that re-initialization does not decrease the bond order.
         if new_ChemGraph.valence_config_valid(new_hatoms_old_valences):
@@ -187,262 +242,300 @@ class FragmentPair:
             return None, None
 
 
-def bond_dicts_match(frag_bond_dict1: dict, frag_bond_dict2: dict):
+def possible_fragment_size_bounds(cg):
     """
-    Check that two results of current_affected_bonds call in FragmentPair correspond to fragments that can be cross-coupled.
+    Possible fragment sizes for a ChemGraph objects satisfying enforced constraints. Cut compared to the previous versions for the sake of detailed balance simplicity.
     """
-    if len(frag_bond_dict1) != len(frag_bond_dict2):
-        return False
-    for key1, positions1 in frag_bond_dict1.items():
-        if key1 not in frag_bond_dict2:
+    return [1, cg.nhatoms() - 1]
+
+
+def bond_order_sorted_tuples(bo_tuple_dict):
+    sorted_keys = sorted(bo_tuple_dict.keys())
+    output = []
+    for sk in sorted_keys:
+        output += bo_tuple_dict[sk]
+    return output
+
+
+def valid_cross_connection(cg1, cg2, tlist1, tlist2, bo, forbidden_bonds=None):
+    for t1, t2 in zip(tlist1, tlist2):
+        for new_bond in [(t1[0], t2[1]), (t1[1], t2[0])]:
+            ha1 = cg1.hatoms[new_bond[0]]
+            ha2 = cg2.hatoms[new_bond[1]]
+            if bo > max_bo(ha1, ha2):
+                return False
+            if connection_forbidden(ha1.ncharge, ha2.ncharge, forbidden_bonds):
+                return False
+    return True
+
+
+class BondOrderSortedTuplePermutations:
+    def __init__(self, bo_tuple_dict, other_tuples, cg, other_cg, forbidden_bonds=None):
+        self.forbidden_bonds = forbidden_bonds
+        self.cg = cg
+        self.other_cg = other_cg
+        self.other_tuples = other_tuples
+        self.sorted_bos = sorted(bo_tuple_dict.keys())
+        self.bo_ubounds = np.zeros((len(self.sorted_bos),), dtype=int)
+        iterators = []
+        for i, bo in enumerate(self.sorted_bos):
+            bo_tuples = bo_tuple_dict[bo]
+            self.bo_ubounds[i] = self.bo_ubounds[i - 1] + len(bo_tuples)
+            iterators.append(itertools.permutations(bo_tuples))
+        self.iterator_product = itertools.product(*iterators)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            finished = True
+            output = []
+            for k_id, (t, bo) in enumerate(
+                zip(self.iterator_product.__next__(), self.sorted_bos)
+            ):
+                if k_id == 0:
+                    lbound = 0
+                else:
+                    lbound = self.bo_ubounds[k_id - 1]
+                # Check swap validity
+                if not valid_cross_connection(
+                    self.cg,
+                    self.other_cg,
+                    t,
+                    self.other_tuples[lbound : self.bo_ubounds[k_id]],
+                    bo,
+                    forbidden_bonds=self.forbidden_bonds,
+                ):
+                    finished = False
+                    break
+                output += list(t)
+            if finished:
+                return output
+
+
+def cross_couple_outcomes(cg_pair, chosen_sizes, origin_points, forbidden_bonds=None):
+    frag1 = FragmentPair(
+        cg_pair[0], origin_points[0], neighborhood_size=chosen_sizes[0]
+    )
+    frag2 = FragmentPair(
+        cg_pair[1], origin_points[1], neighborhood_size=chosen_sizes[1]
+    )
+
+    new_chemgraph_pairs = []
+    new_origin_points = None
+    for status_id1, status1 in enumerate(frag1.affected_status):
+        tuples1 = bond_order_sorted_tuples(status1["bonds"])
+        for status_id2, status2 in enumerate(frag2.affected_status):
+            for tuples2 in BondOrderSortedTuplePermutations(
+                status2["bonds"],
+                tuples1,
+                cg_pair[1],
+                cg_pair[0],
+                forbidden_bonds=forbidden_bonds,
+            ):
+                new_chemgraph_1, new_membership_vector_1 = frag1.cross_couple(
+                    frag2, tuples1, tuples2, status_id1, status_id2
+                )
+                new_chemgraph_2, new_membership_vector_2 = frag2.cross_couple(
+                    frag1, tuples2, tuples1, status_id2, status_id1
+                )
+                if (new_membership_vector_1 is None) or (
+                    new_membership_vector_2 is None
+                ):
+                    continue
+                if new_origin_points is None:
+                    map1 = Frag2FragMapping(
+                        new_membership_vector_1, frag1.membership_vector, frag_id=0
+                    )
+                    map2 = Frag2FragMapping(
+                        new_membership_vector_2, frag2.membership_vector, frag_id=0
+                    )
+                    new_origin_points = (
+                        map1(frag1.origin_point),
+                        map2(frag2.origin_point),
+                    )
+                new_pair = (new_chemgraph_1, new_chemgraph_2)
+                if new_pair not in new_chemgraph_pairs:
+                    new_chemgraph_pairs.append(new_pair)
+    if new_origin_points is None:
+        return None, None
+    else:
+        return new_chemgraph_pairs, new_origin_points
+
+
+def frag_swap_size_compliant(
+    cg, frag_size_leaving, frag_size_adding, nhatoms_range=None
+):
+    """
+    Check whether swapping core fragments of defined status leaves a GraphCompound satisfying number of nodes constraint.
+    """
+    if nhatoms_range is not None:
+        new_size = cg.nhatoms() - frag_size_leaving + frag_size_adding
+        if new_size > nhatoms_range[1]:
             return False
-        if len(positions1) != len(frag_bond_dict2[key1]):
+        if new_size < nhatoms_range[0]:
             return False
     return True
 
 
-def matching_dict_tuples(fp1: FragmentPair, fp2: FragmentPair):
+def frag_size_status_list(cg, origin_point, max_num_affected_bonds=3):
     """
-    Check which valence configurations of FragmentPair instances can be used for cross-coupling. List of tuples of their indices is returned as output.
+    Map all possible ways a ChemGraph can be broken into FragmentPair satisfying input constraints.
     """
+    frag_size_bounds = possible_fragment_size_bounds(cg)
     output = []
-    for as1, affected_status1 in enumerate(fp1.affected_status):
-        for as2, affected_status2 in enumerate(fp2.affected_status):
-            if bond_dicts_match(affected_status1["bonds"], affected_status2["bonds"]):
-                output.append((as1, as2))
+    temp_fp = FragmentPair(cg, origin_point)
+    while temp_fp.core_size() <= frag_size_bounds[1]:
+        if temp_fp.core_size() >= frag_size_bounds[0]:
+            if len(temp_fp.affected_bonds) <= max_num_affected_bonds:
+                output.append((temp_fp.core_size(), temp_fp.affected_status))
+        temp_fp.expand_core()
     return output
 
 
-def random_connect_fragments(
-    fp_pair: tuple, connection_tuple: tuple, forbidden_bonds: list or None = None
+def frag_status_match(cg1, cg2, status1, status2, forbidden_bonds=None):
+    bonds1 = status1["bonds"]
+    bonds2 = status2["bonds"]
+    if len(bonds1) != len(bonds2):
+        return False
+    for bo1 in bonds1:
+        if bo1 not in bonds2:
+            return False
+    for bo1, tlist1 in bonds1.items():
+        if len(tlist1) != len(bonds2[bo1]):
+            return False
+    for bo1, tlist1 in bonds1.items():
+        for perm_tlist1 in itertools.permutations(tlist1):
+            if valid_cross_connection(
+                cg1, cg2, perm_tlist1, bonds2[bo1], bo1, forbidden_bonds=forbidden_bonds
+            ):
+                return True
+    return False
+
+
+def contains_matching_status(
+    cg1, cg2, status_list1, status_list2, forbidden_bonds=None
 ):
-    """
-    Randonly reconnect two FragmentPair objects into new ChemGraph objects.
-    """
+    for status1 in status_list1:
+        for status2 in status_list2:
+            if frag_status_match(
+                cg1, cg2, status1, status2, forbidden_bonds=forbidden_bonds
+            ):
+                return True
+    return False
 
-    switched_bond_tuples = [[], []]
 
-    bond_dicts = [
-        fp.affected_status[affected_bonds_id]["bonds"]
-        for fp, affected_bonds_id in zip(fp_pair, connection_tuple)
+def matching_frag_size_status_list(
+    cg_pair,
+    origin_points,
+    nhatoms_range=None,
+    forbidden_bonds=None,
+    smallest_exchange_size=2,
+    **frag_size_status_list_kwargs,
+):
+    unfiltered_frag_size_status_lists = [
+        frag_size_status_list(cg, origin_point, **frag_size_status_list_kwargs)
+        for cg, origin_point in zip(cg_pair, origin_points)
     ]
-
-    for key, l0 in bond_dicts[0].items():
-        l1 = bond_dicts[1][key]
-        random.shuffle(l1)
-        switched_bond_tuples[0] += l0
-        switched_bond_tuples[1] += l1
-
-    new_mols = []
-    new_membership_vectors = []
-    for self_id in [0, 1]:
-        other_id = 1 - self_id
-        cur_new_mol, cur_new_membership_vector = fp_pair[self_id].cross_couple(
-            fp_pair[other_id],
-            switched_bond_tuples[self_id],
-            switched_bond_tuples[other_id],
-            connection_tuple[self_id],
-            connection_tuple[other_id],
-            forbidden_bonds=forbidden_bonds,
-        )
-        new_mols.append(cur_new_mol)
-        new_membership_vectors.append(cur_new_membership_vector)
-
-    return new_mols, new_membership_vectors
-
-
-def possible_fragment_size_bounds(
-    cg, fragment_ratio_range=[0.0, 1.0], fragment_size_range=None
-):
-    """
-    Possible fragment sizes for a ChemGraph objects satisfying enforced constraints.
-    """
-    if fragment_ratio_range is None:
-        bounds = deepcopy(fragment_size_range)
-    else:
-        bounds = [int(r * cg.nhatoms()) for r in fragment_ratio_range]
-    if bounds[1] >= cg.nhatoms():
-        bounds[1] = cg.nhatoms() - 1
-    for j in range(2):
-        if bounds[j] == 0:
-            bounds[j] = 1
-    return bounds
-
-
-# TODO: is there an analytic way to randomly choose a size tuple that does not involve all of this?
-class PossiblePairFragSizesGenerator:
-    def __init__(
-        self, cg1, cg2, nhatoms_range=None, **possible_fragment_size_bounds_kwargs
+    output = []
+    for (frag_size1, status_list1), (frag_size2, status_list2) in itertools.product(
+        *unfiltered_frag_size_status_lists
     ):
-        self.frag_size_bounds1 = possible_fragment_size_bounds(
-            cg1, **possible_fragment_size_bounds_kwargs
-        )
-        self.frag_size_bounds2 = possible_fragment_size_bounds(
-            cg2, **possible_fragment_size_bounds_kwargs
-        )
-        if nhatoms_range is None:
-            min_diff = None
-            max_diff = None
-        else:
-            min_diff = max(
-                nhatoms_range[0] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[1]
+        if (frag_size1 < smallest_exchange_size) and (
+            frag_size2 < smallest_exchange_size
+        ):
+            continue
+        if (frag_size1 > cg_pair[0].nhatoms() - smallest_exchange_size) and (
+            frag_size2 > cg_pair[1].nhatoms() - smallest_exchange_size
+        ):
+            continue
+        if not (
+            frag_swap_size_compliant(
+                cg_pair[0], frag_size1, frag_size2, nhatoms_range=nhatoms_range
             )
-            max_diff = min(
-                nhatoms_range[1] - cg1.nhatoms(), cg2.nhatoms() - nhatoms_range[0]
+            and frag_swap_size_compliant(
+                cg_pair[1], frag_size2, frag_size1, nhatoms_range=nhatoms_range
             )
-
-        num_frag_size1_poss = self.frag_size_bounds1[1] - self.frag_size_bounds1[0] + 1
-
-        self.frag_size2_poss_numbers = np.zeros(num_frag_size1_poss, dtype=int)
-        self.frag_size2_mins = np.zeros(num_frag_size1_poss, dtype=int)
-
-        for i in range(num_frag_size1_poss):
-            frag_size1 = self.frag_size_bounds1[0] + i
-            frag_size2_min = max(self.frag_size_bounds2[0], frag_size1 + min_diff)
-            frag_size2_max = min(self.frag_size_bounds2[1], frag_size1 + max_diff)
-
-            self.frag_size2_poss_numbers[i] = (
-                frag_size2_max
-                - frag_size2_min
-                + 1
-                + self.frag_size2_poss_numbers[i - 1]
-            )
-            self.frag_size2_mins[i] = frag_size2_min
-
-    def tot_poss_count(self):
-        return self.frag_size2_poss_numbers[-1]
-
-    def poss_frag_sizes(self, poss_id):
-        frag_size1_id = bisect.bisect_right(self.frag_size2_poss_numbers, poss_id)
-        if frag_size1_id != 0:
-            poss_id -= self.frag_size2_poss_numbers[frag_size1_id - 1]
-        return (
-            self.frag_size_bounds1[0] + frag_size1_id,
-            self.frag_size2_mins[frag_size1_id] + poss_id,
-        )
-
-
-def randomized_split_membership_vector(cg, fragment_size, origin_choices=None):
-    """
-    Randomly create a membership vector that can be used to split ChemGraph object into a FragmentPair object.
-    """
-    membership_vector = np.zeros(cg.nhatoms(), dtype=int)
-
-    if origin_choices is None:
-        origin_choices = cg.unrepeated_atom_list()
-
-    start_id = random.choice(origin_choices)
-
-    prev_to_add = [start_id]
-    remaining_atoms = fragment_size
-    frag_id = 1
-    while (len(prev_to_add) != 0) and (remaining_atoms != 0):
-        for added_id in prev_to_add:
-            membership_vector[added_id] = frag_id
-        remaining_atoms -= len(prev_to_add)
-        if remaining_atoms == 0:
-            break
-        new_to_add = []
-        for added_id in prev_to_add:
-            for neigh in cg.neighbors(added_id):
-                if (membership_vector[neigh] == 0) and (neigh not in new_to_add):
-                    new_to_add.append(neigh)
-        if len(new_to_add) > remaining_atoms:
-            random.shuffle(new_to_add)
-            del new_to_add[: len(new_to_add) - remaining_atoms]
-        prev_to_add = new_to_add
-
-    return membership_vector
+        ):
+            continue
+        if contains_matching_status(
+            *cg_pair, status_list1, status_list2, forbidden_bonds=forbidden_bonds
+        ):
+            output.append((frag_size1, frag_size2))
+    return output
 
 
 def randomized_cross_coupling(
-    cg_pair: list,
-    cross_coupling_fragment_ratio_range: list or None = [0.0, 1.0],
-    cross_coupling_fragment_size_range: list or None = None,
+    cg_pair: list or tuple,
+    cross_coupling_smallest_exchange_size=2,
     forbidden_bonds: list or None = None,
     nhatoms_range: list or None = None,
-    visited_tp_list: list or None = None,
+    cross_coupling_max_num_affected_bonds: int = 3,
     **dummy_kwargs,
 ):
-    if any(cg.nhatoms() == 1 for cg in cg_pair):
-        return None, None
-
     """
     Break two ChemGraph objects into two FragmentPair objects; the fragments are then re-coupled into two new ChemGraph objects.
     """
-
-    ppfsg_kwargs = {
+    internal_kwargs = {
         "nhatoms_range": nhatoms_range,
-        "fragment_ratio_range": cross_coupling_fragment_ratio_range,
-        "fragment_size_range": cross_coupling_fragment_size_range,
+        "forbidden_bonds": forbidden_bonds,
+        "smallest_exchange_size": cross_coupling_smallest_exchange_size,
+        "max_num_affected_bonds": cross_coupling_max_num_affected_bonds,
     }
 
-    PPFSG = PossiblePairFragSizesGenerator(*cg_pair, **ppfsg_kwargs)
-
-    num_pair_fragment_sizes = PPFSG.tot_poss_count()
-
-    if num_pair_fragment_sizes == 0:
+    if any(cg.nhatoms() == 1 for cg in cg_pair):
         return None, None
 
-    # tot_choice_prob_ratio is the ratio of probability of the trial move divided by probability of the inverse move.
-    tot_choice_prob_ratio = 1.0 / num_pair_fragment_sizes
+    # Choose "origin points" neighborhoods of which will be marked "red"
+    tot_choice_prob_ratio = 1.0
+    origin_points = []
+    for cg in cg_pair:
+        cg_ual = cg.unrepeated_atom_list()
+        tot_choice_prob_ratio /= len(cg_ual)
+        origin_points.append(random.choice(cg_ual))
 
-    final_pair_fragment_size_tuple_id = random.randrange(num_pair_fragment_sizes)
-
-    final_pair_fragment_sizes = PPFSG.poss_frag_sizes(final_pair_fragment_size_tuple_id)
-
-    membership_vectors = []
-    for cg, fragment_size in zip(cg_pair, final_pair_fragment_sizes):
-        origin_choices = cg.unrepeated_atom_list()
-        tot_choice_prob_ratio /= len(origin_choices)
-        membership_vectors.append(
-            randomized_split_membership_vector(
-                cg, fragment_size, origin_choices=origin_choices
-            )
-        )
-
-    fragment_pairs = [
-        FragmentPair(cg, membership_vector)
-        for cg, membership_vector in zip(cg_pair, membership_vectors)
-    ]
-
-    mdtuples = matching_dict_tuples(*fragment_pairs)
-
-    if len(mdtuples) == 0:
-        return None, None
-
-    tot_choice_prob_ratio /= len(mdtuples)
-
-    final_md_tuple = random.choice(mdtuples)
-
-    new_cg_pair, new_membership_vectors = random_connect_fragments(
-        fragment_pairs, final_md_tuple, forbidden_bonds=forbidden_bonds
+    # Generate lists containing possible fragment sizes and the corresponding bond status.
+    forward_mfssl = matching_frag_size_status_list(
+        cg_pair, origin_points, **internal_kwargs
     )
 
-    if (new_cg_pair[0] is None) or (new_cg_pair[1] is None):
+    if len(forward_mfssl) == 0:
+        return None, None
+    tot_choice_prob_ratio /= len(forward_mfssl)
+    chosen_sizes = random.choice(forward_mfssl)
+
+    new_cg_pairs, new_origin_points = cross_couple_outcomes(
+        cg_pair, chosen_sizes, origin_points, forbidden_bonds=forbidden_bonds
+    )
+    if new_origin_points is None:
         return None, None
 
-    if visited_tp_list is not None:
-        for new_cg_id, new_cg in enumerate(new_cg_pair):
-            if new_cg in visited_tp_list:
-                visited_tp_list[
-                    visited_tp_list.index(new_cg)
-                ].chemgraph().copy_extra_data_to(new_cg_pair[new_cg_id])
+    tot_choice_prob_ratio /= len(new_cg_pairs)
 
-    # Account for probability of choosing the correct fragment sizes to do the inverse move.
-    tot_choice_prob_ratio *= PossiblePairFragSizesGenerator(
-        *new_cg_pair, **ppfsg_kwargs
-    ).tot_poss_count()
-    # Account for probability of choosing the necessary resonance structure.
-    backwards_fragment_pairs = [
-        FragmentPair(new_cg, new_membership_vector)
-        for new_cg, new_membership_vector in zip(new_cg_pair, new_membership_vectors)
-    ]
-    backwards_mdtuples = matching_dict_tuples(*backwards_fragment_pairs)
+    new_cg_pair = random.choice(new_cg_pairs)
 
-    tot_choice_prob_ratio *= len(backwards_mdtuples)
-
+    # Account for inverse choice probability.
     for new_cg in new_cg_pair:
         tot_choice_prob_ratio *= len(new_cg.unrepeated_atom_list())
 
-    return new_cg_pair, np.log(tot_choice_prob_ratio)
+    inverse_mfssl = matching_frag_size_status_list(
+        new_cg_pair, new_origin_points, **internal_kwargs
+    )
+
+    tot_choice_prob_ratio *= len(inverse_mfssl)
+
+    inverse_cg_pairs, _ = cross_couple_outcomes(
+        new_cg_pair, chosen_sizes, new_origin_points
+    )
+    tot_choice_prob_ratio *= len(inverse_cg_pairs)
+
+    try:
+        log_tot_choice_prob_ratio = np.log(tot_choice_prob_ratio)
+    except:
+        print("NONINVERTIBLE CROSS-COUPLING PROPOSED:")
+        print("INITIAL CHEMGRAPHS:", cg_pair)
+        print("PROPOSED CHEMGRAPHS:", new_cg_pair)
+        quit()
+
+    return new_cg_pair, log_tot_choice_prob_ratio

@@ -1,11 +1,7 @@
 # Enumerate chemical graphs corresponding to some constraints.
 from bmapqml.chemxpl.valence_treatment import str2ChemGraph
-from bmapqml.chemxpl.random_walk import RandomWalk, valence_ha_change_list
-from bmapqml.chemxpl.modify import (
-    egc_valid_wrt_change_params,
-    change_bond_order,
-    replace_heavy_atom,
-)
+from bmapqml.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.modify import egc_valid_wrt_change_params
 import random, sys
 import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound

@@ -31,7 +31,7 @@ from .modify import (
     change_bond_order_valence,
     valence_bond_change_possibilities,
 )
-from .utils import rdkit_to_egc, egc_to_rdkit, default_minfunc_name
+from .utils import rdkit_to_egc, egc_to_rdkit
 from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
 from .valence_treatment import (
     sorted_tuple,
@@ -43,6 +43,8 @@ from .periodic import element_name
 import random, os
 from copy import deepcopy
 import numpy as np
+
+default_minfunc_name = "MIN_FUNC_NAME"
 
 # To make overflows during acceptance step are handled correctly.
 np.seterr(all="raise")
@@ -770,6 +772,7 @@ class RandomWalk:
         min_function_name: str = default_minfunc_name,
         num_saved_candidates: int or None = None,
         keep_full_trajectory: bool = False,
+        keep_detailed_global_steps: bool = False,
         restart_file: str or None = None,
         make_restart_frequency: int or None = None,
         soft_exit_check_frequency: int or None = None,
@@ -797,6 +800,7 @@ class RandomWalk:
         histogram_save_rejected : if True then both accepted and rejected chemical graphs are saved into the histogram
         num_saved_candidates : if not None determines how many best candidates are kept in the saved_candidates attributes
         keep_full_trajectory : save not just number of times a trajectory point was visited, but also all steps ids when the step was made
+        keep_detailed_global_steps : save information of trajectory movement up to non-global steps
         restart_file : name of restart file to which the object is dumped at make_restart
         make_restart_frequency : if not None object will call make_restart each make_restart_frequency global steps.
         soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
@@ -832,6 +836,7 @@ class RandomWalk:
                 )
 
         self.keep_full_trajectory = keep_full_trajectory
+        self.keep_detailed_global_steps = keep_detailed_global_steps
 
         self.MC_step_counter = 0
         self.global_MC_step_counter = 0
@@ -929,6 +934,8 @@ class RandomWalk:
         bond_order_valence_changes : by how much a bond can change during steps that change bond order and valence of an atom (e.g. [-2, 2]).
         max_fragment_num : how many disconnected fragments (e.g. molecules) a chemical graph is allowed to break into.
         added_bond_orders_val_change : when creating atoms to be connected to a molecule's atom with a change of valence of the latter what the possible bond orders are.
+        cross_coupling_max_num_affected_bonds : when a molecule is broken into two fragments what is the maximum number of bonds that can be broken.
+        cross_coupling_smallest_exchange_size : do not perform a cross-coupling move if less than this number of atoms is exchanged on both sides.
         """
         if randomized_change_params is not None:
             self.randomized_change_params = randomized_change_params
@@ -955,6 +962,8 @@ class RandomWalk:
                 final_nhatoms_range=None,
                 max_fragment_num=1,
                 added_bond_orders_val_change=[1, 2],
+                cross_coupling_max_num_affected_bonds=3,
+                cross_coupling_smallest_exchange_size=2,
             )
 
             # Some convenient aliases.
@@ -1585,7 +1594,7 @@ class RandomWalk:
                     ].first_global_MC_step_acceptance = self.global_MC_step_counter
                     self.histogram[cur_tp_index].first_acceptance_replica = replica_id
 
-                if self.keep_full_trajectory:
+                if self.keep_full_trajectory and self.keep_detailed_global_steps:
                     self.histogram[cur_tp_index].add_visit_step_id(
                         self.MC_step_counter,
                         replica_id,
@@ -1787,6 +1796,21 @@ class RandomWalk:
             + str(dump_id)
             + pkl_compress_ending[self.compress_restart]
         )
+
+    def move_statistics(self):
+        """
+        Return dictionnary containing information necessary to determine data such as acceptance rate, validity ratio, etc.
+        """
+        return {
+            "num_attempted_cross_couplings": self.num_attempted_cross_couplings,
+            "num_valid_cross_couplings": self.num_valid_cross_couplings,
+            "num_accepted_cross_couplings": self.num_accepted_cross_couplings,
+            "num_attempted_simple_moves": self.num_attempted_simple_moves,
+            "num_valid_simple_moves": self.num_valid_simple_moves,
+            "num_accepted_simple_moves": self.num_accepted_simple_moves,
+            "num_attempted_tempering_swaps": self.num_attempted_tempering_swaps,
+            "num_accepted_tempering_swaps": self.num_accepted_tempering_swaps,
+        }
 
 
 def merge_random_walks(*rw_list):

@@ -26,7 +26,7 @@ ln2 = np.log(2.0)
 
 betas_list = [[ln2, ln2], [ln2, ln2 / 2.0], [ln2 / 2.0, ln2], [None, ln2], [None, None]]
 
-num_attempts = 1000
+num_attempts = 10000
 
 randomized_change_params = {
     "max_fragment_num": 1,
