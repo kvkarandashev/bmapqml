@@ -2,7 +2,6 @@
 import random, sys
 import numpy as np
 from bmapqml.chemxpl.test_utils import all_procedure_prop_probability_checks
-from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 from bmapqml.utils import loadpkl
 
 restart_file = sys.argv[1]
@@ -40,6 +39,10 @@ nhatoms_range = [1, 15]
 
 possible_elements = ["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br"]
 
+not_protonated = [5, 8, 9, 14, 15, 16, 17, 35]
+
+# TODO CHECKS FOR SATISFYING CONSTRAINT
+
 print("Loading histogram.")
 histogram = loadpkl(restart_file)["histogram"]
 print("Histogram loaded.")
@@ -49,8 +52,10 @@ np.random.seed(seed)
 
 init_tp = random.choice(histogram)
 
+init_tp.possibility_dict = None
+
 num_mols = 4
-num_attempts = 80000  # 40000
+num_attempts = 80000  # 80000
 
 randomized_change_params = {
     "possible_elements": possible_elements,
@@ -60,9 +65,14 @@ randomized_change_params = {
     "max_fragment_num": 1,
     "forbidden_bonds": forbidden_bonds,
     "nhatoms_range": nhatoms_range,
+    "not_protonated": not_protonated,
 }
 
 
 all_procedure_prop_probability_checks(
-    init_tp, num_attempts=num_attempts, print_dicts=True, **randomized_change_params
+    init_tp,
+    num_attempts=num_attempts,
+    print_dicts=True,
+    bin_size=0.01,
+    **randomized_change_params
 )

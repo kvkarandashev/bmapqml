@@ -46,6 +46,8 @@ cross_coupling_kwargs = {
     "nhatoms_range": nhatoms_range,
 }
 
+# TODO CHECK CONSTRAINT SATISFACTION; NOT_PROTONATED???
+
 print("Loading histogram.")
 histogram = loadpkl(restart_file)["histogram"]
 print("Histogram loaded.")
@@ -85,7 +87,7 @@ for tp_pair_id, tp_pair in enumerate(tp_pairs):
             if len(new_pair_lists[tp_pair_id]) == num_new_pairs:
                 break
 
-num_attempts = 80000  # 10000
+num_attempts = 80000  # 80000
 
 for tp_pair, new_pair_list in zip(tp_pairs, new_pair_lists):
     print("BETAS:", betas)
@@ -96,4 +98,5 @@ for tp_pair, new_pair_list in zip(tp_pairs, new_pair_lists):
         num_attempts=num_attempts,
         min_function=minimized_function,
         betas=betas,
+        bin_size=0.01,
     )

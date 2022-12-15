@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NUM_SEEDS=64
+NUM_SEEDS=256
 
 JOB_NAME=$1
 

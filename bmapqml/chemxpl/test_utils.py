@@ -186,7 +186,6 @@ def generate_proc_example(
     tp_copy.init_possibility_info(change_prob_dict=[change_procedure], **other_kwargs)
     tp_copy.modified_possibility_dict = copy.deepcopy(tp_copy.possibility_dict)
     while tp_copy.modified_possibility_dict:
-        print("AAAA", tp_copy.modified_possibility_dict)
         modification_path, _ = random_choice_from_nested_dict(
             tp_copy.modified_possibility_dict[change_procedure]
         )
