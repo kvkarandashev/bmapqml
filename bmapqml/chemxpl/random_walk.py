@@ -6,7 +6,7 @@
 # TODO add a toy problem with a history-dependent minimized function to check that re-import from restart works properly.
 # TODO add a restart example with dumped histogram.
 
-from sortedcontainers import SortedList
+from sortedcontainers import SortedList, SortedDict
 from .ext_graph_compound import ExtGraphCompound
 from .modify import (
     atom_replacement_possibilities,
@@ -38,6 +38,7 @@ from .valence_treatment import (
     ChemGraph,
     int_atom_checked,
     default_valence,
+    canonically_permuted_ChemGraph,
 )
 from .periodic import element_name
 import random, os
@@ -319,7 +320,7 @@ class TrajectoryPoint:
         self.first_acceptance_replica = None
 
         # The last time minimized function was looked up for the trajectory point.
-        self.last_lookup_global_MC_step = None
+        self.last_tot_pot_call_global_MC_step = None
 
         # Information for keeping detailed balance.
         self.possibility_dict = None
@@ -403,6 +404,7 @@ class TrajectoryPoint:
         return self.possibility_dict
 
     def clear_possibility_info(self):
+        self.modified_possibility_dict = None
         self.possibility_dict = None
 
     def calc_or_lookup(self, func_dict, args_dict=None, kwargs_dict=None):
@@ -505,6 +507,59 @@ class TrajectoryPoint:
             self.visit_step_num_ids[step_type][beta_id]
         ] = step_id
         self.visit_step_num_ids[step_type][beta_id] += 1
+
+    def merge_visit_data(self, other_tp):
+        """
+        Merge visit data with data from TrajectoryPoint in another histogram.
+        """
+        if other_tp.num_visits is not None:
+            if self.num_visits is None:
+                self.num_visits = deepcopy(other_tp.num_visits)
+            else:
+                self.num_visits += other_tp.num_visits
+
+        for step_type, other_visit_step_all_ids in other_tp.visit_step_ids.items():
+            for beta_id, other_visit_step_ids in other_visit_step_all_ids.items():
+                other_visit_step_num_ids = other_tp.visit_step_num_ids[step_type][
+                    beta_id
+                ]
+                if other_visit_step_num_ids == 0:
+                    continue
+                if step_type not in self.visit_step_ids:
+                    self.visit_step_ids[step_type] = {}
+                    self.visit_step_num_ids[step_type] = {}
+                if beta_id in self.visit_step_ids[step_type]:
+                    new_visit_step_ids = SortedList(
+                        self.visit_step_ids[step_type][beta_id][
+                            : self.visit_step_num_ids[step_type][beta_id]
+                        ]
+                    )
+                    for visit_step_id in other_visit_step_ids[
+                        :other_visit_step_num_ids
+                    ]:
+                        new_visit_step_ids.add(visit_step_id)
+                    self.visit_step_ids[step_type][beta_id] = np.array(
+                        new_visit_step_ids
+                    )
+                    self.visit_step_num_ids[step_type][beta_id] = len(
+                        new_visit_step_ids
+                    )
+                else:
+                    self.visit_step_ids[step_type][beta_id] = deepcopy(
+                        other_visit_step_ids
+                    )
+                    self.visit_step_num_ids[step_type][
+                        beta_id
+                    ] = other_tp.visit_step_num_ids[step_type][beta_id]
+
+    def canonize_chemgraph(self):
+        """
+        Order heavy atoms inside the ChemGraph object according to canonical ordering. Used to make some tests consistent.
+        """
+        self.egc = ExtGraphCompound(
+            chemgraph=canonically_permuted_ChemGraph(self.chemgraph())
+        )
+        self.clear_possibility_info()
 
     def chemgraph(self):
         return self.egc.chemgraph
@@ -778,12 +833,14 @@ class RandomWalk:
         soft_exit_check_frequency: int or None = None,
         delete_temp_data: list or None = None,
         max_histogram_size: int or None = None,
+        histogram_dump_portion: float = 0.5,
         histogram_dump_file_prefix: str = "",
         track_histogram_size: bool = False,
         visit_num_count_acceptance: bool = False,
         linear_storage: bool = True,
         compress_restart: bool = False,
         greedy_delete_checked_paths: bool = False,
+        canonize_trajectory_points: bool = False,
         debug: bool = False,
     ):
         """
@@ -806,6 +863,7 @@ class RandomWalk:
         soft_exit_check_frequency : if not None the code will check presence of "EXIT" in the running directory each soft_exit_check_frequency steps; if "EXIT" exists the object calls make_restart and raises SoftExitCalled
         delete_temp_data : if not None after each minimized function evaluation for a TrajectoryPoint object self will delete TrajectoryPoint's calculated_data fields with those identifiers.
         max_histogram_size : if not None sets the maximal size for the histogram that, when exceeded, triggers dumping the histogram
+        histogram_dump_portion : defines how much of the histogram is dumped if it exceeds the current size.
         histogram_dump_file_prefix : sets the prefix from which the name of the pickle file where histogram is dumped if its maximal size is exceeded
         track_histogram_size : print current size of the histogram after each global MC step
         visit_num_count_acceptance : if True number of visit numbers (used in biasing potential) is counted during each accept_reject_move call rather than each global step
@@ -813,6 +871,7 @@ class RandomWalk:
         compress_restart : whether restart files are compressed by default
         randomized_change_params : parameters defining the sampled chemical space and how the sampling is done; see description of init_randomized_params for more thorough explanation.
         greedy_delete_checked_paths : for greedy replicas take a modification path with simple moves only once.
+        canonize_trajectory_points : keep all trajectory points canonized; only useful for testing purposes.
         debug : simulation is run with extra checks (testing purposes).
         """
         self.num_replicas = num_replicas
@@ -873,8 +932,8 @@ class RandomWalk:
         self.hydrogen_nums = None
 
         self.min_function = min_function
+        self.min_function_name = min_function_name
         if self.min_function is not None:
-            self.min_function_name = min_function_name
             self.min_function_dict = {self.min_function_name: self.min_function}
         self.num_saved_candidates = num_saved_candidates
         if self.num_saved_candidates is not None:
@@ -902,6 +961,7 @@ class RandomWalk:
         self.global_steps_since_last = {}
 
         self.max_histogram_size = max_histogram_size
+        self.histogram_dump_portion = histogram_dump_portion
         self.histogram_dump_file_prefix = histogram_dump_file_prefix
         self.track_histogram_size = track_histogram_size
 
@@ -918,6 +978,7 @@ class RandomWalk:
         self.greedy_delete_checked_paths = greedy_delete_checked_paths
 
         self.debug = debug
+        self.canonize_trajectory_points = canonize_trajectory_points
 
         self.init_cur_tps(init_egcs)
 
@@ -1065,6 +1126,8 @@ class RandomWalk:
                 added_tp = TrajectoryPoint(egc=egc)
             else:
                 raise InvalidStartingMolecules
+            if self.canonize_trajectory_points:
+                added_tp.canonize_chemgraph()
             if self.no_exploration:
                 if added_tp not in self.restricted_tps:
                     raise InvalidStartingMolecules
@@ -1090,6 +1153,10 @@ class RandomWalk:
     def accept_reject_move(self, new_tps, prob_balance, replica_ids=[0], swap=False):
         if self.debug:
             self.check_move_validity(new_tps, replica_ids)
+        if self.canonize_trajectory_points:
+            for i in range(len(new_tps)):
+                new_tps[i].canonize_chemgraph()
+        canonically_permuted_ChemGraph
 
         self.MC_step_counter += 1
 
@@ -1117,9 +1184,6 @@ class RandomWalk:
             self.update_saved_candidates()
         if self.keep_histogram:
             self.update_histogram(replica_ids)
-            if self.max_histogram_size is not None:
-                if len(self.histogram) > self.max_histogram_size:
-                    self.histogram2pkl()
 
         return accepted
 
@@ -1450,6 +1514,9 @@ class RandomWalk:
         if self.soft_exit_check_frequency is not None:
             self.check_soft_exit()
         self.update_global_histogram()
+        if self.max_histogram_size is not None:
+            if len(self.histogram) > self.max_histogram_size:
+                self.dump_extra_histogram()
 
     # For convenient interfacing with other scripts.
     def convert_to_current_egcs(self, mol_in_list, mol_format=None):
@@ -1507,6 +1574,10 @@ class RandomWalk:
                 tp.copy_extra_data_to(
                     self.histogram[tp_index], omit_data=self.delete_temp_data
                 )
+                # TODO make an update call info procedure?
+                self.histogram[
+                    tp_index
+                ].last_tot_pot_call_global_MC_step = self.global_MC_step_counter
             else:
                 self.add_to_histogram(tp, replica_id)
 
@@ -1516,12 +1587,14 @@ class RandomWalk:
                     del tp.calculated_data[dtd_identifier]
         return output
 
-    # If we want to re-merge two different trajectories.
-    def combine_with(self, other_rw):
-        for tp in other_rw.histogram:
+    def merge_histogram(self, other_histogram):
+        """
+        Merge current histogram with another one (for example recovered from a histogram dump file).
+        """
+        for tp in other_histogram:
             if tp in self.histogram:
                 tp_index = self.histogram.index(tp)
-                self.histogram[tp_index].num_visits += tp.num_visits
+                self.histogram[tp_index].merge_visit_data(tp)
             else:
                 self.histogram.add(tp)
 
@@ -1538,6 +1611,9 @@ class RandomWalk:
             if (self.histogram is None) or (tp not in self.histogram):
                 return 0.0
             tp_index = self.histogram.index(tp)
+            self.histogram[
+                tp_index
+            ].last_tot_pot_call_global_MC_step = self.global_MC_step_counter
             if self.bias_pot_all_replicas:
                 cur_visit_num = 0
                 for other_replica_id in range(self.num_replicas):
@@ -1554,6 +1630,9 @@ class RandomWalk:
         trajectory_point_in.first_MC_step_encounter = self.global_MC_step_counter
         trajectory_point_in.first_global_MC_step_encounter = self.MC_step_counter
         trajectory_point_in.first_encounter_replica = replica_id
+        trajectory_point_in.last_tot_pot_call_global_MC_step = (
+            self.global_MC_step_counter
+        )
 
         added_tp = deepcopy(trajectory_point_in)
 
@@ -1770,32 +1849,59 @@ class RandomWalk:
         np.random.set_state(recovered_data["numpy_rng_state"])
         random.setstate(recovered_data["random_rng_state"])
 
-    def histogram2file(self):
+    def dump_extra_histogram(self):
         """
         Dump a histogram to a dump file with a yet unoccupied name.
         """
-        dump_id = 1
-        dump_name = self.histogram_pkl_dump(dump_id)
-        while os.path.isfile(dump_name):
-            dump_id += 1
-            dump_name = self.histogram_pkl_dump(dump_id)
-        dump2pkl(self.histogram, dump_name, compress=self.compress_restart)
-        self.cur_tps = deepcopy(self.cur_tps)
-        if self.num_saved_candidates is not None:
-            self.saved_candidates = deepcopy(self.saved_candidates)
-        self.histogram.clear()
-        self.cur_tps = self.hist_checked_tps(self.cur_tps)
+        last_tot_pot_call_cut = self.histogram_last_tot_pot_call_cut()
+        dumped_tps = SortedList()
+        tp_id = 0
+        while tp_id != len(self.histogram):
+            if (
+                self.histogram[tp_id].last_tot_pot_call_global_MC_step
+                < last_tot_pot_call_cut
+            ):
+                dumped_tps.add(deepcopy(self.histogram[tp_id]))
+                del self.histogram[tp_id]
+            else:
+                tp_id += 1
 
-    def histogram_file_dump(self, dump_id: int):
+        dump2pkl(dumped_tps, self.histogram_file_dump(), compress=self.compress_restart)
+
+    def histogram_last_tot_pot_call_cut(self):
+        """
+        At which last_tot_pot_call_global_MC_step cut the histogram in order to dump only self.histogram_dump_portion of it
+        """
+        last_call_hist = SortedDict()
+        for tp in self.histogram:
+            cur_last_call = tp.last_tot_pot_call_global_MC_step
+            if cur_last_call not in last_call_hist:
+                last_call_hist[cur_last_call] = 0
+            last_call_hist[cur_last_call] += 1
+        # Decide where to cut
+        cut_num = 0
+        target_cut_num = int(len(self.histogram) * self.histogram_dump_portion)
+        for last_call, num_tps in last_call_hist.items():
+            cut_num += num_tps
+            if cut_num > target_cut_num:
+                return last_call
+        return last_call_hist.keys()[-1]
+
+    def histogram_file_dump(self):
         """
         Returns name of the histogram dump file for a given dump_id.
         dump_id : int id of the dump
         """
-        return (
-            self.histogram_dump_file_prefix
-            + str(dump_id)
-            + pkl_compress_ending[self.compress_restart]
-        )
+        dump_id = 1
+        while True:
+            output = (
+                self.histogram_dump_file_prefix
+                + str(dump_id)
+                + pkl_compress_ending[self.compress_restart]
+            )
+            if not os.path.isfile(output):
+                return output
+            dump_id += 1
 
     def move_statistics(self):
         """
@@ -1811,13 +1917,6 @@ class RandomWalk:
             "num_attempted_tempering_swaps": self.num_attempted_tempering_swaps,
             "num_accepted_tempering_swaps": self.num_accepted_tempering_swaps,
         }
-
-
-def merge_random_walks(*rw_list):
-    output = rw_list[0]
-    for rw in rw_list[1:]:
-        output.combine_trajectory(rw)
-    return output
 
 
 # Some procedures for convenient RandomWalk analysis.

@@ -141,6 +141,13 @@ def loadpkl(filename: str, compress: bool = False):
     return obj
 
 
+def ispklfile(filename: str):
+    """
+    Check whether filename is a pickle file.
+    """
+    return filename[-4:] == ".pkl"
+
+
 def mktmp(directory=False):
     extra_args = ()
     if directory:
