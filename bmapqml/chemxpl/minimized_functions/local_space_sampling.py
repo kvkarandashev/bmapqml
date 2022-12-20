@@ -1,3 +1,4 @@
+from os import XATTR_CREATE
 import numpy as np
 from numpy.linalg import norm
 from ..utils import trajectory_point_to_canonical_rdkit
@@ -415,12 +416,7 @@ class sample_local_space:
             print("Error in canonical SMILES, therefore skipping")
             return None
 
-        #Using this lead to the wrong distances due to incorrect function in rdkit descriptors 
-        #get_single_FP
         X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type, nBits=self.nbits) 
-
-        #X_test = rdkit_descriptors.extended_get_single_FP(canon_SMILES, self.fp_type, nBits=self.nbits)
-        #pdb.set_trace()
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
@@ -573,6 +569,11 @@ class local_lipinski:
         return V
 
 
+
+
+
+
+
 class find_match:
     def __init__(self, X_target, verbose=False):
 
@@ -595,3 +596,159 @@ class find_match:
             print("SMILE:", canon_SMILES, "Prediction: ", d)
 
             return np.exp(d)
+
+
+class alchemical_sampling:
+
+    def __init__(
+        self,
+        X_A,
+        X_B,
+        verbose=False,
+        nbits=2048,
+        lamb_val = 0.1
+    ):
+        self.X_A = X_A 
+        self.X_B = X_B
+        self.verbose = verbose
+        self.nbits = nbits
+        self.lamb_val  = lamb_val
+        self.canonical_rdkit_output = {
+            "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        }
+
+
+        self.potential = self.alchemical_potential
+
+    def alchemical_potential(self, d_A, d_B):
+        """
+        Alchemical potential. The potential is given by:
+        """
+
+        #return 1000*(self.lamb_val * d_B + (1 - self.lamb_val) * d_A)
+        return 1000*(self.lamb_val * d_B + (1 - self.lamb_val) * d_A)
+
+
+
+    def __call__(self, trajectory_point_in):
+
+        try:
+            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+                self.canonical_rdkit_output
+            )["canonical_rdkit"]
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
+
+        X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
+        d_A, d_B = norm(X_J - self.X_A), norm(X_J - self.X_B)
+        V = self.potential(d_A, d_B)
+
+
+        #if self.verbose:
+        #    if canon_SMILES == "OCCO":
+        #        print("!!!SUCCESS!!!")
+        #    print(f"{canon_SMILES} {d_A} {d_B} {V}")
+
+        return V
+
+class alchemical_sampling_version2:
+
+    def __init__(
+        self,
+        X_A,
+        X_B,
+        verbose=False,
+        nbits=2048,
+        lamb_val = 0.1
+    ):
+        self.X_A = X_A 
+        self.X_B = X_B
+        self.verbose = verbose
+        self.nbits = nbits
+        self.lamb_val  = lamb_val
+        self.canonical_rdkit_output = {
+            "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        }
+
+
+        self.potential = self.alchemical_potential
+
+    def alchemical_potential(self, X_J):
+        """
+        Alchemical potential. The potential is given by:
+        """
+        
+        return norm ( (self.lamb_val * self.X_B + (1 - self.lamb_val) * self.X_A) - X_J ) 
+
+
+    def __call__(self, trajectory_point_in):
+
+        try:
+            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+                self.canonical_rdkit_output
+            )["canonical_rdkit"]
+            #print(canon_SMILES)
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
+
+        X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
+        V = self.alchemical_potential(X_J)
+        
+
+        return V
+
+class alchemical_sampling_version3:
+
+    def __init__(
+        self,
+        X_A,
+        X_B,
+        verbose=False,
+        nbits=2048,
+        lamb_val = 0.1
+    ):
+        self.X_A = X_A 
+        self.X_B = X_B
+        self.verbose = verbose
+        self.nbits = nbits
+        self.lamb_val  = lamb_val
+        self.canonical_rdkit_output = {
+            "canonical_rdkit": trajectory_point_to_canonical_rdkit
+        }
+
+
+        self.potential = self.alchemical_potential
+        self.V_best    = np.inf
+        self.X_best   = X_A
+        self.smi_best  = "None"
+        
+
+    def alchemical_potential(self, X_J):
+        """
+        Alchemical potential. The potential is given by:
+        """
+        
+        return self.lamb_val*10*norm(self.X_B - X_J)
+
+    def __call__(self, trajectory_point_in):
+
+        try:
+            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+                self.canonical_rdkit_output
+            )["canonical_rdkit"]
+
+        except:
+            print("Error in canonical SMILES, therefore skipping")
+            return None
+
+        X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
+        V = self.alchemical_potential(X_J)
+        
+        #if V < self.V_best:
+        #    self.V_best = V
+        #    self.X_best = X_J
+        #    self.smi_best = canon_SMILES
+
+        return V
