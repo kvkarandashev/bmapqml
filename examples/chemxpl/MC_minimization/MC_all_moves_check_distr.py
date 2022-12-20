@@ -6,6 +6,7 @@ import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound
 from bmapqml.chemxpl.minimized_functions import NumHAtoms
 from copy import deepcopy
+from bmapqml.chemxpl.test_utils import print_distribution_analysis
 
 random.seed(1)
 np.random.seed(1)
@@ -14,7 +15,9 @@ np.random.seed(1)
 # bonds between two phosphorus atoms are forbidden.
 possible_elements = ["C", "P"]
 
-forbidden_bonds = None  # [(15, 15)]
+forbidden_bonds = [(15, 15)]
+
+not_protonated = [15]
 
 max_nhatoms = 4
 
@@ -30,9 +33,9 @@ min_func = NumHAtoms(intervals=intervals)
 # these unsembles are used to decrease the probability that greedy optimization returns a local minimum rather than a global one.
 ln2 = np.log(2.0)
 
-betas = [None, 2.0 * ln2, ln2]
+betas = [None, 2.0 * ln2, ln2, ln2 / 2.0]
 
-num_MC_steps = 10000  # 100000
+num_MC_steps = 10000  # 10000
 
 
 randomized_change_params = {
@@ -42,6 +45,8 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
+    "cross_coupling_smallest_exchange_size": 1,
+    "not_protonated": not_protonated,
 }
 
 # "simple" moves change one replica at a time, "genetic" make a genetic step, "tempering" does exchange same as parallel tempering.
@@ -79,57 +84,15 @@ for MC_step in range(num_MC_steps):
 # How to make a restart file in the end. (Unnecessary with make_restart_frequency set.)
 rw.make_restart()
 
-# The following is a short analysis for easy verification that the distribution is the correct one.
-num_intervals = len(intervals)
+print("Move statistics:")
+for k, val in rw.move_statistics().items():
+    print(k, ":", val)
 
-mol_nums = np.zeros((num_intervals,), dtype=int)
-for cur_tp in rw.histogram:
-    val_id = min_func.int_output(cur_tp)
-    mol_nums[val_id] += 1
-
-print("Number of molecules considered:", mol_nums)
-
-for beta_id, beta in enumerate(betas):
-    print("\n\nBeta:", beta)
-    distr_vals = np.zeros((num_intervals,), dtype=int)
-    distr2_vals = np.zeros((num_intervals,), dtype=int)
-    visited_mol_nums = np.zeros((num_intervals,), dtype=int)
-
-    # Cycle over all graphs visited during the simulation.
-    for cur_tp in rw.histogram:
-        cur_num_visits = cur_tp.visit_num(
-            beta_id
-        )  # visit_num(beta_id) gives number of times graph was visited by replica with id beta_id.
-        val_id = min_func.int_output(cur_tp)
-        if cur_num_visits != 0:
-            visited_mol_nums[val_id] += 1
-        mol_nums[val_id]
-        distr_vals[val_id] += cur_num_visits
-        distr2_vals[val_id] += cur_num_visits**2
-
-    averages = []
-    for val_id, (visited_mol_num, mol_num, distr, distr2) in enumerate(
-        zip(visited_mol_nums, mol_nums, distr_vals, distr2_vals)
-    ):
-        av = float(distr) / mol_num
-        av2 = float(distr2) / mol_num
-        print("Function value:", val_id)
-        print("Number of visited molecules:", visited_mol_num)
-        print("Average:", av)
-        print("Standard deviation:", np.sqrt((av2 - av**2) / mol_num))
-        averages.append(av)
-    if beta is not None:
-        tot_log_deviation = 0.0
-        for av_id, av in enumerate(averages):
-            for other_av_id, other_av in enumerate(averages[:av_id]):
-                if (
-                    (distr_vals[av_id] != 0)
-                    and (distr_vals[other_av_id] != 0)
-                    and (tot_log_deviation is not None)
-                ):
-                    tot_log_deviation += (
-                        np.log(av / other_av) + beta * (av_id - other_av_id)
-                    ) ** 2
-                else:
-                    tot_log_deviation = None
-        print("Hist from pot diff deviation:", tot_log_deviation)
+# Print analysis of the generated distribution.
+print_distribution_analysis(
+    rw.histogram,
+    betas=betas,
+    val_lbound=-0.5,
+    val_ubound=len(intervals) - 0.5,
+    num_bins=len(intervals),
+)

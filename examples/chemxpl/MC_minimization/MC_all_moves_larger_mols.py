@@ -36,7 +36,6 @@ randomized_change_params = {
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,
-    "chain_addition_tuple_possibilities": True,
 }
 global_change_params = {
     "num_parallel_tempering_tries": 5,
@@ -70,9 +69,14 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="larger_mols_restart.pkl",
+    debug=True,
 )
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
     print(MC_step, rw.cur_tps)
 
 rw.make_restart()
+
+print("Move statistics:")
+for k, val in rw.move_statistics().items():
+    print(k, ":", val)

@@ -5,7 +5,6 @@ from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Chem import RemoveHs, rdAbbreviations
 from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
-import numpy as np
 from .valence_treatment import ChemGraph, sorted_tuple
 import itertools, random, os
 from .modify import (
@@ -18,9 +17,9 @@ from .modify import (
     change_valence_add_atoms,
     change_valence_remove_atoms,
     change_bond_order_valence,
-    randomized_split_membership_vector,
-    matching_dict_tuples,
-    random_connect_fragments,
+    frag_size_status_list,
+    matching_frag_size_status_list,
+    cross_couple_outcomes,
 )
 from .random_walk import (
     TrajectoryPoint,
@@ -29,6 +28,7 @@ from .random_walk import (
 )
 from .ext_graph_compound import ExtGraphCompound
 from .periodic import element_name
+from ..utils import mkdir
 
 # Some colors that I think look good on print.
 RED = (1.0, 0.0, 0.0)
@@ -235,7 +235,7 @@ class ChemGraphDrawing:
             highlightBonds = []
             highlightBondColors = {}
             for bt in self.highlightBondTupleColors:
-                bond_id = self.mol.GetBondBetweenAtoms(*bt).GetIdx()
+                bond_id = self.mol.GetBondBetweenAtoms(int(bt[0]), int(bt[1])).GetIdx()
                 highlightBonds.append(bond_id)
                 highlightBondColors[bond_id] = self.highlightBondTupleColors[bt]
         else:
@@ -282,7 +282,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         bw_palette=True,
         size=(300, 300),
         resonance_struct_adj=None,
-        highlight_fragment_colors=[LIGHTRED, LIGHTBLUE],
+        highlight_fragment_colors=[LIGHTBLUE, LIGHTRED],
         bondLineWidth=None,
         highlight_fragment_boundary=LIGHTGREEN,
         highlightAtomRadius=None,
@@ -320,9 +320,10 @@ class FragmentPairDrawing(ChemGraphDrawing):
                 self.connection_tuples, self.highlight_fragment_boundary
             )
         if self.highlight_fragment_colors is not None:
-            for fragment_highlight, vertices in zip(
-                self.highlight_fragment_colors, fragment_pair.sorted_vertices
+            for frag_id, fragment_highlight in enumerate(
+                self.highlight_fragment_colors
             ):
+                vertices = fragment_pair.get_sorted_vertices(frag_id)
                 if fragment_highlight is not None:
                     self.highlight_atoms(vertices, fragment_highlight, wbonds=True)
         self.prepare_and_draw()
@@ -632,38 +633,85 @@ def draw_all_modification_possibilities(
         os.chdir(workdir)
 
 
-def draw_successful_random_coupling(
-    cg_pair,
-    frag_sizes,
-    filename_prefixes=["old_", "new_"],
-    num_attempts=1,
-    filename_suffix=".png",
-    **kwargs
+def draw_all_possible_fragment_pairs(
+    cg: ChemGraph,
+    filename_prefix="fragment_pair_",
+    max_num_affected_bonds=3,
+    **other_kwargs
 ):
-    for _ in range(num_attempts):
-        old_frag_pairs = []
-        for cg, frag_size in zip(cg_pair, frag_sizes):
-            membership_vector = randomized_split_membership_vector(cg, frag_size)
-            old_frag_pairs.append(FragmentPair(cg, membership_vector))
-        mdtuples = matching_dict_tuples(*old_frag_pairs)
-        if len(mdtuples) == 0:
-            continue
-        final_mdtuple = random.choice(mdtuples)
-        new_cg_pair, new_membership_vectors = random_connect_fragments(
-            old_frag_pairs, final_mdtuple
-        )
-        new_frag_pairs = [
-            FragmentPair(cg, membership_vector)
-            for cg, membership_vector in zip(new_cg_pair, new_membership_vectors)
-        ]
-        for filename_prefix, frag_pairs in zip(
-            filename_prefixes, [old_frag_pairs, new_frag_pairs]
+    for origin_point_id, origin_point in enumerate(cg.unrepeated_atom_list()):
+        for size_id, (size, _) in enumerate(
+            frag_size_status_list(
+                cg, origin_point, max_num_affected_bonds=max_num_affected_bonds
+            )
         ):
-            for frag_id, frag_pair in enumerate(frag_pairs):
-                draw_all_possible_resonance_structures(
-                    frag_pair,
-                    filename_prefix + str(frag_id) + "_",
-                    filename_suffix=filename_suffix,
-                    **kwargs
+            filename_final_prefix = (
+                filename_prefix + str(origin_point_id) + "_" + str(size_id) + "_"
+            )
+            cur_frag = FragmentPair(cg, origin_point, neighborhood_size=size)
+            draw_all_possible_resonance_structures(
+                cur_frag, filename_final_prefix, **other_kwargs
+            )
+
+
+def draw_all_cross_couplings(
+    cg_pair,
+    init_folder_prefix="init_opt_",
+    filename_prefixes=["old_", "new_"],
+    max_num_affected_bonds=3,
+    nhatoms_range=None,
+    smallest_exchange_size=2,
+    **other_kwargs
+):
+    init_option = 0
+
+    orig_point_iterators = itertools.product(
+        *[cg.unrepeated_atom_list() for cg in cg_pair]
+    )
+
+    for origin_points in orig_point_iterators:
+        forward_mfssl = matching_frag_size_status_list(
+            cg_pair,
+            origin_points,
+            max_num_affected_bonds=max_num_affected_bonds,
+            nhatoms_range=nhatoms_range,
+            smallest_exchange_size=smallest_exchange_size,
+        )
+        for chosen_sizes in forward_mfssl:
+            init_dir = init_folder_prefix + str(init_option)
+            mkdir(init_dir)
+            os.chdir(init_dir)
+            old_fragments = [
+                FragmentPair(cg, origin_point, neighborhood_size=chosen_size)
+                for cg, origin_point, chosen_size in zip(
+                    cg_pair, origin_points, chosen_sizes
                 )
-        return
+            ]
+            for old_frag_id, old_fragment in enumerate(old_fragments):
+                draw_all_possible_resonance_structures(
+                    old_fragment, filename_prefixes[0] + str(old_frag_id) + "_"
+                )
+            trial_option = 0
+            new_cg_pairs, new_origin_points = cross_couple_outcomes(
+                cg_pair, chosen_sizes, origin_points
+            )
+            for new_cg_pair in new_cg_pairs:
+                new_fragments = [
+                    FragmentPair(cg, origin_point, neighborhood_size=chosen_size)
+                    for cg, origin_point, chosen_size in zip(
+                        new_cg_pair, new_origin_points, chosen_sizes
+                    )
+                ]
+                for new_frag_id, new_fragment in enumerate(new_fragments):
+                    draw_all_possible_resonance_structures(
+                        new_fragment,
+                        filename_prefixes[1]
+                        + str(trial_option)
+                        + "_"
+                        + str(new_frag_id)
+                        + "_",
+                    )
+                trial_option += 1
+            init_option += 1
+            os.chdir("..")
+    return
