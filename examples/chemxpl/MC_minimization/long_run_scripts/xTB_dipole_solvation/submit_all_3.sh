@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # The minimized function file is created by scripts in examples/chemxpl/minfunc_creation/morfeus_xTB_solvation.
-dump_directory="/store/common/konst/chemxpl_related/minimization_runs_xTB_dipole_solvation"
+dump_directory="/store/konst/chemxpl_related/minimization_runs_xTB_dipole_solvation"
 
 gap_constraints=("weak" "strong")
 

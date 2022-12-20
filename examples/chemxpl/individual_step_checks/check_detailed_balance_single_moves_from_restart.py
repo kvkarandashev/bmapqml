@@ -35,9 +35,11 @@ forbidden_bonds = [
     (15, 15),
     (16, 16),
 ]
-nhatoms_range = [1, 15]
+#nhatoms_range = [1, 15]
+nhatoms_range=[1, 9]
 
-possible_elements = ["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br"]
+#possible_elements = ["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br"]
+possible_elements=["C", "N", "O", "F"]
 
 not_protonated = [5, 8, 9, 14, 15, 16, 17, 35]
 
