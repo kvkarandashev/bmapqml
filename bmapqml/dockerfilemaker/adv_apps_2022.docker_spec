@@ -1,0 +1,4 @@
+# Specifies a Dockerfile for chemxpl simulations.
+PARENT base_chemxpl
+PIP morfeus-ml matplotlib pandas seaborn mypy-extensions tblite leruli qml
+CONDA xtb-python:conda-forge

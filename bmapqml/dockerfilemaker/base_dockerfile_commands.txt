@@ -1,0 +1,6 @@
+FROM continuumio/miniconda3:4.10.3-alpine as build
+ENV PYTHONPATH /extra_modules:$PYTHONPATH
+SHELL ["/bin/bash", "--login", "-c"]
+VOLUME "/rundir"
+WORKDIR "/rundir"
+RUN conda update -n base conda
