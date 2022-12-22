@@ -259,10 +259,19 @@ class Analyze:
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
-        sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.viridis)
-        plt.xlabel(self.quanity + " (a.u.)", fontsize=21)
+        #sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.viridis)
+
+        cc = 'gnuplot_r'  # viridis
+        gs = 30
+
+        max_x = np.max(np.abs(self.X_QUANTITY))
+        max_y = np.max(np.abs(self.GAP))
+        sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, bins='log', cmap=cc,C=self.ENCOUNTER, linewidths=0)
+
+
+        plt.xlabel(self.quanity, fontsize=21)
         plt.ylabel(
-            "Gap" + " (a.u.)",
+            "Gap",
             fontsize=21,
             rotation=0,
             ha="left",
@@ -279,13 +288,13 @@ class Analyze:
 
         for simplex in self.hull.simplices:
             plt.plot(
-                self.points[simplex, 0], self.points[simplex, 1], "o-", color="black"
+                self.points[simplex, 0]/max_x, self.points[simplex, 1]/max_y, "o-", color="black"
             )
 
         if hline is not None:
-            plt.axhline(y=hline, color="red", linestyle="--", linewidth=2, label="Gap Cnstr.")
+            plt.axhline(y=hline/max_y, color="red", linestyle="--", linewidth=2, label="Gap Cnstr.")
         if vline is not None:
-            plt.axvline(x=vline, color="navy", linestyle="--", label="Best Ref.")
+            plt.axvline(x=vline/max_x, color="navy", linestyle="--", label="Best Ref.")
 
 
         #ax1.set_xlim(0, 6.0)
