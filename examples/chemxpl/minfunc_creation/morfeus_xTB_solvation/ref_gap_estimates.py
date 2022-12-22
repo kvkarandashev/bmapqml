@@ -24,7 +24,7 @@ for SMILES in ref_SMILES:
     ref_tp = TrajectoryPoint(egc=SMILES_to_egc(SMILES))
     ref_data = morfeus_FF_xTB_code_quants(
         ref_tp,
-        num_conformers=8,
+        num_conformers=32,
         num_attempts=num_attempts,
         ff_type="MMFF94",
         quantities=[gap_name],
