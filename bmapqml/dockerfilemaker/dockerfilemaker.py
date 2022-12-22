@@ -1,16 +1,50 @@
 import glob, os, subprocess
 from ..utils import mktmpdir
 
+# Filename suffix for files containing format specifications.
 dockerspec_filename_suffix = ".docker_spec"
 
+special_cond_separator = ";"
 
-# Flag used to specified one or more parents to the Docker. Circular parenting does not crash the code.
+"""
+Flags used to specify what should be included into the docker file. Flags after 'PARENT' are written in order in which commands are added to Dockerfile:
+PARENT      include everything from another docker_spec file. "Circular parenting" does not crash the code.
+FROM        which Docker to start from ("child" supercedes "parent")
+APT         packages that should be installed with apt.
+CONDAV      version of CONDA to be installed (currently does not work, perhaps I don't know enough about conda).
+            Entry in the "child" takes priority over the entry in the parent.
+PYTHONV     version of python; "child" takes priority.
+PIP         packages installed with pip. Additional necessary flags can be put with special_cond_separator.
+PIPLAST     packages that should be additionally installed with PIP (e.g. qml's setup.py requires numpy to run, producing bug if put into the 'PIP' section).
+CONDA       packages that should be installed with conda; provided in '${package name}${special_cond_separator}${conda channel}' format.
+PYTHONPATH  python modules installed by copy to PYTHONPATH.
+"""
+
 parent_flag = "PARENT"
 pythonpath_flag = "PYTHONPATH"
+apt_flag = "APT"
+from_flag = "FROM"
 
-dependency_specifiers = ["CONDAV", "PYTHONV", "PIP", "CONDA", pythonpath_flag]
+dependency_specifiers = [
+    from_flag,
+    apt_flag,
+    "CONDAV",
+    "PYTHONV",
+    "PIP",
+    "PIPLAST",
+    "CONDA",
+    pythonpath_flag,
+]
 
+contains_miniconda = ["continuumio/miniconda3:4.10.3-alpine"]
+
+# Where most basic commands for Docker are found.
 base_dockerfile_cmd_file = "base_dockerfile_commands.txt"
+
+# Command for normal shell operation.
+login_shell_command = 'SHELL ["/bin/bash", "--login", "-c"]'
+# Command for root (?) shell operation. Perhaps not needed?
+root_shell_command = ""  #'SHELL ["/bin/bash", "-c"]'
 
 
 def available_dockers_dir():
@@ -28,6 +62,54 @@ def available_dockers():
 
 def dockerspec_filename(docker_name):
     return available_dockers_dir() + "/" + docker_name + dockerspec_filename_suffix
+
+
+# Command for updating conda.
+conda_update_command = "RUN conda update -n base conda"
+conda_installation_script_name = "Miniconda3-latest-Linux-x86_64.sh"
+internal_installation_files = "/installation_files"
+internal_conda_dir = "/opt/conda"
+
+
+def conda_installation_lines(temporary_folder):
+    # Solution based on https://fabiorosado.dev/blog/install-conda-in-docker/
+    subprocess.run(
+        [
+            "wget",
+            "--quiet",
+            "https://repo.anaconda.com/miniconda/" + conda_installation_script_name,
+            "-O",
+            temporary_folder + "/" + conda_installation_script_name,
+        ]
+    )
+    internal_conda_install = (
+        internal_installation_files + "/" + conda_installation_script_name
+    )
+    output = [
+        "COPY "
+        + temporary_folder
+        + "/"
+        + conda_installation_script_name
+        + " "
+        + internal_conda_install
+    ]
+    output += [
+        "RUN chmod +x " + internal_conda_install,
+        "RUN " + internal_conda_install + " -b -p " + internal_conda_dir,
+        "ENV PATH=" + internal_conda_dir + "/bin:$PATH",
+    ]
+    return output
+
+
+def get_from_dep_lines(dep_list):
+    return ["FROM " + dep_list[0]]
+
+
+def get_apt_dep_lines(dep_list):
+    l = "RUN apt-get install -y"
+    for dep in dep_list:
+        l += " " + dep
+    return [root_shell_command, "RUN apt-get update", l]
 
 
 def get_local_dependencies(docker_name):
@@ -49,7 +131,7 @@ def get_local_dependencies(docker_name):
 def get_conda_dep_lines(dep_list):
     output = []
     for dep in dep_list:
-        dep_spl = dep.split(":")
+        dep_spl = dep.split(special_cond_separator)
         package_name = dep_spl[0]
         if len(dep_spl) > 1:
             channel_name = dep_spl[1]
@@ -60,11 +142,29 @@ def get_conda_dep_lines(dep_list):
     return output
 
 
-def get_pip_dep_lines(dep_list):
+def pip_install_line(comp):
     l = "RUN pip install"
+    for c in comp:
+        l += " " + c
+    return l
+
+
+def get_pip_dep_lines(dep_list):
+    no_special_flags = []
+    wspecial_flags = []
     for dep in dep_list:
-        l += " " + dep
-    return [l]
+        if special_cond_separator in dep:
+            wspecial_flags.append(dep)
+        else:
+            no_special_flags.append(dep)
+    lines = []
+    if no_special_flags:
+        lines.append(pip_install_line(no_special_flags))
+    if wspecial_flags:
+        for dep in wspecial_flags:
+            dep_spl = dep.split(special_cond_separator)
+            lines.append(pip_install_line(dep_spl))
+    return lines
 
 
 def get_module_imported_dir(module_name):
@@ -96,7 +196,10 @@ def get_python_version_specification(dep_list):
 
 # TODO add something for packages that can only be installed with conda.
 dependency_line_dict = {
+    from_flag: get_from_dep_lines,
+    apt_flag: get_apt_dep_lines,
     "PIP": get_pip_dep_lines,
+    "PIPLAST": get_pip_dep_lines,
     "CONDA": get_conda_dep_lines,
     pythonpath_flag: get_pythonpath_dep_lines,
     "CONDAV": get_conda_version_specification,
@@ -122,20 +225,42 @@ def get_all_dependencies(docker_name):
 
 def get_dockerfile_lines_deps(
     docker_name,
+    conda_updated=True,
 ):
     base_dockerfile_cmd_full_path = (
         available_dockers_dir() + "/" + base_dockerfile_cmd_file
     )
+    # Commands basic for leruli-compliant Docker.
     assert os.path.isfile(base_dockerfile_cmd_full_path)
-    output = open(base_dockerfile_cmd_full_path, "r").readlines()
+    # Temporary directory where necessary files will be dumped.
+    temp_dir = mktmpdir()
+    # Docker-specific dependencies.
     all_dependencies = get_all_dependencies(docker_name)
-    for dep_spec in dependency_specifiers[:-1]:
+    if from_flag not in all_dependencies:
+        raise Exception()
+    output = get_from_dep_lines(all_dependencies[from_flag])
+    output += open(base_dockerfile_cmd_full_path, "r").readlines()
+
+    # Commands run once we set up apt-installable components.
+    post_apt_commands = [login_shell_command]
+    if all_dependencies[from_flag][0] not in contains_miniconda:
+        post_apt_commands += conda_installation_lines(temp_dir)
+
+    if conda_updated:
+        post_apt_commands.append(conda_update_command)
+
+    if apt_flag not in all_dependencies:
+        output += post_apt_commands
+
+    for dep_spec in dependency_specifiers[1:-1]:
         if dep_spec not in all_dependencies:
             continue
         output += dependency_line_dict[dep_spec](all_dependencies[dep_spec])
+        if dep_spec == apt_flag:
+            output += post_apt_commands
+
     if pythonpath_flag in all_dependencies:
         copy_reqs = all_dependencies[pythonpath_flag]
-        temp_dir = mktmpdir()
         output += dependency_line_dict[pythonpath_flag](
             all_dependencies[pythonpath_flag], temp_dir
         )

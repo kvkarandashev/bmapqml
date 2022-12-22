@@ -1,4 +1,7 @@
 # Specifies a Dockerfile for chemxpl simulations.
+FROM ubuntu:22.04
 PARENT base_chemxpl
-PIP morfeus-ml matplotlib pandas seaborn mypy-extensions tblite leruli qml
-CONDA xtb-python:conda-forge
+APT gfortran libblas-dev liblapack-dev git build-essential
+PIP morfeus-ml matplotlib pandas seaborn mypy-extensions tblite leruli scikit-learn
+#PIPLAST git+https://github.com/qmlcode/qml@develop;--user;-U
+CONDA xtb-python;conda-forge dscribe;conda-forge
