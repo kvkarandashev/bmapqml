@@ -121,6 +121,7 @@ from xtb.utils import get_method, get_solvent
 from ...data import conversion_coefficient
 import os
 from ...utils import loadpkl, dump2pkl, weighted_array
+from ..periodic import supported_ncharges
 
 atom_energy_filename = os.path.dirname(__file__) + "/atom_energies.pkl"
 
@@ -149,7 +150,9 @@ def gen_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
         dump2pkl(atom_energies, atom_energy_filename)
 
 
-def gen_atom_energies(ncharges, parametrization="gfn2-xtb", solvent=None):
+def gen_atom_energies(
+    ncharges=supported_ncharges(), parametrization="gfn2-xtb", solvent=None
+):
     for ncharge in ncharges:
         gen_atom_energy(ncharge, parametrization=parametrization, solvent=solvent)
 
@@ -444,3 +447,75 @@ class LinComb_Morfeus_xTB_code:
                 cur_add *= add_mult(trajectory_point_in) ** add_mult_power
             result += cur_add
         return result
+
+
+from ..random_walk import TrajectoryPoint, ChemGraph
+
+
+class Hydrogenation:
+    def __init__(
+        self,
+        possible_ncharges=supported_ncharges(),
+        num_attempts=1,
+        num_conformers=1,
+        remaining_rho=None,
+        energy_av_std_key="energy_av_std",
+        **morfeus_related_kwargs
+    ):
+        """
+        Returns energy of hydrogenation. Not %100 sure whether it works correctly.
+        """
+        gen_atom_energies(ncharges=possible_ncharges)
+        self.morfeus_related_kwargs = morfeus_related_kwargs
+        self.num_attempts = num_attempts
+        self.num_conformers = num_conformers
+        self.remaining_rho = remaining_rho
+        self.energy_av_std_key = energy_av_std_key
+        self.call_counter = 1
+
+    def energy_vals(self, tp_in):
+        energy_arr = np.zeros((self.num_attempts,))
+        for i in range(self.num_attempts):
+            morfeus_data = morfeus_coord_info_from_tp(
+                tp_in,
+                num_attempts=self.num_conformers,
+                all_confs=True,
+                **self.morfeus_related_kwargs
+            )
+            coords = morfeus_data["coordinates"]
+            if coords is None:
+                return None, None
+            conf_weights = cut_weights(
+                morfeus_data["rdkit_Boltzmann"], remaining_rho=self.remaining_rho
+            )
+            for en, weight in zip(morfeus_data["rdkit_energy"], conf_weights):
+                if weight is not None:
+                    energy_arr[i] += en * weight
+        return np.mean(energy_arr), np.std(energy_arr)
+
+    def average_energy(self, tp_in):
+        av, _ = tp_in.calc_or_lookup({self.energy_av_std_key: self.energy_vals})[
+            self.energy_av_std_key
+        ]
+        return av
+
+    def __call__(self, tp_in):
+        self.call_counter += 1
+        cur_ncharges = {}
+        for ha in tp_in.chemgraph().hatoms:
+            ncharge = ha.ncharge
+            if ncharge not in cur_ncharges:
+                cur_ncharges[ncharge] = 0
+            cur_ncharges[ncharge] += 1
+        output = self.average_energy(tp_in)
+        if output is None:
+            return None
+        # Note that we do not pre-initialize energies of individual hydrogenated species to allow for statistical error cancelation.
+        for ncharge, natoms in cur_ncharges.items():
+            temp_cg = ChemGraph(
+                nuclear_charges=np.array([ncharge]),
+                hydrogen_autofill=True,
+                adj_mat=np.array([[0]]),
+            )
+            output -= self.average_energy(TrajectoryPoint(cg=temp_cg)) * natoms
+        return output

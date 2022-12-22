@@ -1,0 +1,6 @@
+# Specifies a Dockerfile for chemxpl simulations.
+FROM continuumio/miniconda3:4.10.3-alpine
+PYTHONV 3.9.13
+PIP numpy scipy ase joblib numba igraph rdkit sortedcontainers
+PYTHONPATH g2s xyz2mol bmapqml
+CONDA xyz2mol;conda-forge

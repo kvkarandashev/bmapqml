@@ -1,3 +1,7 @@
+def supported_ncharges():
+    return list(element_name.keys())
+
+
 element_name = {
     1: "H",
     2: "He",

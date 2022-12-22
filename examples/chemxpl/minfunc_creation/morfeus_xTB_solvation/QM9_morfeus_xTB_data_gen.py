@@ -14,7 +14,7 @@ solvent = sys.argv[1]
 NPROCS = int(sys.argv[2])
 
 num_conformers = 32
-num_attempts = 4
+num_attempts = 16
 remaining_rho = 0.9
 
 forcefield = "MMFF94"

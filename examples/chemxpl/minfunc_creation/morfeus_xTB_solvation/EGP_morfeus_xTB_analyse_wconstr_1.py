@@ -90,10 +90,10 @@ quantities = [
 ]
 
 # Which quantities are used to create minimized functions.
-minfunc_base_quantities = ["dipole", "solvation_energy"]
+minfunc_base_quantities = ["dipole", "solvation_energy", "atomization_energy"]
 
 # Which sign a quantity is included with.
-minfunc_quant_signs = {"dipole": -1, "solvation_energy": 1}
+minfunc_quant_signs = {"dipole": -1, "solvation_energy": 1, "atomization_energy" : 1}
 
 
 # First of all, print size and composition analysis of compounds for which the calculations converged.
@@ -142,7 +142,7 @@ bond_constraints = {
     ],
 }  # , "possible_elements" : ["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br"]}
 
-gap_constraints = {"weak": 0.09126989358754387, "strong": 0.17735152497325582}
+gap_constraints = {"weak": 0.08895587351640835, "strong": 0.17734766509696615}
 
 present_bonds = {}
 
@@ -218,7 +218,8 @@ for constr_name, constr_val in gap_constraints.items():
                     constr_quants=[gap_name],
                     cq_lower_bounds=[constr_val],
                     num_attempts=1,
-                    num_conformers=8,
+                    num_conformers=32,
+                    remaining_rho=.9,
                     ff_type="MMFF94",
                     solvent=solvent,
                 )

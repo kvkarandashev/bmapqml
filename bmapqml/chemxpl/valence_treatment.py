@@ -1543,6 +1543,33 @@ class ChemGraph:
         return str(self)
 
 
+def canonically_permuted_ChemGraph(cg: ChemGraph) -> ChemGraph:
+    """
+    Get version of cg where hatoms are canonically ordered.
+    """
+    cg.init_canonical_permutation()
+    new_nuclear_charges = np.ones((cg.full_natoms(),), dtype=int)
+    new_adj_mat = np.zeros((cg.full_natoms(), cg.full_natoms()), dtype=int)
+    cur_h_id = cg.nhatoms()
+    for hatom_canon_id, hatom_id in enumerate(cg.inv_canonical_permutation):
+        ha = cg.hatoms[hatom_id]
+        new_nuclear_charges[hatom_canon_id] = ha.ncharge
+        for neigh in cg.neighbors(hatom_id):
+            canon_neigh = cg.canonical_permutation[neigh]
+            if neigh > hatom_id:
+                bo = cg.bond_orders[(hatom_id, neigh)]
+                new_adj_mat[canon_neigh, hatom_canon_id] = bo
+                new_adj_mat[hatom_canon_id, canon_neigh] = bo
+        for _ in range(ha.nhydrogens):
+            new_adj_mat[hatom_canon_id, cur_h_id] = 1
+            new_adj_mat[cur_h_id, hatom_canon_id] = 1
+            cur_h_id += 1
+    new_cg = ChemGraph(nuclear_charges=new_nuclear_charges, adj_mat=new_adj_mat)
+    if new_cg != cg:
+        raise Exception
+    return new_cg
+
+
 def chemgraph_str2unchecked_adjmat_ncharges(input_string: str) -> tuple:
     """
     Converts a ChemGraph string representation into the adjacency matrix (with all bond orders set to one) and nuclear charges.
