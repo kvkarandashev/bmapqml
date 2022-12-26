@@ -111,6 +111,14 @@ def str_atom_corr(ncharge):
     return ELEMENTS[ncharge]
 
 
+def bmapqml_root_dir():
+    return os.path.dirname(__file__)
+
+
+def copy_bmapqml_to(other_dir):
+    subprocess.run(["cp", "-r", bmapqml_root_dir(), other_dir])
+
+
 # def str_atom_corr(ncharge):
 #    return canonical_atomtype(str_atom(ncharge))
 compress_fileopener = {True: bz2.BZ2File, False: open}
