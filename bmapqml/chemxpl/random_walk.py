@@ -1524,6 +1524,14 @@ class RandomWalk:
             if len(self.histogram) > self.max_histogram_size:
                 self.dump_extra_histogram()
 
+    def complete_simulation(self, num_global_MC_steps=0, **other_kwargs):
+        """
+        Call global_random_change until the number of global MC steps is reached or exceeded.
+        (Introduced to make restarting scripts easier.)
+        """
+        while self.global_MC_step_counter < num_global_MC_steps:
+            self.global_random_change(**other_kwargs)
+
     # For convenient interfacing with other scripts.
     def convert_to_current_egcs(self, mol_in_list, mol_format=None):
         self.cur_tps = [

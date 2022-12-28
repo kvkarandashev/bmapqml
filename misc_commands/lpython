@@ -83,7 +83,12 @@ script_path=$(basename ${scripts[0]})
 
 for req_file in $req_files
 do
-    cp $req_file $data_dir
+    if [ -f $req_file ]
+    then
+        cp $req_file $data_dir
+    else
+        echo "WARNING: file does not exist: "$req_file
+    fi
 done
 
 cd $data_dir

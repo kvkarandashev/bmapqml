@@ -2,7 +2,7 @@
 from bmapqml.chemxpl.random_walk import RandomWalk, gen_exp_beta_array
 from bmapqml.chemxpl.utils import SMILES_to_egc
 from bmapqml.utils import loadpkl
-import random, sys, copy
+import random, sys, copy, os
 import numpy as np
 
 min_func_pkl = sys.argv[1]
@@ -77,6 +77,8 @@ else:
 
 init_egcs = [copy.deepcopy(init_egc) for _ in range(num_replicas)]
 
+restart_file_name = restart_file_prefix + str(seed) + ".pkl"
+
 rw = RandomWalk(
     init_egcs=init_egcs,
     bias_coeff=bias_coeff,
@@ -89,8 +91,8 @@ rw = RandomWalk(
     keep_full_trajectory=True,
     make_restart_frequency=make_restart_frequency,
     soft_exit_check_frequency=make_restart_frequency,
-    restart_file=restart_file_prefix + str(seed) + ".pkl",
-    num_saved_candidates=100,
+    restart_file=restart_file_name,
+    num_saved_candidates=500,
     delete_temp_data=[],
     histogram_dump_file_prefix="histogram_dump_",
     max_histogram_size=None,
@@ -100,9 +102,10 @@ rw = RandomWalk(
     debug=True,
 )
 
-for MC_step in range(num_MC_steps):
-    # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
-    rw.global_random_change(**global_change_params)
+if os.path.isfile(restart_file_name):
+    rw.restart_from()
+
+rw.complete_simulation(num_global_MC_steps=num_MC_steps, **global_change_params)
 
 rw.make_restart()
 

@@ -61,5 +61,6 @@ for extra_data_key in extra_data_keys:
     if not isinstance(comp_res, bool):
         comp_res = comp_res.all()
     if not comp_res:
-        not_match("Not match in extra data key", extra_data_key)
+        print(restart_contents[0][extra_data_key], restart_contents[1][extra_data_key])
+        not_match("Not match in extra data, key: " + extra_data_key)
 print("Saved trajectories match.")

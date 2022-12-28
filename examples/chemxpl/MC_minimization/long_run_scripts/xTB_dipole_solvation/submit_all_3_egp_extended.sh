@@ -36,7 +36,7 @@ do
             cd $final_dump_directory
             for seed in $(seq 1 8)
             do
-                lpython --memory=20000 --CPUs=2 --req_files=$min_func_file $py_script ${cur_job_name}_$seed $(basename $min_func_file) $quantity $seed $bias_strength
+                lpython --memory=20000 --CPUs=2 --update_bmapqml --req_files=$min_func_file $py_script ${cur_job_name}_$seed $(basename $min_func_file) $quantity $seed $bias_strength
             done
             cd $cur_directory
         done

@@ -109,7 +109,7 @@ rw = RandomWalk(
     make_restart_frequency=make_restart_frequency,
     soft_exit_check_frequency=make_restart_frequency,
     restart_file=restart_file_name,
-    num_saved_candidates=100,
+    num_saved_candidates=500,
     delete_temp_data=[],
     histogram_dump_file_prefix="histogram_dump_",
     max_histogram_size=None,
@@ -122,9 +122,7 @@ rw = RandomWalk(
 if os.path.isfile(restart_file_name):
     rw.restart_from()
 
-for MC_step in range(num_MC_steps):
-    # If changing randomized_change_params is required mid-simulation they can be updated via *.change_rdkit arguments
-    rw.global_random_change(**global_change_params)
+rw.complete_simulation(num_global_MC_steps=num_MC_steps, **global_change_params)
 
 rw.make_restart()
 
