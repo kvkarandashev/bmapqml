@@ -426,7 +426,8 @@ class TrajectoryPoint:
                     print("Exception encountered while evaluating function ", func)
                     print("Trajectory point:", self)
                     print("Arguments:", args, kwargs)
-                    raise Exception()
+                    print("Previously calculated data:", self.calculated_data)
+                    quit()
                 self.calculated_data[quant_name] = calc_val
             output[quant_name] = self.calculated_data[quant_name]
         return output
