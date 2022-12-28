@@ -419,9 +419,15 @@ class TrajectoryPoint:
                     kwargs = {}
                 else:
                     kwargs = kwargs_dict[quant_name]
-                self.calculated_data[quant_name] = func_dict[quant_name](
-                    self, *args, **kwargs
-                )
+                func = func_dict[quant_name]
+                try:
+                    calc_val = func(self, *args, **kwargs)
+                except:
+                    print("Exception encountered while evaluating function ", func)
+                    print("Trajectory point:", self)
+                    print("Arguments:", args, kwargs)
+                    raise Exception()
+                self.calculated_data[quant_name] = calc_val
             output[quant_name] = self.calculated_data[quant_name]
         return output
 

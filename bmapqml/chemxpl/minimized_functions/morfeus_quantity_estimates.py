@@ -132,7 +132,7 @@ if os.path.isfile(atom_energy_filename):
 else:
     atom_energies = {}
 
-
+# TODO check that an atom's spin is handled properly.
 def xTB_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
     res = xTB_singlepoint_res(
         np.array([[0.0, 0.0, 0.0]]),
@@ -466,16 +466,16 @@ class LinComb_Morfeus_xTB_code:
         if self.constr_quants:
             output += "Constraints:\n"
             for quant_id, quant_name in enumerate(self.constr_quants):
-                output += quant_name
+                output += quant_name + " "
                 if self.cq_lower_bounds is not None:
-                    output += self.cq_lower_bounds[quant_id]
+                    output += str(self.cq_lower_bounds[quant_id])
                 output += ":"
                 if self.cq_upper_bounds is not None:
-                    output += self.cq_upper_bounds[quant_id]
+                    output += str(self.cq_upper_bounds[quant_id])
                 output += "\n"
         output += "Calculation parameters:\n"
         for k, v in self.xTB_related_kwargs.items():
-            output += k + " " + v + "\n"
+            output += k + " " + str(v) + "\n"
         return output
 
     def __repr__(self):
