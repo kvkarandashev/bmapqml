@@ -11,13 +11,39 @@ from ...utils import (
     repeated_dict,
     all_None_dict,
     any_element_in_list,
-    exp_wexceptions,
-    renorm_wexceptions,
 )
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 import copy, os
 from ...data import room_T
+
+#   The module was originally written in a form that does not produce any numpy warning for testing purposes. Kept like this for reproducability's sake.
+np.seterr(all="raise")
+
+
+def exp_wexceptions(val):
+    """
+    A version of numpy.exp that does not raise FloatingPointError exceptions.
+    """
+    try:
+        return np.exp(val)
+    except FloatingPointError:
+        if val > 0.0:
+            return np.inf
+        else:
+            return 0.0
+
+
+def renorm_wexceptions(array):
+    """
+    Normalize a numpy array; exceptions are accounted for.
+    """
+    s = np.sum(array)
+    for i in range(array.shape[0]):
+        try:
+            array[i] /= s
+        except FloatingPointError:
+            array[i] = 0.0
 
 
 def morfeus_coord_info_from_tp(

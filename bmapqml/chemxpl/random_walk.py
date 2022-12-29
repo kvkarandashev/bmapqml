@@ -32,7 +32,7 @@ from .modify import (
     valence_bond_change_possibilities,
 )
 from .utils import rdkit_to_egc, egc_to_rdkit
-from ..utils import dump2pkl, loadpkl, pkl_compress_ending, exp_wexceptions
+from ..utils import dump2pkl, loadpkl, pkl_compress_ending
 from .valence_treatment import (
     sorted_tuple,
     ChemGraph,
@@ -44,12 +44,9 @@ from .periodic import element_name
 import random, os
 from copy import deepcopy
 import numpy as np
+from scipy.special import expit
 
 default_minfunc_name = "MIN_FUNC_NAME"
-
-# To make overflows during acceptance step are handled correctly.
-np.seterr(all="raise")
-
 
 # Minimal set of procedures that allow to claim that our MC chains are Markovian.
 # replace_heavy_atom is only necessary for this claim to be valid if we are constrained to molecules with only one heavy atom.
@@ -1247,7 +1244,9 @@ class RandomWalk:
         if delta_pot <= 0.0:
             return True
         else:
-            return random.random() < exp_wexceptions(-delta_pot)
+            #            Uncommenting this line make the code consistent with old tests.
+            #            return -np.log(np.random.random()) > delta_pot
+            return np.random.exponential() > delta_pot
 
     def virtual_beta_present(self, beta_ids):
         return any(self.virtual_beta_ids(beta_ids))
@@ -1350,14 +1349,7 @@ class RandomWalk:
                     return 0.0
         else:
             delta_pot = sum(cur_tot_pot_vals) - sum(switched_tot_pot_vals)
-            exp_val = exp_wexceptions(delta_pot)
-            if np.isinf(exp_val):
-                return 0.0
-            else:
-                try:
-                    return (1.0 + exp_val) ** (-1)
-                except FloatingPointError:
-                    return 0.0
+            return expit(-delta_pot)
 
     # Basic move procedures.
     def MC_step(self, replica_id=0, **dummy_kwargs):

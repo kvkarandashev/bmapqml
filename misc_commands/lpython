@@ -40,6 +40,10 @@ do
     then
         UPDATE_BMAPQML=TRUE
     fi
+    if [[ "$1" == --copy_modules=* ]]
+    then
+        copy_modules=$(flag_val $1 | tr ':' ' ')
+    fi
     shift
 done
 
@@ -95,9 +99,18 @@ cd $data_dir
 
 if [ "$UPDATE_BMAPQML" == "TRUE" ]
 then
+    copy_modules=$copy_modules:bmapqml
+fi
+
+if [ -z "$copy_modules" ]
+then
     extra_mod_name=EXTRA_MODULES
-    mkdir $extra_mod_name
-    python -c "from bmapqml.utils import copy_bmapqml_to; copy_bmapqml_to('$data_dir/$extra_mod_name')"
+    mkdir -p $extra_mod_name
+    for mod in $(echo $copy_modules | tr ":" " ")
+    do
+        d=$(python -c "import $mod ; print($mod.__file__)")
+        cp -r $d $data_dir/$extra_mod_name
+    done
 fi
 
 EXNAME=ex_$job_name.sh
@@ -112,7 +125,7 @@ do
     echo "export $NTHREAD_VAR=$JOB_OMP_NUM_THREADS" >> $EXNAME
 done
 
-if [ "$UPDATE_BMAPQML" == "TRUE" ]
+if [ -d $extra_mod_name ]
 then
     echo "export PYTHONPATH=\$(pwd)/$extra_mod_name:\$PYTHONPATH" >> $EXNAME
 fi
