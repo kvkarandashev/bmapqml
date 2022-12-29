@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # The minimized function file is created by scripts in examples/chemxpl/minfunc_creation/morfeus_xTB_solvation.
-dump_directory="/store/konst/chemxpl_related/minimization_runs_xTB_dipole_solvation"
+dump_directory="/store/konst/chemxpl_related/minimization_runs_xTB_dipole_solvation_leruli"
 
 gap_constraints=("weak" "strong")
 
@@ -36,7 +36,19 @@ do
             cd $final_dump_directory
             for seed in $(seq 1 8)
             do
-                lpython --memory=20000 --update_bmapqml --CPUs=2 --req_files=$min_func_file $py_script ${cur_job_name}_$seed $(basename $min_func_file) min_$quantity $seed $bias_strength
+                req_files=$min_func_file
+                seed_name=${cur_job_name}_$seed
+                data_subdir=${cur_job_name}/data_$seed_name
+                if [ -d $dump_directory/completed/$data_subdir ]
+                then
+                    continue
+                fi
+                other_file=$dump_directory/latest_batch/$data_subdir/restart_file_$seed.pkl
+                if [ -f $other_file ]
+                then
+                    req_files=$req_files:$other_file
+                fi                
+                lpython --memory=20000 --CPUs=2 --update_bmapqml --req_files=$req_files $py_script $seed_name $(basename $min_func_file) min_$quantity $seed $bias_strength
             done
             cd $cur_directory
         done

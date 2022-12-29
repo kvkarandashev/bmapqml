@@ -102,13 +102,13 @@ then
     copy_modules=$copy_modules:bmapqml
 fi
 
-if [ -z "$copy_modules" ]
+if [ ! -z "$copy_modules" ]
 then
     extra_mod_name=EXTRA_MODULES
     mkdir -p $extra_mod_name
     for mod in $(echo $copy_modules | tr ":" " ")
     do
-        d=$(python -c "import $mod ; print($mod.__file__)")
+        d=$(python -c "import $mod, os ; print(os.path.dirname($mod.__file__))")
         cp -r $d $data_dir/$extra_mod_name
     done
 fi
@@ -125,7 +125,7 @@ do
     echo "export $NTHREAD_VAR=$JOB_OMP_NUM_THREADS" >> $EXNAME
 done
 
-if [ -d $extra_mod_name ]
+if [ ! -z "$copy_modules" ]
 then
     echo "export PYTHONPATH=\$(pwd)/$extra_mod_name:\$PYTHONPATH" >> $EXNAME
 fi
