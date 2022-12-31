@@ -229,7 +229,10 @@ def xTB_singlepoint_res(
         calc_obj.set_solvent(get_solvent(solvent))
     calc_obj.set_verbosity(verbosity_dict[verbosity])
 
-    return calc_obj.singlepoint()
+    try:
+        return calc_obj.singlepoint()
+    except:
+        return None
 
 
 def xTB_quants(
@@ -242,6 +245,9 @@ def xTB_quants(
     res = xTB_singlepoint_res(
         coordinates, nuclear_charges, solvent=solvent, **other_xTB_singlepoint_res
     )
+
+    if res is None:
+        return None
 
     output = {}
     output["energy"] = res.get_energy()
@@ -329,12 +335,17 @@ def morfeus_FF_xTB_code_quants_weighted(
     output = repeated_dict(quantities, 0.0)
     for conf_coords, weight in zip(coord_info["coordinates"], conf_weights):
         if weight is not None:
-            try:
-                res = xTB_quants(
-                    conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
+            #            try:
+            res = xTB_quants(
+                conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
+            )
+            #            except XTBException:
+            #                print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
+            #                return None
+            if res is None:
+                print(
+                    "###PROBLEMATIC MOLECULE for xTB", coord_info["canon_rdkit_SMILES"]
                 )
-            except XTBException:
-                print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
                 return None
             if "normalized_atomization_energy" in quantities:
                 res["normalized_atomization_energy"] = (
