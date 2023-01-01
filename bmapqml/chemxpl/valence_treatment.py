@@ -1500,6 +1500,10 @@ class ChemGraph:
             *[self.inv_canonical_permutation for _ in range(atom_set_length)]
         )
 
+    def __hash__(self):
+        # TODO replaced comparison_list with comparison_tuple?
+        return hash(tuple(self.get_comparison_list()))
+
     def __lt__(self, ch2):
         return self.get_comparison_list() < ch2.get_comparison_list()
 

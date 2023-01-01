@@ -568,6 +568,10 @@ class TrajectoryPoint:
     def chemgraph(self):
         return self.egc.chemgraph
 
+    def __hash__(self):
+        return hash(self.chemgraph())
+
+    # TODO: Is comparison to ChemGraph objects worth the trouble?
     def __lt__(self, tp2):
         return self.chemgraph() < tp_or_chemgraph(tp2)
 

@@ -269,6 +269,8 @@ def xTB_quants(
         res_nosolvent = xTB_singlepoint_res(
             coordinates, nuclear_charges, **other_xTB_singlepoint_res, solvent=None
         )
+        if res_nosolvent is None:
+            return None
         en_nosolvent = res_nosolvent.get_energy()
         output["energy_no_solvent"] = en_nosolvent
         output["solvation_energy"] = output["energy"] - en_nosolvent
