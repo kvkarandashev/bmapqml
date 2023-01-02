@@ -88,6 +88,12 @@ print("Move statistics:")
 for k, val in rw.move_statistics().items():
     print(k, ":", val)
 
+print(
+    "Number of calls vs histogram size:",
+    rw.min_function.call_counter,
+    len(rw.histogram),
+)
+
 # Print analysis of the generated distribution.
 print_distribution_analysis(
     rw.histogram,

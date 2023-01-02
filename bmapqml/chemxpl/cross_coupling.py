@@ -468,6 +468,7 @@ def matching_frag_size_status_list(
     return output
 
 
+# TODO would introduction of visited_tps similar to randomized_change help here?
 def randomized_cross_coupling(
     cg_pair: list or tuple,
     cross_coupling_smallest_exchange_size=2,

@@ -69,6 +69,7 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="larger_mols_restart.pkl",
+    num_saved_candidates=100,
     debug=True,
 )
 for MC_step in range(num_MC_steps):
@@ -80,3 +81,9 @@ rw.make_restart()
 print("Move statistics:")
 for k, val in rw.move_statistics().items():
     print(k, ":", val)
+
+print(
+    "Number of calls vs histogram size:",
+    rw.min_function.call_counter,
+    len(rw.histogram),
+)

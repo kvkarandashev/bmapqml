@@ -6,6 +6,8 @@
 # TODO add a toy problem with a history-dependent minimized function to check that re-import from restart works properly.
 # TODO add a restart example with dumped histogram.
 
+# TODO check that linear_storage option is used correctly everywhere (should it be used consistently?)
+
 from sortedcontainers import SortedList, SortedDict
 from .ext_graph_compound import ExtGraphCompound
 from .modify import (
@@ -600,19 +602,32 @@ class CandidateCompound:
         self.func_val = func_val
 
     def __eq__(self, cc2):
-        return self.tp == cc2.tp
+        if self.tp == cc2.tp:
+            return True
+        return (self.func_val is None) and (cc2.func_val is None)
+
+    def noneq_gt_wNone(self, cc2):
+        if self.func_val is None:
+            return True
+        if cc2.func_val is None:
+            return False
+        if self.func_val == cc2.func_val:
+            return (
+                self.tp > cc2.tp
+            )  # For consistency with __eq__ in case of integer minimized function.
+        return self.func_val > cc2.func_val
 
     def __gt__(self, cc2):
         if self == cc2:
             return False
         else:
-            return self.func_val > cc2.func_val
+            return self.noneq_gt_wNone(cc2)
 
     def __lt__(self, cc2):
         if self == cc2:
             return False
         else:
-            return self.func_val < cc2.func_val
+            return not self.noneq_gt_wNone(cc2)
 
     def __str__(self):
         return (
@@ -945,7 +960,7 @@ class RandomWalk:
             self.min_function_dict = {self.min_function_name: self.min_function}
         self.num_saved_candidates = num_saved_candidates
         if self.num_saved_candidates is not None:
-            self.saved_candidates = []
+            self.saved_candidates = SortedList()
 
         # For storing statistics on move success.
         self.num_attempted_cross_couplings = 0
@@ -1139,15 +1154,15 @@ class RandomWalk:
             if self.no_exploration:
                 if added_tp not in self.restricted_tps:
                     raise InvalidStartingMolecules
-            added_tp = self.hist_checked_tps([added_tp])[0]
+            #            self.hist_check_tp(added_tp)
+            added_tp = self.hist_checked_tp(added_tp)
             if self.min_function is not None:
                 # Initialize the minimized function's value in the new trajectory point and check that it is not None
                 cur_min_func_val = self.eval_min_func(added_tp, replica_id)
                 if cur_min_func_val is None:
                     raise InvalidStartingMolecules
             self.cur_tps.append(added_tp)
-        if self.num_saved_candidates is not None:
-            self.update_saved_candidates()
+            self.update_saved_candidates(added_tp)
         self.update_histogram(list(range(self.num_replicas)))
         self.update_global_histogram()
 
@@ -1188,8 +1203,6 @@ class RandomWalk:
                     else:
                         self.add_to_histogram(new_tp, replica_id)
 
-        if self.num_saved_candidates is not None:
-            self.update_saved_candidates()
         if self.keep_histogram:
             self.update_histogram(replica_ids)
 
@@ -1375,9 +1388,9 @@ class RandomWalk:
 
         self.num_valid_simple_moves += 1
 
-        new_tps = self.hist_checked_tps([new_tp])
+        new_tp = self.hist_checked_tp(new_tp)
         accepted = self.accept_reject_move(
-            new_tps, prob_balance, replica_ids=[replica_id]
+            [new_tp], prob_balance, replica_ids=[replica_id]
         )
         if accepted:
             self.num_accepted_simple_moves += 1
@@ -1399,6 +1412,8 @@ class RandomWalk:
         if new_cg_pair is None:
             return None, None
 
+        #        new_pair_tps=[TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
+        #        self.hist_check_tps(new_pair_tps)
         new_pair_tps = self.hist_checked_tps(
             [TrajectoryPoint(cg=new_cg) for new_cg in new_cg_pair]
         )
@@ -1596,6 +1611,9 @@ class RandomWalk:
             for dtd_identifier in self.delete_temp_data:
                 if dtd_identifier in tp.calculated_data:
                     del tp.calculated_data[dtd_identifier]
+
+        self.update_saved_candidates(tp)
+
         return output
 
     def merge_histogram(self, other_histogram):
@@ -1713,6 +1731,31 @@ class RandomWalk:
             )
         self.histogram[tp_index].num_visits[replica_id] += 1
 
+    #    def hist_check_tp(self, tp):
+    #        """
+    #        Check whether there is data in histogram related to a TrajectoryPoint.
+    #        """
+    #        if self.histogram is None:
+    #            return
+    #        if tp in self.histogram:
+    #            tp_in_hist=self.histogram[self.histogram.index(tp)]
+    #            tp_in_hist.copy_extra_data_to(tp)
+
+    #    def hist_check_tps(self, tp_list):
+    #        """
+    #        Check whether there is data in histogram related to TrajectoryPoint objects.
+    #        """
+    #        if self.histogram is None:
+    #            return
+    #        for tp in tp_list:
+    #            self.hist_check_tp(tp)
+    # TODO The variant of the code that used hist_check_tps instead of hist_checked_tps seemed slightly slower for some reason,
+    # might change should the code face a major revision.
+    def hist_checked_tp(self, tp):
+        if (self.histogram is None) or (tp not in self.histogram):
+            return tp
+        return deepcopy(self.histogram[self.histogram.index(tp)])
+
     def hist_checked_tps(self, tp_list):
         """
         Return a version of tp_list where all entries are replaced with references to self.histogram.
@@ -1720,13 +1763,7 @@ class RandomWalk:
         """
         if self.histogram is None:
             return tp_list
-        output = []
-        for tp in tp_list:
-            if tp in self.histogram:
-                output.append(deepcopy(self.histogram[self.histogram.index(tp)]))
-            else:
-                output.append(tp)
-        return output
+        return [self.hist_checked_tp(tp) for tp in tp_list]
 
     def clear_histogram_visit_data(self):
         for tp in self.histogram:
@@ -1734,15 +1771,23 @@ class RandomWalk:
             if self.keep_full_trajectory:
                 tp.visit_step_ids = None
 
-    def update_saved_candidates(self):
-        for tp in self.cur_tps:
-            if self.min_function_name in tp.calculated_data:
-                new_cc = CandidateCompound(
-                    tp, tp.calculated_data[self.min_function_name]
-                )
-                if new_cc not in self.saved_candidates:
-                    self.saved_candidates.append(new_cc)
-        self.saved_candidates.sort()
+    def update_saved_candidates(self, tp_in):
+        if self.num_saved_candidates is None:
+            return
+        min_func_val = tp_in.calculated_data[self.min_function_name]
+        if min_func_val is None:
+            return
+        if len(self.saved_candidates) >= self.num_saved_candidates:
+            if min_func_val > self.saved_candidates[-1].func_val:
+                return
+
+        new_cand_compound = CandidateCompound(tp=deepcopy(tp_in), func_val=min_func_val)
+
+        if new_cand_compound in self.saved_candidates:
+            return
+
+        self.saved_candidates.add(new_cand_compound)
+
         if len(self.saved_candidates) > self.num_saved_candidates:
             del self.saved_candidates[self.num_saved_candidates :]
 
