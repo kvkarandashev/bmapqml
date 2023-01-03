@@ -3,7 +3,7 @@
 # For small effort submissions of jobs to leruli queue.
 
 function flag_val(){
-    echo $1 | cut -d'=' -f2
+    echo $1 | cut -d'=' -f2-
 }
 
 NCPUs=1
@@ -40,9 +40,13 @@ do
     then
         UPDATE_BMAPQML=TRUE
     fi
+    if [[ "$1" == --export_env_vars=* ]]
+    then
+        EXPORT_ENV_VARS=$(flag_val $1)
+    fi 
     if [[ "$1" == --copy_modules=* ]]
     then
-        copy_modules=$(flag_val $1 | tr ':' ' ')
+        copy_modules=$(flag_val $1)
     fi
     shift
 done
@@ -128,6 +132,14 @@ done
 if [ ! -z "$copy_modules" ]
 then
     echo "export PYTHONPATH=\$(pwd)/$extra_mod_name:\$PYTHONPATH" >> $EXNAME
+fi
+
+if [ ! -z "$EXPORT_ENV_VARS" ]
+then
+    for env_tuple in $(echo $EXPORT_ENV_VARS | tr "/" " ")
+    do
+        echo "export $env_tuple" >> $EXNAME
+    done
 fi
 
 cat >> $EXNAME << EOF

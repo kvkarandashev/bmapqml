@@ -74,7 +74,7 @@ def morfeus_coord_info_from_tp(
             canon_rdkit_mol,
             n_confs=num_attempts,
             optimize=ff_type,
-            n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1),
+            n_threads=checked_environ_val("MORFEUS_NUM_THREADS", default_answer=1),
         )
     except Exception as ex:
         if not isinstance(ex, ValueError):

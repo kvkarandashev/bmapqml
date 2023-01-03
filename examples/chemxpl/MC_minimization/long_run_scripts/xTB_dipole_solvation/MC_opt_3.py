@@ -35,7 +35,7 @@ betas = gen_exp_beta_array(4, 1.0, 32, max_real_beta=8.0)
 
 print("Chosen betas:", betas)
 
-make_restart_frequency = 2000
+make_restart_frequency = 1000
 num_MC_steps = 50000  # 50000
 
 bias_coeffs = {"none": None, "weak": 0.2, "stronger": 0.4}
@@ -92,7 +92,7 @@ rw = RandomWalk(
     make_restart_frequency=make_restart_frequency,
     soft_exit_check_frequency=make_restart_frequency,
     restart_file=restart_file_name,
-    num_saved_candidates=500,
+    num_saved_candidates=None,
     delete_temp_data=[],
     histogram_dump_file_prefix="histogram_dump_",
     max_histogram_size=None,
