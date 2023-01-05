@@ -1656,6 +1656,7 @@ class RandomWalk:
             return cur_visit_num * bias_coeff
 
     def add_to_histogram(self, trajectory_point_in, replica_id):
+        # TODO reverse the MC_step_encounter vs global_MC_step_encounter; double-check it's not messed up in another way.
         trajectory_point_in.first_MC_step_encounter = self.global_MC_step_counter
         trajectory_point_in.first_global_MC_step_encounter = self.MC_step_counter
         trajectory_point_in.first_encounter_replica = replica_id
