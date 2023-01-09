@@ -58,13 +58,13 @@ class Analyze:
     given as restart files in the tar format.
     """
 
-    def __init__(self, path, quanity="dipole", full_traj=False, verbose=False):
+    def __init__(self, path, quantity="dipole", full_traj=False, verbose=False):
 
         self.path = path
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
-        self.quanity = quanity
+        self.quantity = quantity
 
 
     def parse_results(self):
@@ -79,11 +79,11 @@ class Analyze:
         for run in tqdm(self.results, disable=not self.verbose):
 
             obj = loadpkl(run, compress=False)
-
             HISTOGRAM = self.to_dataframe(obj["histogram"])
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
+                pdb.set_trace()
                 traj = np.array(ordered_trajectory(obj["histogram"]))
                 CURR_TRAJECTORIES = []
                 for T in range(traj.shape[1]):
@@ -118,7 +118,9 @@ class Analyze:
         self.hull = ConvexHull(self.points)
         pareto = np.unique(self.hull.simplices.flatten())
         self.PARETO = HISTOGRAM.iloc[pareto]
+        self.PARETO = self.PARETO.sort_values(by=['X_QUANTITY'], ascending=False)
 
+        
         return self.PARETO
 
     def pareto(self, HISTOGRAM, maxX=True, maxY=True):
@@ -192,11 +194,11 @@ class Analyze:
         for tp in mols:
 
             curr_data = tp.calculated_data["xTB_res"]["mean"]
-            #pdb.set_trace()
+            
             smiles, step, x_quantity, gap = (
                 trajectory_point_to_canonical_rdkit(tp, SMILES_only=True),
                 tp.first_MC_step_encounter,
-                curr_data[self.quanity],
+                curr_data[self.quantity],
                 curr_data["HOMO_LUMO_gap"],
             )
             if x_quantity != None and gap != None:
@@ -252,7 +254,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self,name_plot, hline=None, vline=None):
+    def plot_pareto(self,name_plot, hline=None, vline=None, coloring="encounter"):
         """
         Plot the pareto optimal solutions.
         """
@@ -266,10 +268,12 @@ class Analyze:
 
         max_x = np.max(np.abs(self.X_QUANTITY))
         max_y = np.max(np.abs(self.GAP))
-        sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, bins='log', cmap=cc,C=self.ENCOUNTER, linewidths=0)
+        if coloring == "encounter":
+            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, bins='log', cmap=cc,C=self.ENCOUNTER, linewidths=0)
+        else:
+            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5,linewidths=0)
 
-
-        plt.xlabel(self.quanity, fontsize=21)
+        plt.xlabel(self.quantity, fontsize=21)
         plt.ylabel(
             "Gap",
             fontsize=21,
@@ -279,11 +283,35 @@ class Analyze:
             labelpad=-50,
             weight=500,
         )
-        clb = plt.colorbar(sc)
-        clb.set_label("step encountered", fontsize=21)
-
-
+        #clb = plt.colorbar(sc)
+        #
+        #create colorbar with name clb and ticks at the middle of the bins
         ax1 = make_pretty(ax1)
+        
+        if coloring == "encounter":
+            clb = fig.colorbar(sc)
+            clb.set_label("step encountered", fontsize=21)
+            ticks = [5000, 10000,  30000]
+            clb.set_ticks(ticks)
+            #set ticks for the colorbar clb
+            #pdb.set_trace()
+            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
+        else:
+            clb = fig.colorbar(sc)
+            clb.set_label("count", fontsize=21)
+            #ticks = [5, 10,  30]
+            #clb.set_ticks(ticks)
+            #set ticks for the colorbar clb
+            #pdb.set_trace()
+            #clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
+
+        """
+        cbar = fig.colorbar(cax, ticks=[-1, 0, 1])
+        cbar.ax.set_yticklabels(['< -1', '0', '> 1'])  # vertically oriented colorbar
+        """
+
+
+        
 
 
         for simplex in self.hull.simplices:
@@ -305,7 +333,7 @@ class Analyze:
         ax1.axes.xaxis.set_visible(True)
         ax1.axes.yaxis.set_visible(True)
 
-        if self.quanity == "dipole":
+        if self.quantity == "dipole":
             plt.legend(loc="upper right", fontsize=21)
         else:
             plt.legend(loc="upper left", fontsize=21)
@@ -314,7 +342,11 @@ class Analyze:
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         #pdb.set_trace()
-        plt.savefig("{}_pareto.png".format(name_plot), dpi=600)
+        if coloring == "encounter":
+            plt.savefig("{}_pareto_encounter.png".format(name_plot), dpi=600)
+        else:
+            plt.savefig("{}_pareto_count.png".format(name_plot), dpi=600)
+
         plt.close("all")
 
     def plot_trajectory(self, TRAJECTORY):
@@ -337,7 +369,7 @@ class Analyze:
         p2 = TRAJECTORY["HOMO_LUMO_gap"].values
         step = np.arange(len(p1))
         sc = ax1.scatter(p1, p2, s=4, c=step)
-        plt.xlabel(self.quanity + " (a.u.)", fontsize=21)
+        plt.xlabel(self.quantity + " (a.u.)", fontsize=21)
         plt.ylabel(
             "Gap" + " (a.u.)",
             fontsize=21,
