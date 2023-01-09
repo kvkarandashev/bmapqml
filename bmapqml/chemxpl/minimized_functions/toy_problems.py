@@ -41,6 +41,7 @@ class OrderSlide:
         """
         Toy problem potential for minimizing nuclear charges of heavy atoms of molecules.
         """
+        self.call_counter = 0
         if possible_nuclear_charges is None:
             possible_nuclear_charges = [NUCLEAR_CHARGE[el] for el in possible_elements]
         used_nuclear_charges = sorted(possible_nuclear_charges)
@@ -49,6 +50,7 @@ class OrderSlide:
             self.order_dict[ncharge] = i
 
     def __call__(self, trajectory_point_in: TrajectoryPoint):
+        self.call_counter += 1
         return -sum(
             self.order_dict[ha.ncharge]
             for ha in trajectory_point_in.egc.chemgraph.hatoms

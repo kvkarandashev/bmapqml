@@ -167,6 +167,9 @@ def chemgraph_to_rdkit(
     return mol
 
 
+# TODO rdkit object depends on which resonance structure was calculated first.
+# The correct way is to re-initialize ChemGraph with canonical ordering of hatoms (combined with shuffled chempgraph from valence_treatment),
+# then use it to generate the rdkit object via chemgraph_to_rdkit.
 def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
     # create empty editable mol object
     mol = Chem.RWMol()

@@ -64,6 +64,7 @@ class ChemGraphDrawing:
         resonance_struct_adj=None,
         abbrevs=None,
         abbreviate_max_coverage=1.0,
+        rotate=None,
         post_added_bonds=None,
     ):
         """
@@ -91,6 +92,7 @@ class ChemGraphDrawing:
             highlightAtomRadii=highlightAtomRadii,
             abbrevs=abbrevs,
             abbreviate_max_coverage=abbreviate_max_coverage,
+            rotate=rotate,
             post_added_bonds=post_added_bonds,
         )
         self.prepare_and_draw()
@@ -118,6 +120,7 @@ class ChemGraphDrawing:
         highlightAtomRadii=None,
         abbrevs=None,
         abbreviate_max_coverage=1.0,
+        rotate=None,
         post_added_bonds=None,
     ):
         if chemgraph is None:
@@ -136,6 +139,8 @@ class ChemGraphDrawing:
         do = self.drawing.drawOptions()
         if bw_palette:
             do.useBWAtomPalette()
+        if rotate is not None:
+            do.rotate = rotate
         if highlightBondWidthMultiplier is not None:
             do.highlightBondWidthMultiplier = highlightBondWidthMultiplier
         if bondLineWidth is not None:

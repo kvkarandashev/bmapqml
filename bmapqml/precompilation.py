@@ -24,7 +24,7 @@
 
 import importlib, os
 
-from .utils import execute_string
+from .utils import execute_string, bmapqml_root_dir
 
 debug_mode_envvar = "MOLOPT_FORTAN_DEBUG"
 
@@ -146,10 +146,10 @@ class Source:
         return str(self)
 
 
-def module_source_dirs(module_path, file_in_module_root_dir):
+def module_source_dirs(module_path, module_root_dir):
     mp_split = module_path.split(".")
     child_dirs = module_path.split(".")[:-1]
-    output = [os.path.dirname(__file__)]
+    output = [module_root_dir]
     for chdir in child_dirs:
         output.append(output[-1] + "/" + chdir)
     return mp_split[-1], output[::-1]
@@ -186,14 +186,14 @@ def precompiled(
     *module_paths,
     extensions=["f90", "f"],
     parent_module_name="bmapqml",
-    file_in_module_root_dir=__file__
+    module_root_dir=bmapqml_root_dir(),
 ):
     for module_path in module_paths:
         try:
             importlib.import_module(parent_module_name + "." + module_path)
         except ModuleNotFoundError:
             module_name, searched_dirs = module_source_dirs(
-                module_path, file_in_module_root_dir
+                module_path, module_root_dir
             )
             library_dependencies = []
             compiled_sources = [Source(module_name)]

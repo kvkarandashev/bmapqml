@@ -719,7 +719,7 @@ class ChemGraph:
 
     # Total number of hydrogens.
     def tot_nhydrogens(self):
-        return sum([hatom.nhydrogens for hatom in self.hatoms])
+        return sum(hatom.nhydrogens for hatom in self.hatoms)
 
     # Total number of binding electron pairs.
     def tot_ncovpairs(self):
@@ -1322,7 +1322,7 @@ class ChemGraph:
 
     # Output properties that include hydrogens.
     def full_natoms(self):
-        return sum([ha.nhydrogens for ha in self.hatoms]) + self.nhatoms()
+        return self.tot_nhydrogens() + self.nhatoms()
 
     def full_ncharges(self):
         output = np.ones(self.full_natoms(), dtype=int)
@@ -1499,6 +1499,10 @@ class ChemGraph:
         return itertools.product(
             *[self.inv_canonical_permutation for _ in range(atom_set_length)]
         )
+
+    def __hash__(self):
+        # TODO replaced comparison_list with comparison_tuple?
+        return hash(tuple(self.get_comparison_list()))
 
     def __lt__(self, ch2):
         return self.get_comparison_list() < ch2.get_comparison_list()
@@ -1712,6 +1716,17 @@ def connection_forbidden(nc1, nc2, forbidden_bonds):
         return False
     nc_tuple = sorted_tuple(int_atom_checked(nc1), int_atom_checked(nc2))
     return nc_tuple in forbidden_bonds
+
+
+def h2chemgraph():
+    """
+    ChemGraph representation of the H2 molecule.
+    """
+    # Very dirty, but there seems to be no better way.
+    output = ChemGraph(nuclear_charges=[9, 9], adj_mat=[[0, 1], [1, 0]])
+    for i in range(2):
+        output.hatoms[i].ncharge = 1
+    return output
 
 
 #   Utility functions

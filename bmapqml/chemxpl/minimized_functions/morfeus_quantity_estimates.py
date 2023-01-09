@@ -11,13 +11,39 @@ from ...utils import (
     repeated_dict,
     all_None_dict,
     any_element_in_list,
-    exp_wexceptions,
-    renorm_wexceptions,
 )
 from .xtb_quantity_estimates import FF_xTB_HOMO_LUMO_gap, FF_xTB_dipole
 import numpy as np
 import copy, os
 from ...data import room_T
+
+#   The module was originally written in a form that does not produce any numpy warning for testing purposes. Kept like this for reproducability's sake.
+np.seterr(all="raise")
+
+
+def exp_wexceptions(val):
+    """
+    A version of numpy.exp that does not raise FloatingPointError exceptions.
+    """
+    try:
+        return np.exp(val)
+    except FloatingPointError:
+        if val > 0.0:
+            return np.inf
+        else:
+            return 0.0
+
+
+def renorm_wexceptions(array):
+    """
+    Normalize a numpy array; exceptions are accounted for.
+    """
+    s = np.sum(array)
+    for i in range(array.shape[0]):
+        try:
+            array[i] /= s
+        except FloatingPointError:
+            array[i] = 0.0
 
 
 def morfeus_coord_info_from_tp(
@@ -27,6 +53,7 @@ def morfeus_coord_info_from_tp(
     return_rdkit_obj=False,
     all_confs=False,
     temperature=room_T,
+    coord_validity_check=True,
     **dummy_kwargs
 ):
     """
@@ -47,7 +74,7 @@ def morfeus_coord_info_from_tp(
             canon_rdkit_mol,
             n_confs=num_attempts,
             optimize=ff_type,
-            n_threads=checked_environ_val("OMP_NUM_THREADS", default_answer=1),
+            n_threads=checked_environ_val("MORFEUS_NUM_THREADS", default_answer=1),
         )
     except Exception as ex:
         if not isinstance(ex, ValueError):
@@ -69,14 +96,15 @@ def morfeus_coord_info_from_tp(
     min_en = energies[min_en_id]
     min_coordinates = all_coordinates[min_en_id]
 
-    try:
-        coord_based_cg = chemgraph_from_ncharges_coords(
-            nuclear_charges, min_coordinates
-        )
-    except InvalidAdjMat:
-        return output
-    if coord_based_cg != cg:
-        return output
+    if coord_validity_check:
+        try:
+            coord_based_cg = chemgraph_from_ncharges_coords(
+                nuclear_charges, min_coordinates
+            )
+        except InvalidAdjMat:
+            return output
+        if coord_based_cg != cg:
+            return output
 
     if all_confs:
         output["coordinates"] = all_coordinates
@@ -130,7 +158,7 @@ if os.path.isfile(atom_energy_filename):
 else:
     atom_energies = {}
 
-
+# TODO check that an atom's spin is handled properly.
 def xTB_atom_energy(ncharge, parametrization="gfn2-xtb", solvent=None):
     res = xTB_singlepoint_res(
         np.array([[0.0, 0.0, 0.0]]),
@@ -201,7 +229,10 @@ def xTB_singlepoint_res(
         calc_obj.set_solvent(get_solvent(solvent))
     calc_obj.set_verbosity(verbosity_dict[verbosity])
 
-    return calc_obj.singlepoint()
+    try:
+        return calc_obj.singlepoint()
+    except:
+        return None
 
 
 def xTB_quants(
@@ -214,6 +245,9 @@ def xTB_quants(
     res = xTB_singlepoint_res(
         coordinates, nuclear_charges, solvent=solvent, **other_xTB_singlepoint_res
     )
+
+    if res is None:
+        return None
 
     output = {}
     output["energy"] = res.get_energy()
@@ -235,6 +269,8 @@ def xTB_quants(
         res_nosolvent = xTB_singlepoint_res(
             coordinates, nuclear_charges, **other_xTB_singlepoint_res, solvent=None
         )
+        if res_nosolvent is None:
+            return None
         en_nosolvent = res_nosolvent.get_energy()
         output["energy_no_solvent"] = en_nosolvent
         output["solvation_energy"] = output["energy"] - en_nosolvent
@@ -281,10 +317,15 @@ def morfeus_FF_xTB_code_quants_weighted(
     ff_type="MMFF94",
     quantities=[],
     remaining_rho=None,
+    coord_validity_check=True,
     **xTB_quants_kwargs
 ):
     coord_info = morfeus_coord_info_from_tp(
-        tp, num_attempts=num_conformers, ff_type=ff_type, all_confs=True
+        tp,
+        num_attempts=num_conformers,
+        ff_type=ff_type,
+        all_confs=True,
+        coord_validity_check=coord_validity_check,
     )
     coordinates = coord_info["coordinates"]
     if coordinates is None:
@@ -296,12 +337,17 @@ def morfeus_FF_xTB_code_quants_weighted(
     output = repeated_dict(quantities, 0.0)
     for conf_coords, weight in zip(coord_info["coordinates"], conf_weights):
         if weight is not None:
-            try:
-                res = xTB_quants(
-                    conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
+            #            try:
+            res = xTB_quants(
+                conf_coords, ncharges, quantities=quantities, **xTB_quants_kwargs
+            )
+            #            except XTBException:
+            #                print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
+            #                return None
+            if res is None:
+                print(
+                    "###PROBLEMATIC MOLECULE for xTB", coord_info["canon_rdkit_SMILES"]
                 )
-            except XTBException:
-                print("###PROBLEMATIC_MOLECULE:", coord_info["canon_rdkit_SMILES"])
                 return None
             if "normalized_atomization_energy" in quantities:
                 res["normalized_atomization_energy"] = (
@@ -448,6 +494,32 @@ class LinComb_Morfeus_xTB_code:
             result += cur_add
         return result
 
+    def __str__(self):
+        output = (
+            "LinComb_Morfeus_xTB_code\nQuants: "
+            + str(self.quantities)
+            + "\nCoefficients: "
+            + str(self.coefficients)
+            + "\n"
+        )
+        if self.constr_quants:
+            output += "Constraints:\n"
+            for quant_id, quant_name in enumerate(self.constr_quants):
+                output += quant_name + " "
+                if self.cq_lower_bounds is not None:
+                    output += str(self.cq_lower_bounds[quant_id])
+                output += ":"
+                if self.cq_upper_bounds is not None:
+                    output += str(self.cq_upper_bounds[quant_id])
+                output += "\n"
+        output += "Calculation parameters:\n"
+        for k, v in self.xTB_related_kwargs.items():
+            output += k + " " + str(v) + "\n"
+        return output
+
+    def __repr__(self):
+        return str(self)
+
 
 from ..random_walk import TrajectoryPoint, ChemGraph
 
@@ -455,7 +527,6 @@ from ..random_walk import TrajectoryPoint, ChemGraph
 class Hydrogenation:
     def __init__(
         self,
-        possible_ncharges=supported_ncharges(),
         num_attempts=1,
         num_conformers=1,
         remaining_rho=None,
@@ -463,23 +534,35 @@ class Hydrogenation:
         **morfeus_related_kwargs
     ):
         """
-        Returns energy of hydrogenation. Not %100 sure whether it works correctly.
+        Returns energy of hydrogenation via MMFF.
         """
-        gen_atom_energies(ncharges=possible_ncharges)
         self.morfeus_related_kwargs = morfeus_related_kwargs
         self.num_attempts = num_attempts
         self.num_conformers = num_conformers
         self.remaining_rho = remaining_rho
         self.energy_av_std_key = energy_av_std_key
-        self.call_counter = 1
+        self.call_counter = 0
 
-    def energy_vals(self, tp_in):
+        from ..valence_treatment import h2chemgraph
+
+        self.h2chemgraph = h2chemgraph()
+
+    def h2energy(self):
+        return self.average_energy(
+            TrajectoryPoint(cg=self.h2chemgraph), coord_validity_check=False
+        )
+
+    def hydrogenated_species_energy(self, cg):
+        return self.average_energy(TrajectoryPoint(cg=cg))
+
+    def energy_vals(self, tp_in, coord_validity_check=True):
         energy_arr = np.zeros((self.num_attempts,))
         for i in range(self.num_attempts):
             morfeus_data = morfeus_coord_info_from_tp(
                 tp_in,
                 num_attempts=self.num_conformers,
                 all_confs=True,
+                coord_validity_check=coord_validity_check,
                 **self.morfeus_related_kwargs
             )
             coords = morfeus_data["coordinates"]
@@ -493,10 +576,13 @@ class Hydrogenation:
                     energy_arr[i] += en * weight
         return np.mean(energy_arr), np.std(energy_arr)
 
-    def average_energy(self, tp_in):
-        av, _ = tp_in.calc_or_lookup({self.energy_av_std_key: self.energy_vals})[
-            self.energy_av_std_key
-        ]
+    def average_energy(self, tp_in, coord_validity_check=True):
+        av, _ = tp_in.calc_or_lookup(
+            {self.energy_av_std_key: self.energy_vals},
+            kwargs_dict={
+                self.energy_av_std_key: {"coord_validity_check": coord_validity_check}
+            },
+        )[self.energy_av_std_key]
         return av
 
     def __call__(self, tp_in):
@@ -510,6 +596,7 @@ class Hydrogenation:
         output = self.average_energy(tp_in)
         if output is None:
             return None
+        extra_nhydrogens = -tp_in.chemgraph().tot_nhydrogens()
         # Note that we do not pre-initialize energies of individual hydrogenated species to allow for statistical error cancelation.
         for ncharge, natoms in cur_ncharges.items():
             temp_cg = ChemGraph(
@@ -517,5 +604,64 @@ class Hydrogenation:
                 hydrogen_autofill=True,
                 adj_mat=np.array([[0]]),
             )
-            output -= self.average_energy(TrajectoryPoint(cg=temp_cg)) * natoms
+            output -= self.hydrogenated_species_energy(temp_cg) * natoms
+            extra_nhydrogens += temp_cg.tot_nhydrogens() * natoms
+        if extra_nhydrogens % 2 != 0:
+            raise Exception()
+        output += self.h2energy() * extra_nhydrogens / 2
         return output
+
+
+class Hydrogenation_xTB(Hydrogenation):
+    def __init__(
+        self,
+        xTB_related_kwargs={},
+        xTB_related_overconverged_kwargs={},
+        xTB_res_dict_name="xTB_res",
+    ):
+        """
+        Use forcefield coordinates and xTB to estimate hydrogenation energy.
+        """
+        self.xTB_related_kwargs = xTB_related_kwargs
+        self.xTB_related_overconverged_kwargs = xTB_related_overconverged_kwargs
+        self.call_counter = 0
+        self.xTB_res_dict_name = xTB_res_dict_name
+
+        self.hydrogenated_energies_precalc = {}
+
+        from ..valence_treatment import h2chemgraph
+
+        self.h2_energy_precalc = self.overconverged_average_energy(h2chemgraph())
+
+    def average_energy(self, tp_in, xTB_kwargs=None):
+        if xTB_kwargs is None:
+            xTB_kwargs = self.xTB_related_kwargs
+        xTB_res_dict = tp_in.calc_or_lookup(
+            {self.xTB_res_dict_name: morfeus_FF_xTB_code_quants},
+            kwargs_dict={
+                self.xTB_res_dict_name: {
+                    **xTB_kwargs,
+                    "quantities": ["energy"],
+                }
+            },
+        )[self.xTB_res_dict_name]
+        return xTB_res_dict["mean"]["energy"]
+
+    def overconverged_average_energy(self, cg):
+        xTB_kwargs = {
+            "coord_validity_check": False,
+            **self.xTB_related_overconverged_kwargs,
+        }
+        temp_tp = TrajectoryPoint(cg=cg)
+        return self.average_energy(temp_tp, xTB_kwargs=xTB_kwargs)
+
+    def h2energy(self):
+        return self.h2_energy_precalc
+
+    def hydrogenated_species_energy(self, cg):
+        core_ncharge = cg.hatoms[0].ncharge
+        if core_ncharge not in self.hydrogenated_energies_precalc:
+            self.hydrogenated_energies_precalc[
+                core_ncharge
+            ] = self.overconverged_average_energy(cg)
+        return self.hydrogenated_energies_precalc[core_ncharge]

@@ -49,31 +49,6 @@ def np_resize(np_arr, new_size):
     return new_arr
 
 
-def exp_wexceptions(val):
-    """
-    A version of numpy.exp that does not raise FloatingPointError exceptions.
-    """
-    try:
-        return np.exp(val)
-    except FloatingPointError:
-        if val > 0.0:
-            return np.inf
-        else:
-            return 0.0
-
-
-def renorm_wexceptions(array):
-    """
-    Normalize a numpy array; exceptions are accounted for.
-    """
-    s = np.sum(array)
-    for i in range(array.shape[0]):
-        try:
-            array[i] /= s
-        except FloatingPointError:
-            array[i] = 0.0
-
-
 def canonical_atomtype(atomtype):
     return atomtype[0].upper() + atomtype[1:].lower()
 
@@ -109,6 +84,14 @@ def str_atom_corr(ncharge):
         for cur_el, cur_ncharge in NUCLEAR_CHARGE.items():
             ELEMENTS[cur_ncharge] = cur_el
     return ELEMENTS[ncharge]
+
+
+def bmapqml_root_dir():
+    return os.path.dirname(__file__)
+
+
+def copy_bmapqml_to(other_dir):
+    subprocess.run(["cp", "-r", bmapqml_root_dir(), other_dir])
 
 
 # def str_atom_corr(ncharge):
