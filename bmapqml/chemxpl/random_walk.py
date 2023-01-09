@@ -8,6 +8,8 @@
 
 # TODO check that linear_storage option is used correctly everywhere (should it be used consistently?)
 
+# TODO separate MC_step counters for different MC move types?
+
 from sortedcontainers import SortedList, SortedDict
 from .ext_graph_compound import ExtGraphCompound
 from .modify import (
@@ -1978,10 +1980,15 @@ class RandomWalk:
 
 # Some procedures for convenient RandomWalk analysis.
 def histogram_num_replicas(histogram):
+    max_replica_id = 0
     for tp in histogram:
-        if tp.visit_step_ids is not None:
-            return len(tp.visit_step_ids)
-    return None
+        cur_visit_step_ids = tp.visit_step_ids
+        if global_step_traj_storage_label not in cur_visit_step_ids:
+            continue
+        visiting_replicas = cur_visit_step_ids[global_step_traj_storage_label].keys()
+        if visiting_replicas:
+            max_replica_id = max(max_replica_id, max(visiting_replicas))
+    return max_replica_id + 1
 
 
 def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=None):
@@ -1993,21 +2000,22 @@ def ordered_trajectory_ids(histogram, global_MC_step_counter=None, num_replicas=
         global_MC_step_counter = 0
         for tp in histogram:
             if global_step_traj_storage_label in tp.visit_step_ids:
-                for max_visit_id, visit_ids in zip(
+                for visit_ids, num_visits in zip(
                     tp.visit_step_ids[global_step_traj_storage_label].values(),
                     tp.visit_step_num_ids[global_step_traj_storage_label].values(),
                 ):
-                    global_MC_step_counter = max(
-                        global_MC_step_counter, visit_ids[max_visit_id]
-                    )
+                    if num_visits > 0:
+                        global_MC_step_counter = max(
+                            global_MC_step_counter, visit_ids[num_visits - 1]
+                        )
     output = np.zeros((global_MC_step_counter + 1, num_replicas), dtype=int)
     output[:, :] = -1
     for tp_id, tp in enumerate(histogram):
         if global_step_traj_storage_label in tp.visit_step_ids:
             cur_vsi_dict = tp.visit_step_ids[global_step_traj_storage_label]
             cur_vsni_dict = tp.visit_step_num_ids[global_step_traj_storage_label]
-            for replica_id, max_visit_id in cur_vsni_dict.items():
-                visits = cur_vsi_dict[replica_id][:max_visit_id]
+            for replica_id, num_visits in cur_vsni_dict.items():
+                visits = cur_vsi_dict[replica_id][:num_visits]
                 for v in visits:
                     output[v, replica_id] = tp_id
     for step_id in range(global_MC_step_counter):
