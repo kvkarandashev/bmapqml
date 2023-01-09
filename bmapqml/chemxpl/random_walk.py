@@ -2033,6 +2033,27 @@ def ordered_trajectory(histogram, **ordered_trajectory_ids_kwargs):
     return output
 
 
+def ordered_trajectory_ids_kwargs_from_restart(restart_data):
+    return {
+        "global_MC_step_counter": restart_data["global_MC_step_counter"],
+        "num_replicas": len(restart_data["cur_tps"]),
+    }
+
+
+def ordered_trajectory_from_restart(restart_data):
+    return ordered_trajectory(
+        restart_data["histogram"],
+        **ordered_trajectory_ids_kwargs_from_restart(restart_data)
+    )
+
+
+def ordered_trajectory_ids_from_restart(restart_data):
+    return ordered_trajectory_ids(
+        restart_data["histogram"],
+        **ordered_trajectory_ids_kwargs_from_restart(restart_data)
+    )
+
+
 def average_wait_number(histogram):
     return average_wait_number_from_traj_ids(ordered_trajectory_ids(histogram))
 
