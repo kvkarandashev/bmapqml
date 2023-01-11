@@ -1,7 +1,7 @@
 from bmapqml.utils import *
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
-from bmapqml.chemxpl.random_walk import ordered_trajectory
+from bmapqml.chemxpl.random_walk import ordered_trajectory,ordered_trajectory_from_restart
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -78,13 +78,14 @@ class Analyze:
 
         for run in tqdm(self.results, disable=not self.verbose):
 
-            obj = loadpkl(run, compress=False)
-            HISTOGRAM = self.to_dataframe(obj["histogram"])
+            restart_data = loadpkl(run, compress=False)
+            self.global_MC_step_counter = restart_data["global_MC_step_counter"]
+            HISTOGRAM = self.to_dataframe(restart_data["histogram"])
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
-                pdb.set_trace()
-                traj = np.array(ordered_trajectory(obj["histogram"]))
+        
+                traj = np.array(ordered_trajectory_from_restart(restart_data))
                 CURR_TRAJECTORIES = []
                 for T in range(traj.shape[1]):
                     sel_temp = traj[:, T]
@@ -104,8 +105,12 @@ class Analyze:
         self.ENCOUNTER = self.GLOBAL_HISTOGRAM["ENCONTER"].values
         self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
-        if len(self.LABELS) > 0:
+        if self.full_traj:
+            self.ALL_TRAJECTORIES = pd.concat(ALL_TRAJECTORIES[0])
+            self.X_QUANTITY_traj, self.GAP_traj =  self.ALL_TRAJECTORIES["X_QUANTITY"].values, self.ALL_TRAJECTORIES["HOMO_LUMO_gap"]
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+        else:
+            return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM
 
     def pareto_correct(self, HISTOGRAM):
         try:
@@ -261,17 +266,20 @@ class Analyze:
 
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
-        #sc = ax1.scatter(self.X_QUANTITY, self.GAP, s=4, c=self.ENCOUNTER, cmap=cm.viridis)
-
-        cc = 'gnuplot_r'  # viridis
+        cc = 'gnuplot_r'
         gs = 30
 
         max_x = np.max(np.abs(self.X_QUANTITY))
         max_y = np.max(np.abs(self.GAP))
+
         if coloring == "encounter":
-            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, bins='log', cmap=cc,C=self.ENCOUNTER, linewidths=0)
-        else:
-            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5,linewidths=0)
+            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, cmap=cc,C=self.ENCOUNTER, linewidths=0)
+        if coloring == "density":
+            from matplotlib import colors
+            np.seterr(under='warn')
+            sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0,norm=colors.LogNorm(vmin=100, vmax=200000))
+
+            
 
         plt.xlabel(self.quantity, fontsize=21)
         plt.ylabel(
@@ -291,28 +299,15 @@ class Analyze:
         if coloring == "encounter":
             clb = fig.colorbar(sc)
             clb.set_label("step encountered", fontsize=21)
-            ticks = [5000, 10000,  30000]
+            ticks =  [i*5000 for i in range(1,7)]
             clb.set_ticks(ticks)
-            #set ticks for the colorbar clb
-            #pdb.set_trace()
             clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
         else:
+
+            ticks = [1000, 2500, 10000,25000, 100000, 200000]
             clb = fig.colorbar(sc)
-            clb.set_label("count", fontsize=21)
-            #ticks = [5, 10,  30]
-            #clb.set_ticks(ticks)
-            #set ticks for the colorbar clb
-            #pdb.set_trace()
-            #clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
-
-        """
-        cbar = fig.colorbar(cax, ticks=[-1, 0, 1])
-        cbar.ax.set_yticklabels(['< -1', '0', '> 1'])  # vertically oriented colorbar
-        """
-
-
-        
-
+            clb.set_ticks(ticks)
+            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
 
         for simplex in self.hull.simplices:
             plt.plot(
@@ -325,11 +320,6 @@ class Analyze:
             plt.axvline(x=vline/max_x, color="navy", linestyle="--", label="Best Ref.")
 
 
-        #ax1.set_xlim(0, 6.0)
-        #ax1.set_ylim(0, 0.7)
-        #ax1.set_xticks([0,1,2,3,4,5,6])
-        #ax1.set_yticks([0,0.1,0.2,0.3,0.4,0.5,0.6,0.7])
-        
         ax1.axes.xaxis.set_visible(True)
         ax1.axes.yaxis.set_visible(True)
 
@@ -344,7 +334,10 @@ class Analyze:
         #pdb.set_trace()
         if coloring == "encounter":
             plt.savefig("{}_pareto_encounter.png".format(name_plot), dpi=600)
-        else:
+        if coloring == "density":
+            #pdb.set_trace()
+            
+            
             plt.savefig("{}_pareto_count.png".format(name_plot), dpi=600)
 
         plt.close("all")
@@ -512,13 +505,13 @@ class Analyze_Chemspace:
 
         for run in tqdm(self.results, disable=not self.verbose):
 
-            obj = loadpkl(run, compress=False)
+            restart_data = loadpkl(run, compress=False)
 
-            HISTOGRAM = self.to_dataframe(obj["histogram"])
+            HISTOGRAM = self.to_dataframe(restart_data["histogram"])
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
             ALL_HISTOGRAMS.append(HISTOGRAM)
             if self.full_traj:
-                traj = np.array(ordered_trajectory(obj["histogram"]))
+                traj = np.array(ordered_trajectory_from_restart(restart_data))
                 CURR_TRAJECTORIES = []
                 for T in range(traj.shape[1]):
                     sel_temp = traj[:, T]
