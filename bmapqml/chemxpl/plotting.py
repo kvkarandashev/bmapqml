@@ -2,7 +2,7 @@ from bmapqml.utils import *
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
 from bmapqml.chemxpl.random_walk import ordered_trajectory,ordered_trajectory_from_restart
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA,TruncatedSVD
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import numpy as np
@@ -86,6 +86,7 @@ class Analyze:
             if self.full_traj:
         
                 traj = np.array(ordered_trajectory_from_restart(restart_data))
+                
                 CURR_TRAJECTORIES = []
                 for T in range(traj.shape[1]):
                     sel_temp = traj[:, T]
@@ -106,6 +107,10 @@ class Analyze:
         self.LABELS = self.GLOBAL_HISTOGRAM.columns[1:]
 
         if self.full_traj:
+            test_traj = ALL_TRAJECTORIES[0]
+            traj_smiles = np.array([df.SMILES.values for df in test_traj])
+            self.time_ordered_smiles = np.concatenate(traj_smiles.T, axis=0)
+            pdb.set_trace()
             self.ALL_TRAJECTORIES = pd.concat(ALL_TRAJECTORIES[0])
             self.X_QUANTITY_traj, self.GAP_traj =  self.ALL_TRAJECTORIES["X_QUANTITY"].values, self.ALL_TRAJECTORIES["HOMO_LUMO_gap"]
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
@@ -473,6 +478,46 @@ class Analyze:
         plt.savefig("PCA.png", dpi=600)
         plt.close("all")
 
+
+
+class Chem_Div:
+    def __init__(self, traj, subsample=1, verbose=False):
+        self.traj = traj
+        self.N    = len(self.traj)
+        self.subsample = subsample
+        self.verbose = verbose
+
+        self.traj = self.traj[::subsample]
+        self.N   = self.N[::subsample]
+
+
+    def compute_representations(self, nBits):
+        """
+        Compute the representations of all unique smiles in the random walk.
+        """
+
+        self.X = rdkit_descriptors.get_all_FP(self.traj, nBits=nBits, fp_type="MorganFingerprint")
+
+
+    def compute_diversity_i(self,i):
+        """
+        Compute PCA
+        """
+        #https://stackoverflow.com/questions/31523575/get-u-sigma-v-matrix-from-truncated-svd-in-scikit-learn
+        svd = TruncatedSVD() #n_components=2)
+        svd.fit(self.X[:i])
+        sing_vals = svd.singular_values_
+        return np.linalg.norm(sing_vals)
+
+    def compute_diversity(self):
+        """
+        Compute the diversity of a trajectory.
+        """
+        if self.verbose:
+            print("Compute Diversity")
+        self.diversity = []
+        for i in tqdm(range(len(self.traj)), disable=not self.verbose):
+            self.diversity.append(self.compute_diversity_i(self, i) )
 
 
 
