@@ -5,7 +5,7 @@ dump_directory="/store/konst/chemxpl_related/minimization_runs_xTB_dipole_solvat
 
 gap_constraints=("weak" "strong")
 
-quantities=("solvation_energy" "dipole" "atomization_energy")
+quantities=("solvation_energy" "dipole") # "atomization_energy")
 
 bias_strengths=("none" "weak" "stronger")
 

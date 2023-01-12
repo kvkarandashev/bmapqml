@@ -1181,7 +1181,6 @@ class RandomWalk:
         if self.canonize_trajectory_points:
             for i in range(len(new_tps)):
                 new_tps[i].canonize_chemgraph()
-        canonically_permuted_ChemGraph
 
         self.MC_step_counter += 1
 
@@ -1290,6 +1289,8 @@ class RandomWalk:
         """
         Total potential including minimized function, constraining and biasing potentials.
         """
+        # 2023:01:12 With the current forms of eval_min_func and biasing_potential, function can be optimized
+        # by finding self.histogram.index(tp) only once here. Not doing that to preserve generality of current tot_pot.
         tot_pot = init_bias
         if self.min_function is not None:
             min_func_val = self.eval_min_func(tp, replica_id)
@@ -1632,30 +1633,30 @@ class RandomWalk:
     def biasing_potential(self, tp, replica_id):
         cur_beta_virtual = self.virtual_beta_id(replica_id)
         if cur_beta_virtual:
-            bias_coeff = self.vbeta_bias_coeff
+            used_bias_coeff = self.vbeta_bias_coeff
         else:
-            bias_coeff = self.bias_coeff
+            used_bias_coeff = self.bias_coeff
 
-        if (bias_coeff is None) or (tp.num_visits is None):
+        if used_bias_coeff is None:
             return 0.0
+        if (self.histogram is None) or (tp not in self.histogram):
+            return 0.0
+        tp_index = self.histogram.index(tp)
+        tp_in_hist = self.histogram[tp_index]
+        if tp_in_hist.num_visits is None:
+            return 0.0
+        tp_in_hist.last_tot_pot_call_global_MC_step = (
+            self.global_MC_step_counter
+        )  # TODO is it needed?
+        if self.bias_pot_all_replicas:
+            cur_visit_num = 0
+            for other_replica_id in range(self.num_replicas):
+                if cur_beta_virtual == self.virtual_beta_id(other_replica_id):
+                    cur_visit_num += tp_in_hist.num_visits[other_replica_id]
+            cur_visit_num = float(cur_visit_num)
         else:
-            if (self.histogram is None) or (tp not in self.histogram):
-                return 0.0
-            tp_index = self.histogram.index(tp)
-            self.histogram[
-                tp_index
-            ].last_tot_pot_call_global_MC_step = self.global_MC_step_counter
-            if self.bias_pot_all_replicas:
-                cur_visit_num = 0
-                for other_replica_id in range(self.num_replicas):
-                    if cur_beta_virtual == self.virtual_beta_id(other_replica_id):
-                        cur_visit_num += self.histogram[tp_index].num_visits[
-                            other_replica_id
-                        ]
-                cur_visit_num = float(cur_visit_num)
-            else:
-                cur_visit_num = self.histogram[tp_index].num_visits[replica_id]
-            return cur_visit_num * bias_coeff
+            cur_visit_num = float(tp_in_hist.num_visits[replica_id])
+        return cur_visit_num * used_bias_coeff
 
     def add_to_histogram(self, trajectory_point_in, replica_id):
         # TODO reverse the MC_step_encounter vs global_MC_step_encounter; double-check it's not messed up in another way.
@@ -1753,7 +1754,7 @@ class RandomWalk:
     #        for tp in tp_list:
     #            self.hist_check_tp(tp)
     # TODO The variant of the code that used hist_check_tps instead of hist_checked_tps seemed slightly slower for some reason,
-    # might change should the code face a major revision.
+    # might change should the code face a major revision. CHECK VISIT NUMBERS ARE INCLUDED IN COPY_EXTRA_DATA_TO!
     def hist_checked_tp(self, tp):
         if (self.histogram is None) or (tp not in self.histogram):
             return tp

@@ -1,8 +1,8 @@
 # The script uses a toy "Diatomic_barrier" potential (see class description for the idea behind it)
 # to demonstrate how RandomWalk class can be used to Monte Carlo optimization.
 
-from bmapqml.chemxpl.valence_treatment import ChemGraph
-from bmapqml.chemxpl.random_walk import RandomWalk
+from bmapqml.chemxpl.valence_treatment import ChemGraph, str2ChemGraph
+from bmapqml.chemxpl.random_walk import RandomWalk, TrajectoryPoint
 import random
 import numpy as np
 from bmapqml.chemxpl import ExtGraphCompound
@@ -59,6 +59,9 @@ histogram_labels = [[] for _ in range(negcs)]
 
 min_func = OrderSlide(possible_elements=possible_elements)
 
+min_tp = TrajectoryPoint(cg=str2ChemGraph("9@7:9@7:9@7:9@8:9@8:9@8:8@7@8:6:6"))
+min_tp_found = None
+
 rw = RandomWalk(
     bias_coeff=bias_coeff,
     randomized_change_params=randomized_change_params,
@@ -75,6 +78,9 @@ rw = RandomWalk(
 for MC_step in range(num_MC_steps):
     rw.global_random_change(**global_change_params)
     print(MC_step, rw.cur_tps)
+    if min_tp_found is None:
+        if min_tp in rw.cur_tps:
+            min_tp_found = MC_step
 
 rw.make_restart()
 
@@ -87,3 +93,4 @@ print(
     rw.min_function.call_counter,
     len(rw.histogram),
 )
+print("Best molecule found at step", min_tp_found)
