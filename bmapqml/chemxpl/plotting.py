@@ -110,7 +110,16 @@ class Analyze:
             test_traj = ALL_TRAJECTORIES[0]
             traj_smiles = np.array([df.SMILES.values for df in test_traj])
             self.time_ordered_smiles = np.concatenate(traj_smiles.T, axis=0)
-            pdb.set_trace()
+            #pdb.set_trace()
+            """
+            (Pdb) time_ordered_smiles[:40]
+            array(['C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'N', 'CF', 'N',
+                'N'], dtype=object)
+            """
+
+
             self.ALL_TRAJECTORIES = pd.concat(ALL_TRAJECTORIES[0])
             self.X_QUANTITY_traj, self.GAP_traj =  self.ALL_TRAJECTORIES["X_QUANTITY"].values, self.ALL_TRAJECTORIES["HOMO_LUMO_gap"]
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
@@ -483,7 +492,7 @@ class Analyze:
 class Chem_Div:
     def __init__(self, traj, subsample=1, verbose=False):
         self.traj = traj
-        self.N    = len(self.traj)
+        self.N    = np.arange(len(self.traj))
         self.subsample = subsample
         self.verbose = verbose
 
@@ -491,12 +500,12 @@ class Chem_Div:
         self.N   = self.N[::subsample]
 
 
-    def compute_representations(self, nBits):
+    def compute_representations(self):
         """
-        Compute the representations of all unique smiles in the random walk.
+        Compute the representations of all unique rdkit mols in the random walk.
         """
-
-        self.X = rdkit_descriptors.get_all_FP(self.traj, nBits=nBits, fp_type="MorganFingerprint")
+        self.rdkit_mols =  [Chem.MolFromSmiles(smi) for smi in  self.traj]
+        self.X = rdkit_descriptors.get_all_FP(self.rdkit_mols, nBits=2048, fp_type="MorganFingerprint")
 
 
     def compute_diversity_i(self,i):
@@ -516,12 +525,9 @@ class Chem_Div:
         if self.verbose:
             print("Compute Diversity")
         self.diversity = []
-        for i in tqdm(range(len(self.traj)), disable=not self.verbose):
-            self.diversity.append(self.compute_diversity_i(self, i) )
-
-
-
-
+        self.N = range(50, len(self.traj))
+        for i in tqdm(self.N, disable=not self.verbose):
+            self.diversity.append(self.compute_diversity_i(i) )
 
 
 
