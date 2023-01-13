@@ -1529,12 +1529,11 @@ class RandomWalk:
                 cur_procedure,
                 len(self.histogram),
             )
-
+        self.update_global_histogram()
         if self.make_restart_frequency is not None:
             self.check_make_restart()
         if self.soft_exit_check_frequency is not None:
             self.check_soft_exit()
-        self.update_global_histogram()
         if self.max_histogram_size is not None:
             if len(self.histogram) > self.max_histogram_size:
                 self.dump_extra_histogram()
@@ -1659,9 +1658,8 @@ class RandomWalk:
         return cur_visit_num * used_bias_coeff
 
     def add_to_histogram(self, trajectory_point_in, replica_id):
-        # TODO reverse the MC_step_encounter vs global_MC_step_encounter; double-check it's not messed up in another way.
-        trajectory_point_in.first_MC_step_encounter = self.global_MC_step_counter
-        trajectory_point_in.first_global_MC_step_encounter = self.MC_step_counter
+        trajectory_point_in.first_MC_step_encounter = self.MC_step_counter
+        trajectory_point_in.first_global_MC_step_encounter = self.global_MC_step_counter
         trajectory_point_in.first_encounter_replica = replica_id
         trajectory_point_in.last_tot_pot_call_global_MC_step = (
             self.global_MC_step_counter
