@@ -64,7 +64,7 @@ def morfeus_coord_info_from_tp(
     """
     output = {"coordinates": None, "nuclear_charges": None, "canon_rdkit_SMILES": None}
     cg = tp.egc.chemgraph
-    canon_rdkit_mol, _, _, canon_rdkit_SMILES = chemgraph_to_canonical_rdkit(cg)
+    canon_rdkit_mol, canon_rdkit_SMILES = chemgraph_to_canonical_rdkit(cg)
     output["canon_rdkit_SMILES"] = canon_rdkit_SMILES
     if return_rdkit_obj:
         output["canon_rdkit_mol"] = canon_rdkit_mol

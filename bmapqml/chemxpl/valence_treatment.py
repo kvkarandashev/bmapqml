@@ -1560,10 +1560,9 @@ def canonically_permuted_ChemGraph(cg: ChemGraph) -> ChemGraph:
         new_nuclear_charges[hatom_canon_id] = ha.ncharge
         for neigh in cg.neighbors(hatom_id):
             canon_neigh = cg.canonical_permutation[neigh]
-            if neigh > hatom_id:
-                bo = cg.bond_orders[(hatom_id, neigh)]
-                new_adj_mat[canon_neigh, hatom_canon_id] = bo
-                new_adj_mat[hatom_canon_id, canon_neigh] = bo
+            new_adj_mat[
+                canon_neigh, hatom_canon_id
+            ] = 1  # non-unity bond orders will be fixed during ChemGraph.__init__()
         for _ in range(ha.nhydrogens):
             new_adj_mat[hatom_canon_id, cur_h_id] = 1
             new_adj_mat[cur_h_id, hatom_canon_id] = 1

@@ -221,8 +221,6 @@ def chemgraph_to_canonical_rdkit_wcoords(
     """
     (
         mol,
-        heavy_atom_index,
-        hydrogen_connection,
         canon_SMILES,
     ) = chemgraph_to_canonical_rdkit(cg)
 
@@ -251,7 +249,7 @@ def chemgraph_to_canonical_rdkit_wcoords(
     if coord_based_cg != cg:
         raise FFInconsistent
 
-    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES, rdkit_coords
+    return mol, canon_SMILES, rdkit_coords
 
 
 def egc_from_ncharges_coords(nuclear_charges, coordinates, charge=0):
@@ -352,13 +350,7 @@ def egc_with_coords(
     """
     output = copy.deepcopy(egc)
     if coords is None:
-        (
-            _,
-            heavy_atom_index,
-            hydrogen_connection,
-            canon_SMILES,
-            coords,
-        ) = chemgraph_to_canonical_rdkit_wcoords(
+        (_, canon_SMILES, coords,) = chemgraph_to_canonical_rdkit_wcoords(
             egc.chemgraph,
             ff_type=ff_type,
             num_attempts=num_attempts,
@@ -367,13 +359,9 @@ def egc_with_coords(
     else:
         (
             _,
-            heavy_atom_index,
-            hydrogen_connection,
             canon_SMILES,
         ) = chemgraph_to_canonical_rdkit(egc.chemgraph)
 
-    output.additional_data["canon_rdkit_heavy_atom_index"] = heavy_atom_index
-    output.additional_data["canon_rdkit_hydrogen_connection"] = hydrogen_connection
     output.additional_data["canon_rdkit_SMILES"] = canon_SMILES
     output.add_canon_rdkit_coords(coords)
     return output

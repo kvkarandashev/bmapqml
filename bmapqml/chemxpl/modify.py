@@ -388,9 +388,13 @@ def valence_change_possibilities(
             max_res_struct = None
         else:
             min_init_val = min(ha.possible_valences)
-            min_res_struct = ha.possible_valences.index(min_init_val)
+            min_res_struct = cg.atom_valence_resonance_structure_id(
+                hatom_id=ha_id, valence=min_init_val
+            )
             max_init_val = max(ha.possible_valences)
-            max_res_struct = ha.possible_valences.index(max_init_val)
+            max_res_struct = cg.atom_valence_resonance_structure_id(
+                hatom_id=ha_id, valence=max_init_val
+            )
 
         cur_val_list = ha.avail_val_list()
         available_valences = []
@@ -660,7 +664,8 @@ def valence_bond_change_possibilities(
         return output
 
     if bond_order_change < 0:
-        disconnecting = {}
+        disconnecting = []
+    hydrogenation = []
 
     for mod_val_ha_id, mod_val_ha in enumerate(hatoms):
         mod_val_nc = mod_val_ha.ncharge
@@ -735,7 +740,10 @@ def valence_bond_change_possibilities(
                     if cur_bo + bond_order_change > max_bo(mod_val_nc, other_nc):
                         continue
                     if bond_tuple not in output:
+                        if other_ha_id in hydrogenation:
+                            continue
                         output.append((*bond_tuple, resonance_struct_id))
+                        hydrogenation.append(other_ha_id)
                 else:
                     if cur_bo < -bond_order_change:
                         continue
@@ -748,22 +756,13 @@ def valence_bond_change_possibilities(
                         ):
                             continue
                         if bond_tuple in disconnecting:
-                            if disconnecting[bond_tuple] == 1:
-                                continue
-                        if bond_tuple in disconnecting:
-                            disconnecting[bond_tuple] = 2
-                        else:
-                            disconnecting[bond_tuple] = 1
+                            continue
+                        disconnecting.append(bond_tuple)
                     else:
-                        if bond_tuple in disconnecting:
-                            if disconnecting[bond_tuple] == 0:
-                                continue
-                        if bond_tuple in disconnecting:
-                            disconnecting[bond_tuple] = 2
-                        else:
-                            disconnecting[bond_tuple] = 0
-                    if disconnecting[bond_tuple] != 2:
-                        output.append((*bond_tuple, resonance_struct_id))
+                        if other_ha_id in hydrogenation:
+                            continue
+                        hydrogenation.append(other_ha_id)
+                    output.append((*bond_tuple, resonance_struct_id))
 
     return output
 

@@ -3,7 +3,11 @@ from rdkit.Chem import AllChem
 from rdkit.Chem.rdmolops import GetAdjacencyMatrix
 from rdkit.Chem.rdmolfiles import MolToSmiles
 from g2s.constants import periodic_table
-from .valence_treatment import ChemGraph, default_valence
+from .valence_treatment import (
+    ChemGraph,
+    default_valence,
+    canonically_permuted_ChemGraph,
+)
 from .ext_graph_compound import ExtGraphCompound
 import copy
 import numpy as np
@@ -100,6 +104,7 @@ def chemgraph_to_rdkit(
     resonance_struct_adj=None,
     extra_valence_hydrogens=False,
     get_rw_mol=False,
+    include_SMILES=False,
 ):
     """
     Create an rdkit mol object from a ChemGraph object.
@@ -133,6 +138,9 @@ def chemgraph_to_rdkit(
             # add relevant bond type (there are many more of these)
             mol.AddBond(node_to_idx[ix], node_to_idx[iy], rdkit_bond_type[bo])
 
+    if include_SMILES:
+        SMILES = MolToSmiles(mol)
+
     # TODO Didn't I have a DEFAULT_ATOM somewhere?
     if explicit_hydrogens:
         for ha_id, nhyd in enumerate(nhydrogens):
@@ -164,49 +172,21 @@ def chemgraph_to_rdkit(
         mol = mol.GetMol()
         # TODO: Do we need to sanitize?
         Chem.SanitizeMol(mol)
-    return mol
+    if include_SMILES:
+        return mol, SMILES
+    else:
+        return mol
 
 
-# TODO rdkit object depends on which resonance structure was calculated first.
-# The correct way is to re-initialize ChemGraph with canonical ordering of hatoms (combined with shuffled chempgraph from valence_treatment),
-# then use it to generate the rdkit object via chemgraph_to_rdkit.
 def chemgraph_to_canonical_rdkit(cg, SMILES_only=False):
-    # create empty editable mol object
-    mol = Chem.RWMol()
+    canon_cg = canonically_permuted_ChemGraph(cg)
 
-    inv_canonical_ordering = cg.get_inv_canonical_permutation()
-    heavy_atom_index = {}
-    hydrogen_connection = {}
-
-    for atom_counter, atom_id in enumerate(inv_canonical_ordering):
-        a = Chem.Atom(periodic_table[cg.hatoms[atom_id].ncharge])
-        mol_idx = mol.AddAtom(a)
-        heavy_atom_index[atom_id] = mol_idx
-        for other_atom_id in inv_canonical_ordering[:atom_counter]:
-            bond_order = cg.bond_order(atom_id, other_atom_id)
-            if bond_order != 0:
-                bond_type = rdkit_bond_type[bond_order]
-                mol.AddBond(mol_idx, heavy_atom_index[other_atom_id], bond_type)
-
-    canon_SMILES = MolToSmiles(mol)
+    canon_rdkit, canon_SMILES = chemgraph_to_rdkit(canon_cg, include_SMILES=True)
 
     if SMILES_only:
         return canon_SMILES
-
-    for atom_id in inv_canonical_ordering:
-        mol_idx = heavy_atom_index[atom_id]
-        for _ in range(cg.hatoms[atom_id].nhydrogens):
-            h = Chem.Atom(1)
-            mol_hydrogen_idx = mol.AddAtom(h)
-            hydrogen_connection[mol_hydrogen_idx] = atom_id
-            # Add bond between hydrogen and heavy atom.
-            mol.AddBond(mol_idx, mol_hydrogen_idx, rdkit_bond_type[1])
-
-    # Convert RWMol to Mol object
-    mol = mol.GetMol()
-    # TODO: Do we need to sanitize?
-    Chem.SanitizeMol(mol)
-    return mol, heavy_atom_index, hydrogen_connection, canon_SMILES
+    else:
+        return canon_rdkit, canon_SMILES
 
 
 # Different optimizers available for rdkit.

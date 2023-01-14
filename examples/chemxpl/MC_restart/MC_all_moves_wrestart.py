@@ -20,7 +20,7 @@ no_protonation = [8]
 ln2 = math.log(2.0)
 
 # None corresponds to greedy optimization, other betas are used in a Metropolis scheme.
-betas = [None, ln2, ln2 / 2]
+betas = [None, None, None, None, ln2 * 2, ln2, ln2 / 2, ln2 / 4]
 
 bias_coeff = 1.0
 bound_enforcing_coeff = 1.0

@@ -8,6 +8,7 @@ from bmapqml.chemxpl.valence_treatment import str2ChemGraph
 seed = 1
 
 # Good examples of init_cg_str: 6#3@1:16@2:15, 6#3@1:16@2:15@3@4:16#1:16#1, 16#1@1:16@2:15
+# init_cg_str difficult for change_valence function in modify.py: 15#2@1@2:15#1@3:15@3:6 15#3@1@3:15#2@2:15@3:6 16#3@1@2@3:16@2@3:6#1:6
 
 possible_elements = None
 if len(sys.argv) < 2:

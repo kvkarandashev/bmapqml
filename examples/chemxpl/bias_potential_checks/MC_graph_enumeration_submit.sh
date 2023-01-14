@@ -1,8 +1,10 @@
 #!/bin/bash
 
+MYDIR=$(dirname $(realpath $0))
+
 submitter="lpython" # spython?
 
-dumpdir=MC_graph_enum
+dumpdir=/store/$USER/chemxpl_related/MC_graph_enum
 
 mkdir -p $dumpdir
 
@@ -25,7 +27,7 @@ do
                     fi
                     if [ "$submitter" == "lpython" ]
                     then
-                        lpython --update_bmapqml --memory=10000 ../MC_graph_enumeration.py $jobname $seed $nhatoms $IMPLICIT_CONSTRAINT $bias_type $USE_GENETIC
+                        lpython --update_bmapqml --CPUs=2 --OMP_NUM_THREADS=1 --memory=20000  $MYDIR/MC_graph_enumeration.py $jobname $seed $nhatoms $IMPLICIT_CONSTRAINT $bias_type $USE_GENETIC
                     fi
                 done
             done

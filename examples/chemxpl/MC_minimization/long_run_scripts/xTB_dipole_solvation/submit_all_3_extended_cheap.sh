@@ -36,7 +36,7 @@ do
             cd $final_dump_directory
             for seed in $(seq 1 8)
             do
-                spython --OMP_NUM_THREADS=1 --CPUs=1 $py_script ${cur_job_name}_$seed $min_func_file min_$quantity $seed $bias_strength
+                spython --OMP_NUM_THREADS=1 --CPUs=2 $py_script ${cur_job_name}_$seed $min_func_file min_$quantity $seed $bias_strength
             done
             cd $cur_directory
         done

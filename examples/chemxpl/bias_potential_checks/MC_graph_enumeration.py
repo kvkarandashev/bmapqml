@@ -57,7 +57,9 @@ basic_constraints = {
 # "forbidden_bonds" and "not_protonated" are two types of constraints that can be forced explicitly in the sampling procedure.
 advanced_constraints = {
     "forbidden_bonds": [(15, 15), (16, 16)],
-    "not_protonated": [15, 16],
+    "not_protonated": [
+        16
+    ],  # [15, 16], leaving one polyvalent as eligible for protonation to test hydrogenation+valence change
 }
 
 # Default random change parameters.
@@ -106,7 +108,9 @@ rw = RandomWalk(
     keep_histogram=True,
     keep_full_trajectory=True,
     restart_file="restart.pkl",
+    make_restart_frequency=1000,
     track_histogram_size=True,
+    debug=True,
 )
 
 for MC_step in range(num_MC_steps):
