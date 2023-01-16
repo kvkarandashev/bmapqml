@@ -518,12 +518,6 @@ class ChemGraph:
         else:
             return self.pair_equivalence_matrix
 
-    def equiv_class_val(self, atom_id_set):
-        if len(atom_id_set) == 1:
-            return self.equivalence_vector[atom_id_set]
-        else:
-            return self.pair_equivalence_matrix[atom_id_set]
-
     def sorted_colors(self, atom_set):
         self.init_colors()
         return sorted([self.colors[atom_id] for atom_id in atom_set])
@@ -574,7 +568,7 @@ class ChemGraph:
     def min_id_equivalent_atom_unchecked(self, atom_id):
         if self.equivalence_vector is None:
             return atom_id
-        equiv_class = self.equivalence_class(atom_id)
+        equiv_class = self.unchecked_equivalence_class(atom_id)
         if equiv_class == -1:
             return atom_id
         else:
@@ -583,7 +577,7 @@ class ChemGraph:
     def check_equivalence_class(self, atom_id_set):
         atom_set_length = len(atom_id_set)
         self.init_equivalence_array(atom_set_length)
-        if self.equiv_class_val(atom_id_set) == -1:
+        if self.unchecked_equivalence_class(atom_id_set) == -1:
             self.init_colors()
             for equiv_class_id, example_tuple in enumerate(
                 self.equiv_class_examples(atom_set_length)
@@ -612,18 +606,20 @@ class ChemGraph:
     def atom_pair_equivalent(self, atom_id1, atom_id2):
         return self.atom_sets_equivalent([atom_id1], [atom_id2])
 
-    def equivalence_class(self, atom_set):
+    def unchecked_equivalence_class(self, atom_set):
         if isinstance(atom_set, int) or (len(atom_set) == 1):
             return self.equivalence_vector[atom_set]
         else:
             return self.pair_equivalence_matrix[atom_set]
 
+    def equivalence_class(self, atom_set):
+        self.check_equivalence_class(atom_set)
+        return self.unchecked_equivalence_class(atom_set)
+
     def atom_sets_equivalent(self, atom_set1, atom_set2):
         if len(atom_set1) == 2:
             return self.uninit_atom_sets_equivalent(atom_set1, atom_set2)
-        self.check_equivalence_class(atom_set1)
-        self.check_equivalence_class(atom_set2)
-        return self.equiv_class_val(atom_set1) == self.equiv_class_val(atom_set2)
+        return self.equivalence_class(atom_set1) == self.equivalence_class(atom_set2)
 
     # How many times atom_id is repeated inside a molecule.
     def atom_multiplicity(self, atom_id):
