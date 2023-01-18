@@ -39,6 +39,7 @@ def atom_equivalent_to_list_member(egc, atom_id, atom_id_list):
     return False
 
 
+# TODO was this done better in valence_bond_order_change_possibilities?
 def atom_pair_equivalent_to_list_member(egc, atom_pair, atom_pair_list):
     for other_atom_pair in atom_pair_list:
         if egc.chemgraph.atom_sets_equivalent(atom_pair[:2], other_atom_pair[:2]):
@@ -656,16 +657,15 @@ def valence_bond_change_possibilities(
     exclude_equivalent=True,
     **other_kwargs,
 ):
-
+    # exclude_equivalent used to be a toggleable option here too. Perhaps should be deprecated everywhere.
     cg = egc.chemgraph
     hatoms = cg.hatoms
     output = []
     if bond_order_change == 0:
         return output
 
-    if bond_order_change < 0:
-        disconnecting = []
-    hydrogenation = []
+    altered_sigma_bond_class_tuples = []
+    altered_hydrogen_number_classes = []
 
     for mod_val_ha_id, mod_val_ha in enumerate(hatoms):
         mod_val_nc = mod_val_ha.ncharge
@@ -702,10 +702,6 @@ def valence_bond_change_possibilities(
 
             bond_tuple = (mod_val_ha_id, other_ha_id)
 
-            if exclude_equivalent:
-                if atom_pair_equivalent_to_list_member(egc, bond_tuple, output):
-                    continue
-
             st = sorted_tuple(mod_val_ha_id, other_ha_id)
 
             for resonance_struct_id in resonance_struct_ids:
@@ -736,14 +732,13 @@ def valence_bond_change_possibilities(
                     if st in cur_res_struct_added_bos:
                         cur_bo += cur_res_struct_added_bos[st]
 
+                changed_sigma_bond = False
+                hydrogenated_atom_class = cg.equivalence_class((other_ha_id,))
                 if bond_order_change > 0:
                     if cur_bo + bond_order_change > max_bo(mod_val_nc, other_nc):
                         continue
-                    if bond_tuple not in output:
-                        if other_ha_id in hydrogenation:
-                            continue
-                        output.append((*bond_tuple, resonance_struct_id))
-                        hydrogenation.append(other_ha_id)
+                    if cur_bo == 0:  # we are creating a new bond.
+                        changed_sigma_bond = True
                 else:
                     if cur_bo < -bond_order_change:
                         continue
@@ -755,14 +750,21 @@ def valence_bond_change_possibilities(
                             == 1
                         ):
                             continue
-                        if bond_tuple in disconnecting:
-                            continue
-                        disconnecting.append(bond_tuple)
-                    else:
-                        if other_ha_id in hydrogenation:
-                            continue
-                        hydrogenation.append(other_ha_id)
-                    output.append((*bond_tuple, resonance_struct_id))
+                        changed_sigma_bond = True
+                if changed_sigma_bond:
+                    change_identifier = (
+                        hydrogenated_atom_class,
+                        cg.equivalence_class(st),
+                    )
+                    change_list = altered_sigma_bond_class_tuples
+                else:
+                    change_identifier = hydrogenated_atom_class
+                    change_list = altered_hydrogen_number_classes
+
+                if change_identifier in change_list:
+                    continue
+                change_list.append(change_identifier)
+                output.append((*bond_tuple, resonance_struct_id))
 
     return output
 
