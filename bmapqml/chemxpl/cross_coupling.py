@@ -14,12 +14,31 @@ from copy import deepcopy
 
 class Frag2FragMapping:
     def __init__(self, new_membership_vector, old_membership_vector, frag_id=0):
+        """
+        Auxiliary class for mapping HeavyAtom objects from the same fragment used for two FragmentPair objects.
+        """
         self.old_frag_ids = np.where(old_membership_vector == frag_id)[0]
         self.new_frag_ids = np.where(new_membership_vector == frag_id)[0]
 
     def __call__(self, old_id):
         inside_id = bisect.bisect_left(self.old_frag_ids, old_id)
         return self.new_frag_ids[inside_id]
+
+
+class FragmentPairAffectedBondStatus:
+    def __init__(self, bond_tuple_dict, valences=None):
+        """
+        Auxiliary class storing information about bond orders and valences affected by ChemGraph object being ``cut'' into a FragmentPair.
+        """
+        self.bond_tuple_dict = bond_tuple_dict
+        if valences is None:
+            valences = {}
+        self.valences = valences
+
+    def __eq__(self, other_fpabs):
+        return (self.bond_tuple_dict == other_fpabs.bond_tuple_dict) and (
+            self.valences == other_fpabs.valences
+        )
 
 
 class FragmentPair:
@@ -42,8 +61,15 @@ class FragmentPair:
         self.origin_point = origin_point
         self.neighborhood_size = neighborhood_size
 
-        self.membership_vector = np.ones((cg.nhatoms()), dtype=int)
-        self.membership_vector[origin_point] = 0
+        # constants for how different parts of FragmentPair are marked in self.membership_vector
+        self.core_membership_vector_value = 0
+        self.remainder_membership_vector_value = 1
+        self.border_membership_vector_value = -1
+
+        self.membership_vector = np.repeat(
+            self.remainder_membership_vector_value, cg.nhatoms()
+        )
+        self.membership_vector[origin_point] = self.core_membership_vector_value
 
         self.affected_bonds = [
             (self.origin_point, neigh)
@@ -58,24 +84,28 @@ class FragmentPair:
         self.init_affected_status_info()
 
     def expand_core(self, update_affected_status=True):
-        for old_ab in self.affected_bonds:
-            new_id = old_ab[1]
-            if self.membership_vector[new_id] == 1:
-                self.membership_vector[new_id] = -1  # mark border
+        for old_affected_bond in self.affected_bonds:
+            new_id = old_affected_bond[1]
+            if self.is_remainder(new_id):
+                self.membership_vector[new_id] = self.border_membership_vector_value
         self.affected_bonds = []
-        for border_id in np.where(self.membership_vector == -1)[0]:
-            self.membership_vector[border_id] = 0
+        for border_id in np.where(
+            self.membership_vector == self.border_membership_vector_value
+        )[0]:
+            self.membership_vector[border_id] = self.core_membership_vector_value
             for neigh in self.chemgraph.neighbors(border_id):
-                if self.membership_vector[neigh] == 1:
+                if self.is_remainder(neigh):
                     self.affected_bonds.append((border_id, neigh))
         if update_affected_status:
             self.init_affected_status_info()
 
+    def is_remainder(self, i):
+        return self.membership_vector[i] == self.remainder_membership_vector_value
+
     def core_size(self):
-        return np.sum(self.membership_vector == 0)
+        return np.sum(self.membership_vector == self.core_membership_vector_value)
 
     def init_affected_status_info(self):
-        # Find resonance structures affected by the bond split.
         self.affected_resonance_structures = []
         resonance_structure_orders_iterators = []
 
@@ -109,36 +139,38 @@ class FragmentPair:
                     default_bond_order_dict[cur_bo] = [bond_tuple]
 
         if len(resonance_structure_orders_iterators) == 0:
-            self.affected_status = [{"bonds": default_bond_order_dict, "valences": {}}]
-        else:
-            self.affected_status = []
-            for resonance_structure_orders_ids in itertools.product(
-                *resonance_structure_orders_iterators
-            ):
-                new_status = {
-                    "bonds": deepcopy(default_bond_order_dict),
-                    "valences": {},
-                }
-                for res_reg_id, rso_id in zip(
-                    self.affected_resonance_structures, resonance_structure_orders_ids
-                ):
-                    ha_ids = self.chemgraph.resonance_structure_inverse_map[res_reg_id]
-                    val_pos = self.chemgraph.resonance_structure_valence_vals[
-                        res_reg_id
-                    ][rso_id]
-                    for ha_id in ha_ids:
-                        poss_valences = self.chemgraph.hatoms[ha_id].possible_valences
-                        if poss_valences is not None:
-                            new_status["valences"][ha_id] = poss_valences[val_pos]
-                    for btuple, bos in saved_all_bond_orders[res_reg_id].items():
-                        cur_bo = bos[rso_id]
-                        if cur_bo in new_status["bonds"]:
-                            new_status["bonds"][cur_bo].append(btuple)
-                        else:
-                            new_status["bonds"][cur_bo] = [btuple]
+            self.affected_status = [
+                FragmentPairAffectedBondStatus(default_bond_order_dict)
+            ]
+            return
 
-                if new_status not in self.affected_status:
-                    self.affected_status.append(new_status)
+        self.affected_status = []
+        for resonance_structure_orders_ids in itertools.product(
+            *resonance_structure_orders_iterators
+        ):
+            new_status = FragmentPairAffectedBondStatus(
+                deepcopy(default_bond_order_dict)
+            )
+            for res_reg_id, rso_id in zip(
+                self.affected_resonance_structures, resonance_structure_orders_ids
+            ):
+                ha_ids = self.chemgraph.resonance_structure_inverse_map[res_reg_id]
+                val_pos = self.chemgraph.resonance_structure_valence_vals[res_reg_id][
+                    rso_id
+                ]
+                for ha_id in ha_ids:
+                    poss_valences = self.chemgraph.hatoms[ha_id].possible_valences
+                    if poss_valences is not None:
+                        new_status.valences[ha_id] = poss_valences[val_pos]
+                for btuple, bos in saved_all_bond_orders[res_reg_id].items():
+                    cur_bo = bos[rso_id]
+                    if cur_bo in new_status.bond_tuple_dict:
+                        new_status.bond_tuple_dict[cur_bo].append(btuple)
+                    else:
+                        new_status.bond_tuple_dict[cur_bo] = [btuple]
+
+            if new_status not in self.affected_status:
+                self.affected_status.append(new_status)
 
     def get_sorted_vertices(self, frag_id):
         if self.sorted_vertices is None:
@@ -146,7 +178,7 @@ class FragmentPair:
         return self.sorted_vertices[frag_id]
 
     def adjusted_ha_valences(self, status_id, membership_id):
-        vals = self.affected_status[status_id]["valences"]
+        vals = self.affected_status[status_id].valences
         output = []
         for i in self.get_sorted_vertices(membership_id):
             if i in vals:
@@ -181,14 +213,15 @@ class FragmentPair:
         affected_bonds_id_self, affected_bonds_id_other - which sets of affected bond orders the fragments are initialized with.
         """
 
-        frag_id_self = 0
-        frag_id_other = 1
+        frag_id_self = self.core_membership_vector_value
+        frag_id_other = other_fp.remainder_membership_vector_value
 
         nhatoms_self = self.get_frag_size(frag_id_self)
         nhatoms_other = other_fp.get_frag_size(frag_id_other)
 
         new_membership_vector = np.append(
-            np.zeros((nhatoms_self,), dtype=int), np.ones((nhatoms_other,), dtype=int)
+            np.repeat(frag_id_self, nhatoms_self),
+            np.repeat(frag_id_other, nhatoms_other),
         )
 
         self_to_new = Frag2FragMapping(
@@ -214,7 +247,7 @@ class FragmentPair:
             else:
                 created_bonds.append(new_bond_tuple)
 
-        # "Sew" two graphs togther with the created bonds.
+        # "Sew" two graphs together with the created bonds.
         new_graph = disjoint_union(
             [
                 self.get_frag_subgraph(frag_id_self),
@@ -249,14 +282,6 @@ def possible_fragment_size_bounds(cg):
     return [1, cg.nhatoms() - 1]
 
 
-def bond_order_sorted_tuples(bo_tuple_dict):
-    sorted_keys = sorted(bo_tuple_dict.keys())
-    output = []
-    for sk in sorted_keys:
-        output += bo_tuple_dict[sk]
-    return output
-
-
 def valid_cross_connection(cg1, cg2, tlist1, tlist2, bo, forbidden_bonds=None):
     for t1, t2 in zip(tlist1, tlist2):
         for new_bond in [(t1[0], t2[1]), (t1[1], t2[0])]:
@@ -270,15 +295,21 @@ def valid_cross_connection(cg1, cg2, tlist1, tlist2, bo, forbidden_bonds=None):
 
 
 class BondOrderSortedTuplePermutations:
-    def __init__(self, status1, status2, cg1, cg2, forbidden_bonds=None):
+    def __init__(
+        self,
+        status1: FragmentPairAffectedBondStatus,
+        status2: FragmentPairAffectedBondStatus,
+        chemgraph1: ChemGraph,
+        chemgraph2: ChemGraph,
+        forbidden_bonds=None,
+    ):
         """
         Generates permutations of tuples grouped by bond orders making sure no forbidden bonds are created.
         """
-
-        # Check that the two dictionnaries are of similar dimensionality.
         self.non_empty = False
-        self.bo_tuple_dict1 = status1["bonds"]
-        self.bo_tuple_dict2 = status2["bonds"]
+        self.bo_tuple_dict1 = status1.bond_tuple_dict
+        self.bo_tuple_dict2 = status2.bond_tuple_dict
+        # Check that the two dictionnaries are of similar dimensionality.
         if len(self.bo_tuple_dict1) != len(self.bo_tuple_dict2):
             return
         for bo1, bo_tuples1 in self.bo_tuple_dict1.items():
@@ -289,8 +320,8 @@ class BondOrderSortedTuplePermutations:
         self.non_empty = True
 
         # Initialize necessary quantities.
-        self.cg1 = cg1
-        self.cg2 = cg2
+        self.chemgraph1 = chemgraph1
+        self.chemgraph2 = chemgraph2
         self.sorted_bos = sorted(self.bo_tuple_dict1.keys())
 
         self.forbidden_bonds = forbidden_bonds
@@ -322,10 +353,9 @@ class BondOrderSortedTuplePermutations:
             tuples2 = []
             for t1, bo in zip(self.iterator_product.__next__(), self.sorted_bos):
                 t2 = self.bo_tuple_dict2[bo]
-                # Check swap validity
                 if not valid_cross_connection(
-                    self.cg1,
-                    self.cg2,
+                    self.chemgraph1,
+                    self.chemgraph2,
                     t1,
                     t2,
                     bo,
@@ -350,8 +380,6 @@ def cross_couple_outcomes(cg_pair, chosen_sizes, origin_points, forbidden_bonds=
     new_chemgraph_pairs = []
     new_origin_points = None
     for status_id1, status1 in enumerate(frag1.affected_status):
-        # WE DON'T KNOW WHETHER STATUSES MATCH???
-        tuples1 = bond_order_sorted_tuples(status1["bonds"])
         for status_id2, status2 in enumerate(frag2.affected_status):
             for tuples1, tuples2 in BondOrderSortedTuplePermutations(
                 status1, status2, *cg_pair, forbidden_bonds=forbidden_bonds
@@ -368,10 +396,14 @@ def cross_couple_outcomes(cg_pair, chosen_sizes, origin_points, forbidden_bonds=
                     continue
                 if new_origin_points is None:
                     map1 = Frag2FragMapping(
-                        new_membership_vector_1, frag1.membership_vector, frag_id=0
+                        new_membership_vector_1,
+                        frag1.membership_vector,
+                        frag_id=frag1.core_membership_vector_value,
                     )
                     map2 = Frag2FragMapping(
-                        new_membership_vector_2, frag2.membership_vector, frag_id=0
+                        new_membership_vector_2,
+                        frag2.membership_vector,
+                        frag_id=frag2.core_membership_vector_value,
                     )
                     new_origin_points = (
                         map1(frag1.origin_point),
