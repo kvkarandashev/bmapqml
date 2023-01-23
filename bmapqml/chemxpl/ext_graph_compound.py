@@ -297,22 +297,24 @@ class ExtGraphCompound(GraphCompound):
 
     def add_canon_rdkit_coords(self, canon_rdkit_coords):
         self.coordinates = np.zeros(canon_rdkit_coords.shape, dtype=float)
+        self.chemgraph.init_canonical_permutation()
         for hatom_id in range(self.chemgraph.nhatoms()):
             self.coordinates[hatom_id][:] = canon_rdkit_coords[
-                self.additional_data["canon_rdkit_heavy_atom_index"][hatom_id]
+                self.chemgraph.inv_canonical_permutation[hatom_id]
             ][:]
         hydrogen_search_lower_bounds = np.zeros(self.chemgraph.nhatoms(), dtype=int)
-        for rdkit_hydrogen_id, connected_hatom in self.additional_data[
-            "canon_rdkit_hydrogen_connection"
-        ].items():
-            internal_hydrogen_id = self.find_connected_hydrogen(
-                connected_hatom,
-                start_hydrogen_id=hydrogen_search_lower_bounds[connected_hatom],
-            )
-            hydrogen_search_lower_bounds[connected_hatom] = internal_hydrogen_id + 1
-            self.coordinates[internal_hydrogen_id][:] = canon_rdkit_coords[
-                rdkit_hydrogen_id
-            ][:]
+        cur_hydrogen_id = self.chemgraph.nhatoms()
+        for connected_hatom in self.chemgraph.inv_canonical_permutation:
+            for _ in range(self.chemgraph.hatoms[connected_hatom].nhydrogens):
+                internal_hydrogen_id = self.find_connected_hydrogen(
+                    connected_hatom,
+                    start_hydrogen_id=hydrogen_search_lower_bounds[connected_hatom],
+                )
+                hydrogen_search_lower_bounds[connected_hatom] = internal_hydrogen_id + 1
+                self.coordinates[internal_hydrogen_id][:] = canon_rdkit_coords[
+                    cur_hydrogen_id
+                ][:]
+                cur_hydrogen_id += 1
 
     # TO-DO: check whether this function reappears elsewhere.
     def find_connected_hydrogen(self, hatom_id, start_hydrogen_id=0):
