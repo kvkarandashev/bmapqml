@@ -307,20 +307,9 @@ class sample_local_space:
         }
 
         self.potential = None
-        if self.pot_type == "lj":
-            self.potential = self.lennard_jones_potential
-        elif self.pot_type == "harmonic":
-            self.potential = self.harmonic_potential
-        elif self.pot_type == "buckingham":
-            self.potential = self.buckingham_potential
-        elif self.pot_type == "exponential":
-            self.potential = self.exponential_potential
-        elif self.pot_type == "sharp_parabola":
-            self.potential = self.sharp_parabola_potential
-        elif self.pot_type == "flat_parabola":
+        if self.pot_type == "flat_parabola":
             self.potential = self.flat_parabola_potential
-        elif self.pot_type == "double_well":
-            self.potential = self.double_well_potential
+
 
     def get_largest_ring_size(self, SMILES):
         """
@@ -409,7 +398,7 @@ class sample_local_space:
     def __call__(self, trajectory_point_in):
 
         try:
-            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
                 self.canonical_rdkit_output
             )["canonical_rdkit"]
         except:
