@@ -4,7 +4,6 @@ from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     morfeus_FF_xTB_code_quants,
     gen_atom_energies,
 )
-import numpy as np
 import sys
 
 flag = "None"
