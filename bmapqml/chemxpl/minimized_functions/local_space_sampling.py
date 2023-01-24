@@ -419,7 +419,7 @@ class sample_local_space:
         Evaluate the function on a list of trajectory points
         """
 
-        rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
 
