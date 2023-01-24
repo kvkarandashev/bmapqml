@@ -172,11 +172,9 @@ def get_all_FP(SMILES, fp_type, **kwargs):
     """
 
     X = []
-    # np.array(embarrassingly_parallel(extended_get_single_FP, SMILES, (fp_type,), other_kwargs=kwargs))
     for smi in SMILES:
         X.append(extended_get_single_FP(smi, fp_type, **kwargs))
     return np.array(X)
-    # return X
 
 
 def atomization_en(EN, ATOMS, normalize=False):

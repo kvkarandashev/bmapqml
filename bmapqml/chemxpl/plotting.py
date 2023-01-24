@@ -283,7 +283,7 @@ class Analyze:
         cc = 'gnuplot_r'
         gs = 30
 
-        max_x = np.max(np.abs(self.X_QUANTITY))
+        max_x = abs(vline)
         max_y = np.max(np.abs(self.GAP))
 
         if coloring == "encounter":
@@ -425,7 +425,7 @@ class Analyze:
         ax2  = make_pretty(ax2)
         plt.tight_layout()
 
-        plt.savefig("spread.png", dpi=600)
+        plt.savefig("spread.png", dpi=300)
 
     def plot_chem_space(self, HISTOGRAM, label="loss"):
         """
@@ -544,6 +544,7 @@ class Analyze_Chemspace:
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
+        print(self.results)
 
     def parse_results(self):
         if self.verbose:
@@ -556,7 +557,7 @@ class Analyze_Chemspace:
 
         for run in tqdm(self.results, disable=not self.verbose):
 
-            restart_data = loadpkl(run, compress=False)
+            restart_data = loadpkl(run, compress=True)
 
             HISTOGRAM = self.to_dataframe(restart_data["histogram"])
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
