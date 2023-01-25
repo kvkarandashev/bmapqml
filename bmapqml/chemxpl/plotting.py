@@ -110,14 +110,6 @@ class Analyze:
             test_traj = ALL_TRAJECTORIES[0]
             traj_smiles = np.array([df.SMILES.values for df in test_traj])
             self.time_ordered_smiles = np.concatenate(traj_smiles.T, axis=0)
-            #pdb.set_trace()
-            """
-            (Pdb) time_ordered_smiles[:40]
-            array(['C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
-                'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
-                'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'N', 'CF', 'N',
-                'N'], dtype=object)
-            """
 
 
             self.ALL_TRAJECTORIES = pd.concat(ALL_TRAJECTORIES[0])
@@ -614,12 +606,15 @@ class Analyze_Chemspace:
         return X
 
     def compute_PCA(self, MOLS, nBits=2048):
+        import umap
+
         """
         Compute PCA
         """
 
         X = self.compute_representations(MOLS, nBits=nBits)
-        reducer = PCA(n_components=2)
+        reducer = umap.UMAP()
+        #reducer = umap.reducer()  #PCA(n_components=2)
         reducer.fit(X)
         X_2d = reducer.transform(X)
         return X_2d
