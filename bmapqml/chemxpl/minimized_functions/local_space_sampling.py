@@ -11,6 +11,7 @@ import pdb
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     morfeus_coord_info_from_tp,
 )
+from bmapqml.chemxpl.rdkit_utils import RdKitFailure
 
 try:
     from qml.representations import *
@@ -24,11 +25,6 @@ try:
 except:
     print("local_space_sampling: ase or dscribe not installed")
 
-
-
-
-class RdKitFailure(Exception):
-    pass
 
 
 #value of boltzmann constant in kcal/mol/K
@@ -723,7 +719,7 @@ class alchemical_sampling_version3:
         rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
             self.canonical_rdkit_output
         )["canonical_rdkit"]
-        
+
         if rdkit_mol is None:
             raise RdKitFailure
 
