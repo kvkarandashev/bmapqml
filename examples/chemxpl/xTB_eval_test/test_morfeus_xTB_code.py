@@ -10,6 +10,7 @@ from bmapqml.chemxpl.minimized_functions.mol_constraints import NoProtonation
 import numpy as np
 
 SMILES_list = [
+    "CCO",
     "F",
     "O",
     "N",

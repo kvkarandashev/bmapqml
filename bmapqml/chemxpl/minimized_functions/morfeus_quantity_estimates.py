@@ -253,6 +253,7 @@ def xTB_quants(
     output["energy"] = res.get_energy()
 
     if any_element_in_list(quantities, "HOMO_energy", "LUMO_energy", "HOMO_LUMO_gap"):
+        # Orbital energies are in Hartree
         orbital_energies = res.get_orbital_eigenvalues()
         orbital_occupations = res.get_orbital_occupations()
         HOMO_energy = max(orbital_energies[np.where(orbital_occupations > 0.1)])
@@ -263,6 +264,7 @@ def xTB_quants(
 
     if "dipole" in quantities:
         dipole_vec = res.get_dipole()
+        # Dipole is in e*Bohr (a.u.)
         output["dipole"] = np.sqrt(np.sum(dipole_vec**2))
 
     if any_element_in_list(quantities, "solvation_energy", "energy_no_solvent"):
@@ -271,6 +273,7 @@ def xTB_quants(
         )
         if res_nosolvent is None:
             return None
+        # energy is in Hartree
         en_nosolvent = res_nosolvent.get_energy()
         output["energy_no_solvent"] = en_nosolvent
         output["solvation_energy"] = output["energy"] - en_nosolvent
