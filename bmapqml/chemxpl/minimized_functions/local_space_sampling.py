@@ -24,6 +24,13 @@ try:
 except:
     print("local_space_sampling: ase or dscribe not installed")
 
+
+
+
+class RdKitFailure(Exception):
+    pass
+
+
 #value of boltzmann constant in kcal/mol/K
 kcal_per_mol_per_K = 1.987204259 * 1e-3
 
@@ -397,13 +404,13 @@ class sample_local_space:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+
+        if rdkit_mol is None:
+            raise RdKitFailure
+            
 
         X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type, nBits=self.nbits) 
         d = norm(X_test - self.X_init)
