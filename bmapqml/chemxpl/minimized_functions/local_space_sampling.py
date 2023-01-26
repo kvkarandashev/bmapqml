@@ -11,6 +11,7 @@ import pdb
 from bmapqml.chemxpl.minimized_functions.morfeus_quantity_estimates import (
     morfeus_coord_info_from_tp,
 )
+from bmapqml.chemxpl.rdkit_utils import RdKitFailure
 
 try:
     from qml.representations import *
@@ -23,6 +24,8 @@ try:
     from dscribe.descriptors import SOAP
 except:
     print("local_space_sampling: ase or dscribe not installed")
+
+
 
 #value of boltzmann constant in kcal/mol/K
 kcal_per_mol_per_K = 1.987204259 * 1e-3
@@ -397,13 +400,13 @@ class sample_local_space:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+
+        if rdkit_mol is None:
+            raise RdKitFailure
+            
 
         X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type, nBits=self.nbits) 
         d = norm(X_test - self.X_init)
@@ -444,15 +447,7 @@ class sample_local_space:
 
 
 class local_lipinski:
-    # if self.check_ring:
-    #    try:
-    #        ring_error = self.get_largest_ring_size(canon_SMILES)
-    #    except:
-    #        ring_error = 0
-    #
-    #    V += ring_error
-    # if self.verbose:
-    # print("SMILE:", canon_SMILES, d, V)
+
     def __init__(
         self,
         X_init,
@@ -492,11 +487,10 @@ class local_lipinski:
         Returns the octanol-water partition coefficient given a molecule SMILES
         string
         """
-        try:
-            mol = Chem.MolFromSmiles(smiles)
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+        
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise RdKitFailure
 
         return Crippen.MolLogP(mol)
 
@@ -533,13 +527,13 @@ class local_lipinski:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+
+        if rdkit_mol is None:
+            raise RdKitFailure
 
         if self.lipinski_trial(canon_SMILES):
             pass
@@ -621,13 +615,12 @@ class alchemical_sampling:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+    
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+        if rdkit_mol is None:
+            raise RdKitFailure
 
         X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
         d_A, d_B = norm(X_J - self.X_A), norm(X_J - self.X_B)
@@ -673,14 +666,13 @@ class alchemical_sampling_version2:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
-            #print(canon_SMILES)
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+        
+        rdkit_mol,  canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
+
+        if rdkit_mol is None:
+            raise RdKitFailure
 
         X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
         V = self.alchemical_potential(X_J)
@@ -723,14 +715,13 @@ class alchemical_sampling_version3:
 
     def __call__(self, trajectory_point_in):
 
-        try:
-            rdkit_mol, _, _, canon_SMILES = trajectory_point_in.calc_or_lookup(
-                self.canonical_rdkit_output
-            )["canonical_rdkit"]
+    
+        rdkit_mol, canon_SMILES = trajectory_point_in.calc_or_lookup(
+            self.canonical_rdkit_output
+        )["canonical_rdkit"]
 
-        except:
-            print("Error in canonical SMILES, therefore skipping")
-            return None
+        if rdkit_mol is None:
+            raise RdKitFailure
 
         X_J = rdkit_descriptors.extended_get_single_FP(rdkit_mol, "MorganFingerprint", nBits=self.nbits) 
         V = self.alchemical_potential(X_J)
