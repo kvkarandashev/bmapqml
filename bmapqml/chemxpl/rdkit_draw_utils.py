@@ -317,7 +317,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         self.highlight_fragment_boundary = highlight_fragment_boundary
 
         self.connection_tuples = []
-        for tuples in fragment_pair.affected_status[0]["bonds"].values():
+        for tuples in fragment_pair.affected_status[0].bond_tuple_dict.values():
             self.connection_tuples += tuples
 
         if self.highlight_fragment_boundary is not None:
