@@ -696,7 +696,9 @@ def draw_all_cross_couplings(
             ]
             for old_frag_id, old_fragment in enumerate(old_fragments):
                 draw_all_possible_resonance_structures(
-                    old_fragment, filename_prefixes[0] + str(old_frag_id) + "_"
+                    old_fragment,
+                    filename_prefixes[0] + str(old_frag_id) + "_",
+                    **other_kwargs
                 )
             trial_option = 0
             new_cg_pairs, new_origin_points = cross_couple_outcomes(
@@ -717,6 +719,7 @@ def draw_all_cross_couplings(
                         + "_"
                         + str(new_frag_id)
                         + "_",
+                        **other_kwargs
                     )
                 trial_option += 1
             init_option += 1
