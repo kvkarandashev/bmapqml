@@ -295,6 +295,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         baseFontSize=None,
         abbrevs=None,
         abbreviate_max_coverage=1.0,
+        rotate=None,
     ):
         """
         Create an RdKit illustration depicting a FragmentPair with atoms and bonds highlighted according to membership.
@@ -311,6 +312,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
             abbrevs=abbrevs,
             abbreviate_max_coverage=abbreviate_max_coverage,
             highlightAtomRadius=highlightAtomRadius,
+            rotate=rotate,
         )
         # For starters only highlight the bonds connecting the two fragments.
         self.highlight_fragment_colors = highlight_fragment_colors
