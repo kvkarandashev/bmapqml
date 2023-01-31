@@ -6,7 +6,7 @@ from rdkit.Chem import RemoveHs, rdAbbreviations
 from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
 from .valence_treatment import ChemGraph, sorted_tuple
-import itertools, random, os
+import itertools, os
 from .modify import (
     FragmentPair,
     add_heavy_atom_chain,
