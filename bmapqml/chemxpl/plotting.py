@@ -1,8 +1,8 @@
 from bmapqml.utils import *
 from bmapqml.chemxpl import rdkit_descriptors
 from bmapqml.chemxpl.utils import trajectory_point_to_canonical_rdkit
-from bmapqml.chemxpl.random_walk import ordered_trajectory,ordered_trajectory_from_restart
-from sklearn.decomposition import PCA,TruncatedSVD
+from bmapqml.chemxpl.random_walk import ordered_trajectory_from_restart
+from sklearn.decomposition import TruncatedSVD
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import numpy as np
@@ -11,9 +11,12 @@ import glob
 import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
-import pdb
 import seaborn as sns
+import pdb
+import random
 
+np.random.seed(122)
+random.seed(122)
 lg = RDLogger.logger()
 
 lg.setLevel(RDLogger.CRITICAL)
@@ -118,60 +121,33 @@ class Analyze:
         else:
             return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM
 
-    def pareto_correct(self, HISTOGRAM):
+
+    def pareto(self, mode="trajectory"):
         try:
             from scipy.spatial import ConvexHull
         except:
             print("Please install scipy")
             exit()
 
-        self.points = np.array([self.X_QUANTITY, self.GAP]).T
-        self.hull = ConvexHull(self.points)
-        pareto = np.unique(self.hull.simplices.flatten())
-        self.PARETO = HISTOGRAM.iloc[pareto]
-        self.PARETO = self.PARETO.sort_values(by=['X_QUANTITY'], ascending=False)
+        if mode == "trajectory":
+            self.points = np.array([self.X_QUANTITY_traj, self.GAP_traj]).T
+            self.hull = ConvexHull(self.points)
+            pareto = np.unique(self.hull.simplices.flatten())
+            self.PARETO = self.ALL_TRAJECTORIES.iloc[pareto]
+            self.PARETO = self.PARETO.sort_values(by=['X_QUANTITY'], ascending=False)
+            return self.PARETO
 
-        
-        return self.PARETO
 
-    def pareto(self, HISTOGRAM, maxX=True, maxY=True):
+        else:
+            self.points = np.array([self.X_QUANTITY, self.GAP]).T
+            self.hull = ConvexHull(self.points)
+            pareto = np.unique(self.hull.simplices.flatten())
+            self.PARETO = self.GLOBAL_HISTOGRAM.iloc[pareto]
+            self.PARETO = self.PARETO.sort_values(by=['X_QUANTITY'], ascending=False)
 
-        """
-        Filter the histogram to keep only the pareto optimal solutions.
-        """
+            
+            return self.PARETO
 
-        Xs, Ys = HISTOGRAM["X_QUANTITY"].values, HISTOGRAM["HOMO_LUMO_gap"].values
-        myList = sorted([[Xs[i], Ys[i]] for i in range(len(Xs))], reverse=maxX)
-
-        p_front = [myList[0]]
-
-        for pair in myList[1:]:
-            if maxY:
-                if pair[1] >= p_front[-1][1]:
-                    p_front.append(pair)
-            else:
-                if pair[1] <= p_front[-1][1]:
-                    p_front.append(pair)
-
-        p_frontX = [pair[0] for pair in p_front]
-        p_frontY = [pair[1] for pair in p_front]
-
-        inds = []
-        for p1, p2 in zip(p_frontX, p_frontY):
-            ind = 0
-
-            for v1, v2 in zip(Xs, Ys):
-                if p1 == v1 and p2 == v2:
-                    inds.append(ind)
-                ind += 1
-
-        PARETO = HISTOGRAM.iloc[np.array(inds)]
-        if self.verbose:
-            print("Pareto optimal solutions:")
-            print(PARETO)
-
-        PARETO = PARETO.sort_values("X_QUANTITY", ascending=True)
-        return PARETO
 
     def to_dataframe(self, obj):
         """
@@ -224,7 +200,8 @@ class Analyze:
                 ENCOUNTER.append(step)
                 SMILES.append(smiles)
 
-        SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
+        VALUES = np.array(VALUES)
+        #SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
 
         return SMILES, VALUES
 
@@ -265,7 +242,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self,name_plot, hline=None, vline=None, coloring="encounter"):
+    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter"):
         """
         Plot the pareto optimal solutions.
         """
@@ -276,7 +253,7 @@ class Analyze:
         gs = 30
 
         max_x = abs(vline)
-        max_y = np.max(np.abs(self.GAP))
+        max_y = 0.6193166670127856
 
         if coloring == "encounter":
             sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, cmap=cc,C=self.ENCOUNTER, linewidths=0)
@@ -339,12 +316,12 @@ class Analyze:
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
         #pdb.set_trace()
         if coloring == "encounter":
-            plt.savefig("{}_pareto_encounter.png".format(name_plot), dpi=600)
-        if coloring == "density":
-            #pdb.set_trace()
-            
-            
-            plt.savefig("{}_pareto_count.png".format(name_plot), dpi=600)
+            plt.savefig("{}_enc.png".format(name_plot), dpi=600)
+            plt.savefig("{}_enc.svg".format(name_plot))
+
+        if coloring == "density":    
+            plt.savefig("{}_den.png".format(name_plot), dpi=600)
+            plt.savefig("{}_den.svg".format(name_plot))
 
         plt.close("all")
 
@@ -393,7 +370,7 @@ class Analyze:
         """
 
         plt.close("all")
-        fs = 24
+        
 
         plt.rc("font", size=fs)
         plt.rc("axes", titlesize=fs)
@@ -505,7 +482,7 @@ class Chem_Div:
         Compute PCA
         """
         #https://stackoverflow.com/questions/31523575/get-u-sigma-v-matrix-from-truncated-svd-in-scikit-learn
-        svd = TruncatedSVD() #n_components=2)
+        svd = TruncatedSVD()
         svd.fit(self.X[:i])
         sing_vals = svd.singular_values_
         return np.linalg.norm(sing_vals)
@@ -548,7 +525,7 @@ class Analyze_Chemspace:
         ALL_TRAJECTORIES = []
 
         for run in tqdm(self.results, disable=not self.verbose):
-
+            
             restart_data = loadpkl(run, compress=True)
 
             HISTOGRAM = self.to_dataframe(restart_data["histogram"])
@@ -605,19 +582,75 @@ class Analyze_Chemspace:
         X = rdkit_descriptors.get_all_FP(MOLS, nBits=nBits, fp_type="MorganFingerprint")
         return X
 
-    def compute_PCA(self, MOLS, nBits=2048):
+    def compute_UMAP(self, MOLS, nBits=2048, clustering=False):
         import umap
 
         """
         Compute PCA
         """
-
         X = self.compute_representations(MOLS, nBits=nBits)
-        reducer = umap.UMAP()
-        #reducer = umap.reducer()  #PCA(n_components=2)
+        reducer = umap.UMAP(random_state=42)
         reducer.fit(X)
         X_2d = reducer.transform(X)
-        return X_2d
+
+        if clustering == False:
+            return X_2d
+
+
+        else:
+            from sklearn.cluster import KMeans
+            from sklearn.metrics import silhouette_score
+
+            sil_scores = []
+            for n_clusters in range(2, 6):
+                kmeans = KMeans(n_clusters=n_clusters)
+                kmeans.fit(X_2d)
+                labels = kmeans.labels_
+                sil_scores.append(silhouette_score(X_2d, labels))
+
+            optimal_n_clusters = np.argmax(sil_scores) + 2 #5
+            print(optimal_n_clusters)
+            kmeans = KMeans(n_clusters=optimal_n_clusters,tol=1e-8,max_iter=500,random_state=0)
+            kmeans.fit(X_2d)
+            labels = kmeans.labels_
+            
+            # Assign each molecule to the closest cluster
+            clusters = [[] for _ in range(optimal_n_clusters)]
+            cluster_X_2d = [[] for _ in range(optimal_n_clusters)]
+            for i, label in enumerate(labels):
+                clusters[label].append(MOLS[i])
+                cluster_X_2d[label].append(X_2d[i])
+            
+            # Find most representative molecule for each cluster
+            representatives = []
+            indices = []
+
+            #kmeans.cluster_centers_ is possibly wrong
+            X_rep_2d = []
+            for label, cluster in enumerate(clusters):
+                
+                distances = [np.linalg.norm(x - kmeans.cluster_centers_[label]) for x in cluster_X_2d[label]]
+                #
+                representative_index = np.argmin(distances)
+                representatives.append(cluster[representative_index])
+                indices.append(representative_index)
+                X_rep_2d.append(cluster_X_2d[label][representative_index])
+
+            
+            #pdb.set_trace()
+            print(kmeans.cluster_centers_)
+            #pdb.set_trace()
+            SMILES_rep = [Chem.MolToSmiles(mol) for mol in representatives]
+            X_rep_2d = np.array(X_rep_2d)
+            return X_2d ,clusters,cluster_X_2d, X_rep_2d,SMILES_rep,reducer
+
+
+
+
+
+
+
+
 
     def to_dataframe(self, obj):
         """
