@@ -278,7 +278,7 @@ class Analyze:
 
         if dataset == "QM9":
             plt.ylabel(
-                r"$\Delta \epsilon / \rm{max}( \vert \Delta \epsilon^{\rm{QM9}} \vert)$",
+                r"$\Delta \epsilon / \mathrm{max}( \vert \Delta \epsilon^{\mathrm{QM9}} \vert)$",
                 fontsize=fs,
                 rotation=0,
                 ha="left",
@@ -288,7 +288,7 @@ class Analyze:
             )
         if dataset == "EGP":
             plt.ylabel(
-                r"$\Delta \epsilon / \rm{max}( \vert \Delta \epsilon^{\rm{EGP}} \vert)$",
+                r"$\Delta \epsilon / \mathrm{max}( \vert \Delta \epsilon^{\mathrm{EGP}} \vert)$",
                 fontsize=fs,
                 rotation=0,
                 ha="left",
