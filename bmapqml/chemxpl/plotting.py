@@ -266,14 +266,14 @@ class Analyze:
 
         if plot_quantity == "solvation":
             if dataset == "QM9":
-                plt.xlabel(r'$\Delta G_{\rm solv.}/ \rm{max}(  \vert \Delta G_{\rm solv.}^{\rm{QM9}} \vert)$', fontsize=fs)
+                ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{QM9}} \vert)$", fontsize=fs)
             if dataset == "EGP":
-                plt.xlabel(r"$\Delta G_{\rm solv.} / \rm{max}( \vert \Delta G_{\rm solv.}^{\rm EGP} \vert)$", fontsize=fs)
+                ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{EGP}} \vert)$", fontsize=fs)
         if plot_quantity == "dipole":
             if dataset == "QM9":
-                plt.xlabel(r"$ D / \rm{max}( \vert D^{\rm{QM9}} \vert)$", fontsize=fs)
+                ax1.set_xlabel(r"$ D / \mathrm{max}( \vert D^{\mathrm{QM9}} \vert)$", fontsize=fs)
             if dataset == "EGP":
-                plt.xlabel(r"$ D / \rm{max}( \vert  D^{\rm{EGP}} \vert)$", fontsize=fs)
+                ax1.set_xlabel(r"$ D / \mathrm{max}( \vert D^{\mathrm{QM9}} \vert)$", fontsize=fs)
 
 
         if dataset == "QM9":
@@ -336,7 +336,7 @@ class Analyze:
         ax1.grid(True, linestyle='--', linewidth=0.5, color='grey')
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        
+
         if coloring == "encounter":
             plt.savefig("{}_enc.png".format(name_plot), dpi=600)
             plt.savefig("{}_enc.svg".format(name_plot))
