@@ -242,7 +242,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter"):
+    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter", plot_quantity = "solvation"):
         """
         Plot the pareto optimal solutions.
         """
@@ -264,33 +264,55 @@ class Analyze:
 
             
 
-        plt.xlabel(self.quantity, fontsize=21)
-        plt.ylabel(
-            "Gap",
-            fontsize=21,
-            rotation=0,
-            ha="left",
-            y=1.05,
-            labelpad=-50,
-            weight=500,
-        )
-        #clb = plt.colorbar(sc)
-        #
-        #create colorbar with name clb and ticks at the middle of the bins
+        if plot_quantity == "solvation":
+            if dataset == "QM9":
+                plt.xlabel(r'$\Delta G_{\rm solv.}/ \rm{max}(  \vert \Delta G_{\rm solv.}^{\rm{QM9}} \vert)$', fontsize=fs)
+            if dataset == "EGP":
+                plt.xlabel(r"$\Delta G_{\rm solv.} / \rm{max}( \vert \Delta G_{\rm solv.}^{\rm EGP} \vert)$", fontsize=fs)
+        if plot_quantity == "dipole":
+            if dataset == "QM9":
+                plt.xlabel(r"$ D / \rm{max}( \vert D^{\rm{QM9}} \vert)$", fontsize=fs)
+            if dataset == "EGP":
+                plt.xlabel(r"$ D / \rm{max}( \vert  D^{\rm{EGP}} \vert)$", fontsize=fs)
+
+
+        if dataset == "QM9":
+            plt.ylabel(
+                r"$\Delta \epsilon / \rm{max}( \vert \Delta \epsilon^{\rm{QM9}} \vert)$",
+                fontsize=fs,
+                rotation=0,
+                ha="left",
+                y=1.05,
+                labelpad=-50,
+                weight=500,
+            )
+        if dataset == "EGP":
+            plt.ylabel(
+                r"$\Delta \epsilon / \rm{max}( \vert \Delta \epsilon^{\rm{EGP}} \vert)$",
+                fontsize=fs,
+                rotation=0,
+                ha="left",
+                y=1.05,
+                labelpad=-50,
+                weight=500,
+            )
+        
+        
+        
         ax1 = make_pretty(ax1)
         
         if coloring == "encounter":
             clb = fig.colorbar(sc)
-            clb.set_label("step encountered", fontsize=21)
+            clb.set_label("step encountered", fontsize=fs)
             ticks =  [i*5000 for i in range(1,7)]
             clb.set_ticks(ticks)
-            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
+            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
         else:
 
             ticks = [1000, 2500, 10000,25000, 100000, 200000]
             clb = fig.colorbar(sc)
             clb.set_ticks(ticks)
-            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=21)
+            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
 
         for simplex in self.hull.simplices:
             plt.plot(
@@ -307,14 +329,14 @@ class Analyze:
         ax1.axes.yaxis.set_visible(True)
 
         if self.quantity == "dipole":
-            plt.legend(loc="upper right", fontsize=21)
+            plt.legend(loc="upper right", fontsize=fs)
         else:
-            plt.legend(loc="upper left", fontsize=21)
+            plt.legend(loc="upper left", fontsize=fs)
 
         ax1.grid(True, linestyle='--', linewidth=0.5, color='grey')
 
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
-        #pdb.set_trace()
+        
         if coloring == "encounter":
             plt.savefig("{}_enc.png".format(name_plot), dpi=600)
             plt.savefig("{}_enc.svg".format(name_plot))
@@ -443,9 +465,9 @@ class Analyze:
             edgecolors="none",
         )
 
-        ax2.set_xlabel("PC1", fontsize=21)
+        ax2.set_xlabel("PC1", fontsize=fs)
         ax2.set_ylabel(
-            "PC2", fontsize=21, rotation=0, ha="left", y=1.05, labelpad=-50, weight=500
+            "PC2", fontsize=fs, rotation=0, ha="left", y=1.05, labelpad=-50, weight=500
         )
 
         clb = plt.colorbar(sc)
