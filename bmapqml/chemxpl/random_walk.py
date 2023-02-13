@@ -1680,7 +1680,7 @@ class RandomWalk:
                 cur_tp = self.cur_tps[replica_id]
                 tp_in_hist = cur_tp in self.histogram
                 if not tp_in_hist:
-                    self.add_to_histogram(cur_tp)
+                    self.add_to_histogram(cur_tp, replica_id)
                 cur_tp_index = self.histogram.index(cur_tp)
                 if tp_in_hist:
                     cur_tp.copy_extra_data_to(
