@@ -8,7 +8,6 @@
 import numpy as np
 from .ext_graph_compound import ExtGraphCompound
 from .valence_treatment import (
-    ChemGraph,
     default_valence,
     avail_val_list,
     int_atom_checked,
