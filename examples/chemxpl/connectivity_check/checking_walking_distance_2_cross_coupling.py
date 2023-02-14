@@ -1,4 +1,5 @@
 import sys
+from copy import deepcopy
 
 # The chemical space of choice is the same as used here:
 # https://github.com/kvkarandashev/molopt/blob/main/examples/chemxpl/bias_potential_checks/MC_graph_enumeration.py
@@ -15,6 +16,19 @@ chemspace_def = {
     "not_protonated": [8],
 }
 bias_coeff = 0.0  # in the paper we check values 0.0, 0.2, and 0.4
+
+num_replicas = (
+    36  # the number of replicas used in most numerical experiments in the main text.
+)
+
+gr = 0.2  # fraction of cross coupling moves
+
+# NOTE: everything related to cross-coupling moves is occasionally referred to as genetic
+
+global_change_params = {
+    "num_genetic_tries": 18,  # how many cross coupling moves are attempted; this means 18*2 attempts to change randomly chosen replicas.
+    "prob_dict": {"simple": 1.0 - gr, "genetic": gr},
+}
 
 
 sys.path.append("../../../")
@@ -59,11 +73,11 @@ def EGC_walking_distance(
     rw.clear_histogram_visit_data()
     tp_final = TrajectoryPoint(egc=egc2)
 
-    rw.init_cur_tps([egc1])
+    rw.init_cur_tps([deepcopy(egc1) for _ in range(num_replicas)])
     for MC_step in range(max_num_MC_steps):
         if tp_final in rw.cur_tps:
             return MC_step
-        rw.MC_step_all()
+        rw.global_random_change(**global_change_params)
     return None
 
 
@@ -120,7 +134,7 @@ if __name__ == "__main__":
             bias_coeff=None,
             randomized_change_params=randomized_change_params,
             keep_histogram=True,
-            num_replicas=1,
+            num_replicas=num_replicas,
         )
         dist = SMILES_walking_distance(
             SMILES1, SMILES2, rw, max_num_MC_steps=max_num_MC_steps
