@@ -17,42 +17,29 @@ UPDATE_BMAPQML=FALSE
 
 while [[ "$1" == --* ]]
 do
-    if [[ "$1" == --CPUs=* ]]
-    then
-        NCPUs=$(flag_val $1)
-    fi
-    if [[ "$1" == --docker=* ]]
-    then
-        docker=$(flag_val $1)
-    fi
-    if [[ "$1" == --memory=* ]]
-    then
-        memory=$(flag_val $1)
-    fi
-    if [[ "$1" == --OMP_NUM_THREADS=* ]]
-    then
-        JOB_OMP_NUM_THREADS=$(flag_val $1)
-    fi
-    if [[ "$1" == --req_files=* ]]
-    then
-        req_files=$(flag_val $1 | tr ':' ' ')
-    fi
-    if [[ "$1" == "--update_bmapqml" ]]
-    then
-        UPDATE_BMAPQML=TRUE
-    fi
-    if [[ "$1" == --export_env_vars=* ]]
-    then
-        EXPORT_ENV_VARS=$(flag_val $1)
-    fi 
-    if [[ "$1" == --copy_modules=* ]]
-    then
-        copy_modules=$(flag_val $1)
-    fi
-    if [[ "$1" == --exec=* ]]
-    then
-        exec_command=$(flag_val $1)
-    fi
+    case "$1" in
+        --CPUs=*)
+            NCPUs=$(flag_val $1);;
+        --docker=*)
+            docker=$(flag_val $1);;
+        --memory=*)
+            memory=$(flag_val $1);;
+        --OMP_NUM_THREADS=*)
+            JOB_OMP_NUM_THREADS=$(flag_val $1);;
+        --req_files=*)
+            req_files=$(flag_val $1 | tr ':' ' ');;
+        --update_bmapqml)
+            UPDATE_BMAPQML=TRUE;;
+        --export_env_vars=*)
+            EXPORT_ENV_VARS=$(flag_val $1);;
+        --copy_modules=*)
+            copy_modules=$(flag_val $1);;
+        --exec=*)
+            exec_command=$(flag_val $1);;
+        --*)
+            echo "Unknown flag: $1"
+            exit;;
+    esac
     shift
 done
 

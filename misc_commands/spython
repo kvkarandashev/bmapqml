@@ -10,7 +10,7 @@
 # Arguments starting from third (if present) - arguments for the python script.
 
 function flag_val(){
-    echo $1 | cut -d'=' -f2
+    echo $1 | cut -d'=' -f2-
 }
 
 NCPUs=$(cat /etc/slurm/slurm.conf | tr ' ' '\n' | awk 'BEGIN {FS="="} {if ($1=="CPUs") print $2}')
@@ -22,26 +22,25 @@ PIPE_ARGS=0
 
 while [[ "$1" == --* ]]
 do
-    if [[ "$1" == --CPUs=* ]]
-    then
-        NCPUs=$(flag_val $1)
-    fi
-    if [ "$1" == "--use-current_dir" ]
-    then
-        USE_CURRENT_DIR=1
-    fi
-    if [[ "$1" == --conda_env=* ]]
-    then
-        conda_env=$(flag_val $1)
-    fi
-    if [[ "$1" == --OMP_NUM_THREADS=* ]]
-    then
-        JOB_OMP_NUM_THREADS=$(flag_val $1)
-    fi
-    if [ "$1" == "--pipe_args" ]
-    then
-        PIPE_ARGS=1
-    fi
+    case "$1" in
+        --CPUs=*)
+            NCPUs=$(flag_val $1);;
+        --use-current_dir)
+            USE_CURRENT_DIR=1;;
+        --conda_env=*)
+            conda_env=$(flag_val $1);;
+        --OMP_NUM_THREADS=*)
+            JOB_OMP_NUM_THREADS=$(flag_val $1);;
+        --pipe_args)
+            PIPE_ARGS=1;;
+        --req_files=*)
+            req_files=$(flag_val $1);;
+        --export_env_vars=*)
+            EXPORT_ENV_VARS=$(flag_val $1);;
+        --*)
+            echo "Unknown flag: $1"
+            exit
+    esac
     shift
 done
 
@@ -92,9 +91,9 @@ then
 fi
 script_path=${scripts[0]}
 
+MYDIR=$(pwd)
+
 cd $data_dir
-
-
 
 EXNAME=ex_$job_name.sh
 
@@ -118,6 +117,14 @@ do
     echo "export $NTHREAD_VAR=$JOB_OMP_NUM_THREADS" >> $EXNAME
 done
 
+if [ ! -z "$EXPORT_ENV_VARS" ]
+then
+    for env_tuple in $(echo $EXPORT_ENV_VARS | tr "/" " ")
+    do
+        echo "export $env_tuple" >> $EXNAME
+    done
+fi
+
 cat >> $EXNAME << EOF
 export BMAPQML_NUM_PROCS=$NCPUs
 
@@ -131,6 +138,24 @@ else
     output_dir=$data_dir
     cd $data_dir
 fi
+EOF
+
+
+if [ ! -z $req_files ]
+then
+    for req_file in $(echo ${req_files[@]} | tr ":" " ")
+    do
+        if [ "${req_file:0:1}" == "/" ]
+        then
+            full_req_file_path=$req_file
+        else
+            full_req_file_path=$MYDIR/$req_file
+        fi
+        echo "cp $full_req_file_path ." >> $EXNAME
+    done
+fi
+
+cat >> $EXNAME << EOF
 echo "Started: \$(date)" > \$output_dir/execution_time.txt
 python $script_path $other_args
 echo "Finished: \$(date)" >> \$output_dir/execution_time.txt
