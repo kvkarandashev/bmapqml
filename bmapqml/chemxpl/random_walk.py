@@ -141,19 +141,25 @@ def egc_change_func(
             resonance_structure_id=resonance_structure_id
         )
     if change_function is remove_heavy_atom:
+        removed_atom_id = modification_path[1][0]
+        resonance_structure_id = modification_path[1][1]
         return change_function(
             egc_in,
-            modification_path[1][0],
-            resonance_structure_id=modification_path[1][1],
+            removed_atom_id,
+            resonance_structure_id=resonance_structure_id,
         )
     if change_function is change_valence:
+        modified_atom_id = modification_path[0]
+        new_valence = modification_path[1][0]
+        resonance_structure_id = modification_path[1][1]
         return change_function(
             egc_in,
-            modification_path[0],
-            modification_path[1][0],
-            resonance_structure_id=modification_path[1][1],
+            modified_atom_id,
+            new_valence,
+            resonance_structure_id=resonance_structure_id,
         )
     if change_function is add_heavy_atom_chain:
+        added_element = modification_path[0]
         if chain_addition_tuple_possibilities:
             modified_atom_id = modification_path[1][0]
             added_bond_order = modification_path[1][1]
@@ -163,26 +169,33 @@ def egc_change_func(
         return change_function(
             egc_in,
             modified_atom_id,
-            [modification_path[0]],
+            [added_element],
             [added_bond_order],
         )
     if change_function is replace_heavy_atom:
+        inserted_atom_type = modification_path[0]
+        replaced_atom_id = modification_path[1][0]
+        resonance_structure_id = modification_path[1][1]
         return change_function(
             egc_in,
-            modification_path[1][0],
-            modification_path[0],
-            resonance_structure_id=modification_path[1][1],
+            replaced_atom_id,
+            inserted_atom_type,
+            resonance_structure_id=resonance_structure_id,
         )
     if change_function is change_valence_add_atoms:
-        return change_function(
-            egc_in, modification_path[1], modification_path[0], modification_path[2]
-        )
+        added_element = modification_path[0]
+        modified_atom_id = modification_path[1]
+        new_bond_order = modification_path[2]
+        return change_function(egc_in, modified_atom_id, added_element, new_bond_order)
     if change_function is change_valence_remove_atoms:
+        modified_atom_id = modification_path[1]
+        removed_neighbors = modification_path[2][0]
+        resonance_structure_id = modification_path[2][1]
         return change_function(
             egc_in,
-            modification_path[1],
-            modification_path[2][0],
-            resonance_structure_id=modification_path[2][1],
+            modified_atom_id,
+            removed_neighbors,
+            resonance_structure_id=resonance_structure_id,
         )
     raise Exception()
 

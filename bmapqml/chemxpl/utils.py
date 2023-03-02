@@ -140,7 +140,7 @@ def carb_norm_tuple(egc, target_el="C"):
 
 def other_than_target_el_present(egc, target_el="C"):
     target_ncharge = int_atom(target_el)
-    for i, charge in enumerate(egc.true_ncharges()):
+    for charge in egc.true_ncharges():
         if (charge != 1) and (charge != target_ncharge):
             return True
     return False

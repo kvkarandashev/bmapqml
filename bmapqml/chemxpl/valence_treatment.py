@@ -1617,12 +1617,25 @@ def str2ChemGraph(input_string: str, shuffle=False) -> ChemGraph:
     shuffle : whether atom positions should be shuffled, introduced for testing purposes.
     """
     unchecked_adjmat, ncharges = chemgraph_str2unchecked_adjmat_ncharges(input_string)
-    if shuffle:
+    if shuffle:  # TODO should I use shuffled_chemgraph here?
         ids = list(range(len(ncharges)))
         random.shuffle(ids)
         ncharges = ncharges[ids]
         unchecked_adjmat = unchecked_adjmat[ids][:, ids]
     return ChemGraph(nuclear_charges=ncharges, adj_mat=unchecked_adjmat)
+
+
+def shuffled_chemgraph(chemgraph_in: ChemGraph) -> ChemGraph:
+    """
+    Returns an identical chemgraph whose atoms have been shuffled.
+    """
+    ncharges = chemgraph_in.full_ncharges()
+    adjmat = chemgraph_in.full_adjmat()
+    ids = list(range(len(ncharges)))
+    random.shuffle(ids)
+    shuffled_ncharges = ncharges[ids]
+    shuffled_adjmat = adjmat[ids][:, ids]
+    return ChemGraph(nuclear_charges=shuffled_ncharges, adj_mat=shuffled_adjmat)
 
 
 # For splitting chemgraphs.
