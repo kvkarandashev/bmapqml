@@ -714,6 +714,9 @@ def draw_all_cross_couplings(
             new_cg_pairs, new_origin_points = cross_couple_outcomes(
                 cg_pair, chosen_sizes, origin_points
             )
+            if new_cg_pairs is None:
+                os.chdir("..")
+                continue
             for new_cg_pair in new_cg_pairs:
                 new_fragments = [
                     FragmentPair(cg, origin_point, neighborhood_size=chosen_size)
