@@ -65,6 +65,7 @@ class ChemGraphDrawing:
         abbrevs=None,
         abbreviate_max_coverage=1.0,
         rotate=None,
+        centreMoleculesBeforeDrawing=None,
         post_added_bonds=None,
     ):
         """
@@ -93,6 +94,7 @@ class ChemGraphDrawing:
             abbrevs=abbrevs,
             abbreviate_max_coverage=abbreviate_max_coverage,
             rotate=rotate,
+            centreMoleculesBeforeDrawing=centreMoleculesBeforeDrawing,
             post_added_bonds=post_added_bonds,
         )
         self.prepare_and_draw()
@@ -121,6 +123,7 @@ class ChemGraphDrawing:
         abbrevs=None,
         abbreviate_max_coverage=1.0,
         rotate=None,
+        centreMoleculesBeforeDrawing=None,
         post_added_bonds=None,
     ):
         if chemgraph is None:
@@ -141,6 +144,8 @@ class ChemGraphDrawing:
             do.useBWAtomPalette()
         if rotate is not None:
             do.rotate = rotate
+        if centreMoleculesBeforeDrawing is not None:
+            do.centreMoleculesBeforeDrawing = centreMoleculesBeforeDrawing
         if highlightBondWidthMultiplier is not None:
             do.highlightBondWidthMultiplier = highlightBondWidthMultiplier
         if bondLineWidth is not None:
