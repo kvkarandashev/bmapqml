@@ -66,6 +66,7 @@ class ChemGraphDrawing:
         abbreviate_max_coverage=1.0,
         rotate=None,
         centreMoleculesBeforeDrawing=None,
+        padding=None,
         post_added_bonds=None,
     ):
         """
@@ -95,6 +96,7 @@ class ChemGraphDrawing:
             abbreviate_max_coverage=abbreviate_max_coverage,
             rotate=rotate,
             centreMoleculesBeforeDrawing=centreMoleculesBeforeDrawing,
+            padding=padding,
             post_added_bonds=post_added_bonds,
         )
         self.prepare_and_draw()
@@ -124,6 +126,7 @@ class ChemGraphDrawing:
         abbreviate_max_coverage=1.0,
         rotate=None,
         centreMoleculesBeforeDrawing=None,
+        padding=None,
         post_added_bonds=None,
     ):
         if chemgraph is None:
@@ -146,6 +149,8 @@ class ChemGraphDrawing:
             do.rotate = rotate
         if centreMoleculesBeforeDrawing is not None:
             do.centreMoleculesBeforeDrawing = centreMoleculesBeforeDrawing
+        if padding is not None:
+            do.padding = padding
         if highlightBondWidthMultiplier is not None:
             do.highlightBondWidthMultiplier = highlightBondWidthMultiplier
         if bondLineWidth is not None:
