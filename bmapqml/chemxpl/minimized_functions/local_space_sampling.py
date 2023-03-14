@@ -30,7 +30,7 @@ except:
 #value of boltzmann constant in kcal/mol/K
 kcal_per_mol_per_K = 1.987204259 * 1e-3
 
-def gen_soap(crds, chgs):
+def gen_soap(crds, chgs, species=["B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br", "H"]):
     # average output
     # https://singroup.github.io/dscribe/latest/tutorials/descriptors/soap.html
     """
@@ -42,7 +42,7 @@ def gen_soap(crds, chgs):
         nmax=8,
         lmax=6,
         average="inner",
-        species=["H", "C", "N", "O", "F"],
+        species=species,
         sparse=False,
     )
 
@@ -75,7 +75,7 @@ def get_boltzmann_weights(energies, T=300):
 
 
 
-def fml_rep(COORDINATES, NUC_CHARGES, ENERGIES,repfct=gen_soap):
+def fml_rep(COORDINATES, NUC_CHARGES, WEIGHTS,repfct=gen_soap):
     """
     Calculate the FML representation = boltzmann weighted representation
     Parameters
@@ -84,8 +84,8 @@ def fml_rep(COORDINATES, NUC_CHARGES, ENERGIES,repfct=gen_soap):
         Array of nuclear charges
     COORDINATES : np.array
         Array of coordinates
-    ENERGIES : np.array
-        Array of energies
+    WEIGHTS : np.array
+        Array of weights
     repfct : function of representation
         default: local_space_sampling.gen_soap
     Returns
@@ -98,7 +98,7 @@ def fml_rep(COORDINATES, NUC_CHARGES, ENERGIES,repfct=gen_soap):
     for i in range(len(COORDINATES)):
         X.append(repfct(COORDINATES[i], NUC_CHARGES))
     X = np.array(X)
-    X = np.average(X, axis=0, weights=get_boltzmann_weights(ENERGIES))
+    X = np.average(X, axis=0, weights=WEIGHTS)
     return X
 
 
@@ -168,10 +168,8 @@ class sample_local_space_3d:
         epsilon=1.0,
         sigma=1.0,
         gamma=1,
-        repfct=gen_cm,
     ):
 
-        self.repfct = repfct
         self.epsilon = epsilon
         self.sigma = sigma
         self.gamma = gamma
@@ -181,17 +179,7 @@ class sample_local_space_3d:
         self.morfeus_output = {"morfeus": morfeus_coord_info_from_tp}
         self.potential = self.flat_parabola_potential
 
-        if (
-            self.repfct.__name__ == "gen_cm"
-            or self.repfct.__name__ == "gen_bob"
-            or self.repfct.__name__ == "gen_soap"
-        ):
-            self.distfct = self.euclidean_distance
 
-        elif self.repfct.__name__ == "gen_fchl":
-            self.distfct = self.fchl_distance
-        elif self.repfct.__name__ == "fml_rep":
-            self.distfct = self.fml_distance
 
     def fml_distance(self,coords,charges,energies):
         X_test = self.repfct(coords, charges,energies)
@@ -206,17 +194,6 @@ class sample_local_space_3d:
         X_test = self.repfct(coords, charges)
         return norm(X_test - self.X_init)
 
-    def fchl_distance(self, coords, charges, sigma=1.0):
-        """
-        Compute the FCHL distance between the test
-        point and the initial point.
-        """
-
-        X_test = self.repfct(coords, charges)
-        k = get_local_kernel(
-            np.array([X_test]), np.array([self.X_init]), [charges], [self.Q_init], sigma
-        )[0][0]
-        return 500 - k
 
     def flat_parabola_potential(self, d):
 
@@ -238,41 +215,38 @@ class sample_local_space_3d:
         """
         Compute the potential energy of a trajectory point.
         """
-
-        output = trajectory_point_in.calc_or_lookup(
-            self.morfeus_output,
-            kwargs_dict={
-                "morfeus": {
-                    "num_attempts": 100,
-                    "ff_type": "MMFF94s",
-                    "return_rdkit_obj": False,
-                    "all_confs": True
-                }
-            },
-        )["morfeus"]
-        
-        coords = output["coordinates"]
-        charges = output["nuclear_charges"]
-        SMILES = output["canon_rdkit_SMILES"]
-        
-        
         try:
-            energies = output["rdkit_energy"]
-            distance = self.distfct(coords, charges,energies)
-            V = self.potential(distance)
+            output = trajectory_point_in.calc_or_lookup(
+                self.morfeus_output,
+                kwargs_dict={
+                    "morfeus": {
+                        "num_attempts": 100,
+                        "ff_type": "MMFF94",
+                        "return_rdkit_obj": False,
+                        "all_confs": True
+                    }
+                },
+            )["morfeus"]
+            
+            coords = output["coordinates"]
 
-            if self.verbose:
-                print(SMILES, distance, V)
-            return V
-        except:
-            if coords is None:
-                print("No coordinates found")
-                print(f"{SMILES}")
-                print("Error in 3d conformer sampling")
-                return None
-            else:
-                print("sth else happened")
-                return None
+            charges = output["nuclear_charges"]
+            SMILES = output["canon_rdkit_SMILES"]
+            
+            X_test = fml_rep(coords, charges, output["rdkit_Boltzmann"])
+        except Exception as e:
+            print(e)
+            print("Error in 3d conformer sampling")
+            return None
+            
+        
+        distance = np.linalg.norm(X_test - self.X_init)
+        V = self.potential(distance)
+
+        if self.verbose:
+            print(SMILES, distance, V)
+        return V
+    
 
 
 class sample_local_space:
@@ -312,7 +286,7 @@ class sample_local_space:
         self.potential = None
         if self.pot_type == "flat_parabola":
             self.potential = self.flat_parabola_potential
-
+        
 
     def get_largest_ring_size(self, SMILES):
         """
@@ -407,13 +381,12 @@ class sample_local_space:
         if rdkit_mol is None:
             raise RdKitFailure
             
-
         X_test = rdkit_descriptors.extended_get_single_FP(rdkit_mol, self.fp_type, nBits=self.nbits) 
         d = norm(X_test - self.X_init)
         V = self.potential(d)
 
-        if self.verbose:
-            print(f"{canon_SMILES},{d},{V}")
+        #if self.verbose:
+        #    print(f"{canon_SMILES},{d},{V}")
 
         return V
 
