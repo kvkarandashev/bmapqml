@@ -12,8 +12,11 @@ import pandas as pd
 from tqdm import tqdm
 from rdkit import Chem
 import seaborn as sns
-import pdb
 import random
+import joblib
+import time
+from matplotlib.ticker import FormatStrFormatter
+import pdb
 
 np.random.seed(122)
 random.seed(122)
@@ -80,8 +83,14 @@ class Analyze:
         ALL_TRAJECTORIES = []
 
         for run in tqdm(self.results, disable=not self.verbose):
-
+            print("Loading data from {}".format(run))
+            start = time.time()
             restart_data = loadpkl(run, compress=False)
+            done = time.time()
+            elapsed = done - start
+            print(elapsed)
+
+            print("Data loaded from {}".format(run))
             self.global_MC_step_counter = restart_data["global_MC_step_counter"]
             HISTOGRAM = self.to_dataframe(restart_data["histogram"])
             HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
@@ -242,7 +251,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter", plot_quantity = "solvation"):
+    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter", plot_quantity = "solvation_energy",labels=False):
         """
         Plot the pareto optimal solutions.
         """
@@ -254,96 +263,138 @@ class Analyze:
 
         max_x = abs(vline)
         max_y = 0.6193166670127856
-
-        if coloring == "encounter":
-            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, cmap=cc,C=self.ENCOUNTER, linewidths=0)
-        if coloring == "density":
-            from matplotlib import colors
-            np.seterr(under='warn')
-            sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0,norm=colors.LogNorm(vmin=100, vmax=200000))
-
-            
-
-        if plot_quantity == "solvation":
-            if dataset == "QM9":
-                ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{QM9}} \vert)$", fontsize=fs)
-            if dataset == "EGP":
-                ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{EGP}} \vert)$", fontsize=fs)
-        if plot_quantity == "dipole":
-            if dataset == "QM9":
-                ax1.set_xlabel(r"$ D / \mathrm{max}( \vert D^{\mathrm{QM9}} \vert)$", fontsize=fs)
-            if dataset == "EGP":
-                ax1.set_xlabel(r"$ D / \mathrm{max}( \vert D^{\mathrm{QM9}} \vert)$", fontsize=fs)
-
-
-        if dataset == "QM9":
-            plt.ylabel(
-                r"$\Delta \epsilon / \mathrm{max}( \vert \Delta \epsilon^{\mathrm{QM9}} \vert)$",
-                fontsize=fs,
-                rotation=0,
-                ha="left",
-                y=1.05,
-                labelpad=-50,
-                weight=500,
-            )
-        if dataset == "EGP":
-            plt.ylabel(
-                r"$\Delta \epsilon / \mathrm{max}( \vert \Delta \epsilon^{\mathrm{EGP}} \vert)$",
-                fontsize=fs,
-                rotation=0,
-                ha="left",
-                y=1.05,
-                labelpad=-50,
-                weight=500,
-            )
         
         
-        
-        ax1 = make_pretty(ax1)
-        
-        if coloring == "encounter":
-            clb = fig.colorbar(sc)
-            clb.set_label("step encountered", fontsize=fs)
-            ticks =  [i*5000 for i in range(1,7)]
-            clb.set_ticks(ticks)
-            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
-        else:
-
-            ticks = [1000, 2500, 10000,25000, 100000, 200000]
-            clb = fig.colorbar(sc)
-            clb.set_ticks(ticks)
-            clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
-
-        for simplex in self.hull.simplices:
-            plt.plot(
-                self.points[simplex, 0]/max_x, self.points[simplex, 1]/max_y, "o-", color="black"
-            )
-
         if hline is not None:
             plt.axhline(y=hline/max_y, color="red", linestyle="--", linewidth=2, label="Gap Cnstr.")
         if vline is not None:
             plt.axvline(x=vline/max_x, color="navy", linestyle="--", label="Best Ref.")
 
 
+        ymin_tick = hline/max_y - 0.05 #0 if hline is None else hline
+        if coloring == "encounter":
+            sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, cmap=cc,C=self.ENCOUNTER, linewidths=0.2)
+        if coloring == "density":
+            from matplotlib import colors
+            np.seterr(under='warn')
+            sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0.2,norm=colors.LogNorm(vmin=100, vmax=200000))
+
+            
+        if labels:
+            if plot_quantity == "solvation_energy":
+                if dataset == "QM9":
+                    #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{QM9}} \vert)$", fontsize=fs)
+                    #ax1.set_xlim(-1.5,0.1)
+                    ax1.set_ylim(ymin_tick,1.05)
+                    #ticks = np.arange(-1.5,0.5,0.2)
+                    #ax1.set_xticks(xticks)
+                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+
+                if dataset == "EGP":
+                    #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{EGP}} \vert)$", fontsize=fs)
+                    #ax1.set_xlim(-14,2)
+                    ax1.set_ylim(ymin_tick,1.05)
+                    #xticks = np.arange(-12,2,2)
+                    ##ax1.set_xticks(xticks)
+                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+
+            if plot_quantity == "dipole":
+                if dataset == "QM9":
+                    #ax1.set_xlabel(r"$ D / \mathrm{max}(  D^{\mathrm{QM9}} )$", fontsize=fs)
+                    pass
+                    ax1.set_ylim(ymin_tick,1.05)
+                    #ax1.set_xlim(0.0,1.5)
+                    #xticks  = np.arange(0.0,2.0,0.5)
+                    #ax1.set_xticks(xticks)
+                    #only one number after comma
+                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                if dataset == "EGP":
+                    #ax1.set_xlabel(r"$ D / \mathrm{max}(  D^{\mathrm{EGP}} )$", fontsize=fs)
+                    #ax1.set_xlim(0,9.0)
+                    ax1.set_ylim(ymin_tick,1.05)
+                    #xticks  = np.arange(0,10,2)
+                    #ax1.set_xticks(xticks)
+                    #ax1.set_xticklabels([str(x) for x in xticks])
+                    pass
+
+            if dataset == "QM9":
+                pass
+                #plt.ylabel(
+                #    r"$\Delta \epsilon / \mathrm{max}(  \Delta \epsilon^{\mathrm{QM9}} )$",
+                #    fontsize=fs,
+                #    rotation=0,
+                #    ha="left",
+                #    y=1.05,
+                #    labelpad=-50,
+                #    weight=500,
+                #)
+            if dataset == "EGP":
+                pass
+                #plt.ylabel(
+                #    r"$\Delta \epsilon / \mathrm{max}(  \Delta \epsilon^{\mathrm{EGP}} )$",
+                #    fontsize=fs,
+                #    rotation=0,
+                #    ha="left",
+                #    y=1.05,
+                #    labelpad=-50,
+                #    weight=500,
+                #)
+        
+        
+        
+        ax1 = make_pretty(ax1)
+        ax1.xaxis.set_tick_params(labelsize=30)
+        ax1.yaxis.set_tick_params(labelsize=30)
+        ax1.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax1.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax1.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax1.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+        if labels:
+            if coloring == "encounter":
+                clb = fig.colorbar(sc)
+                clb.ax.set_title('#',fontsize=fs)
+                ticks =  [i*5000 for i in range(1,7)]
+                clb.set_ticks(ticks)
+                clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
+            else:
+
+                ticks = [1000, 2500, 10000,25000, 100000, 200000]
+                #clb = fig.colorbar(sc)
+                #clb.ax.set_title('#',fontsize=fs)
+                #clb.set_ticks(ticks)
+                #clb.set_ticklabels([str(int(s)) for s in ticks], fontsize=fs)
+
+        for simplex in self.hull.simplices:
+            plt.plot(
+                self.points[simplex, 0]/max_x, self.points[simplex, 1]/max_y, "o-", color="black"
+            )
+
+
+
         ax1.axes.xaxis.set_visible(True)
         ax1.axes.yaxis.set_visible(True)
 
-        if self.quantity == "dipole":
-            plt.legend(loc="upper right", fontsize=fs)
-        else:
-            plt.legend(loc="upper left", fontsize=fs)
+        if labels:
+            if self.quantity == "dipole":
+                #plt.legend(loc="upper right", fontsize=fs)
+                pass
+            else:
+                pass
+                #plt.legend(loc="upper left", fontsize=fs)
 
         ax1.grid(True, linestyle='--', linewidth=0.5, color='grey')
-
+        
         plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
 
         if coloring == "encounter":
             plt.savefig("{}_enc.png".format(name_plot), dpi=600)
-            plt.savefig("{}_enc.svg".format(name_plot))
+            #plt.savefig("{}_enc.svg".format(name_plot))
 
         if coloring == "density":    
             plt.savefig("{}_den.png".format(name_plot), dpi=600)
-            plt.savefig("{}_den.svg".format(name_plot))
+            #plt.savefig("{}_den.svg".format(name_plot))
 
         plt.close("all")
 
@@ -377,8 +428,11 @@ class Analyze:
             labelpad=-50,
             weight=500,
         )
-        clb = plt.colorbar(sc)
-        clb.set_label("step")
+
+
+        # deactivate colorbar
+        #clb = plt.colorbar(sc)
+        #clb.set_label("step")
 
         ax1 = make_pretty(ax1)
 
@@ -524,7 +578,7 @@ class Chem_Div:
 
 
 class Analyze_Chemspace:
-    def __init__(self, path, full_traj=False, verbose=False):
+    def __init__(self, path,rep_type="2d" ,full_traj=False, verbose=False):
 
         """
         mode : either optimization of dipole and gap = "optimization" or
@@ -532,6 +586,7 @@ class Analyze_Chemspace:
         """
 
         self.path = path
+        self.rep_type = rep_type
         self.results = glob.glob(path)
         self.verbose = verbose
         self.full_traj = full_traj
@@ -546,27 +601,41 @@ class Analyze_Chemspace:
         ALL_HISTOGRAMS = []
         ALL_TRAJECTORIES = []
 
-        for run in tqdm(self.results, disable=not self.verbose):
-            
-            restart_data = loadpkl(run, compress=True)
 
-            HISTOGRAM = self.to_dataframe(restart_data["histogram"])
-            HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
-            ALL_HISTOGRAMS.append(HISTOGRAM)
-            if self.full_traj:
-                traj = np.array(ordered_trajectory_from_restart(restart_data))
-                CURR_TRAJECTORIES = []
-                for T in range(traj.shape[1]):
-                    sel_temp = traj[:, T]
-                    TRAJECTORY = self.to_dataframe(sel_temp)
-                    CURR_TRAJECTORIES.append(TRAJECTORY)
-                ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+        if self.full_traj:
+            for run in tqdm(self.results, disable=not self.verbose):
+                
+                restart_data = loadpkl(run, compress=True)
+
+                HISTOGRAM = self.to_dataframe(restart_data["histogram"])
+                HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
+                ALL_HISTOGRAMS.append(HISTOGRAM)
+                if self.full_traj:
+                    traj = np.array(ordered_trajectory_from_restart(restart_data))
+                    CURR_TRAJECTORIES = []
+                    for T in range(traj.shape[1]):
+                        sel_temp = traj[:, T]
+                        TRAJECTORY = self.to_dataframe(sel_temp)
+                        CURR_TRAJECTORIES.append(TRAJECTORY)
+                    ALL_TRAJECTORIES.append(CURR_TRAJECTORIES)
+        else:
+            ALL_HISTOGRAMS = joblib.Parallel(n_jobs=8)(joblib.delayed(self.process_run)(run) for run in tqdm(self.results))
+
 
         self.ALL_HISTOGRAMS, self.ALL_TRAJECTORIES = ALL_HISTOGRAMS, ALL_TRAJECTORIES
         self.GLOBAL_HISTOGRAM = pd.concat(ALL_HISTOGRAMS)
         self.GLOBAL_HISTOGRAM = self.GLOBAL_HISTOGRAM.drop_duplicates(subset=["SMILES"])
 
         return self.ALL_HISTOGRAMS, self.GLOBAL_HISTOGRAM, self.ALL_TRAJECTORIES
+
+
+    def process_run(self, run):
+        restart_data = loadpkl(run, compress=True)
+
+        HISTOGRAM = self.to_dataframe(restart_data["histogram"])
+        HISTOGRAM = HISTOGRAM.sample(frac=1).reset_index(drop=True)
+        return HISTOGRAM
+
 
 
 
@@ -577,23 +646,40 @@ class Analyze_Chemspace:
         smiles_mol: list of rdkit molecules
         """
 
-        SMILES = []
-        VALUES = []
 
+        if self.rep_type == "2d":
+            SMILES = []
+            VALUES = []
 
-        for tp in mols:
-            try:
+            
+            for tp in mols:
                 curr_data = tp.calculated_data
                 SMILES.append(curr_data["canonical_rdkit"][-1])
                 VALUES.append(curr_data["chemspacesampler"])
-            except:
-                if self.verbose:
-                    print("Could not convert to smiles")
-                pass
 
-        SMILES, VALUES = self.make_canon(SMILES), np.array(VALUES)
 
-        return SMILES, VALUES
+            VALUES = np.array(VALUES)
+
+            return SMILES, VALUES
+        if self.rep_type == "3d":
+            """
+            (Pdb) tp.calculated_data["morfeus"].keys()
+            dict_keys(['coordinates', 'nuclear_charges', 'canon_rdkit_SMILES', 'rdkit_energy', 'rdkit_degeneracy', 'rdkit_Boltzmann'])
+            """
+
+
+
+            SMILES = []
+            VALUES = []
+            #len(tp.calculated_data["morfeus"]["coordinates"])
+            for tp in mols:
+                curr_data = tp.calculated_data
+                SMILES.append(curr_data["morfeus"]["canon_rdkit_SMILES"])
+                VALUES.append(curr_data["3d"])
+
+            VALUES = np.array(VALUES)
+
+            return SMILES, VALUES
 
 
     def compute_representations(self, MOLS, nBits):
@@ -604,14 +690,18 @@ class Analyze_Chemspace:
         X = rdkit_descriptors.get_all_FP(MOLS, nBits=nBits, fp_type="MorganFingerprint")
         return X
 
-    def compute_UMAP(self, MOLS, nBits=2048, clustering=False):
-        import umap
+    def compute_projection(self, MOLS, nBits=2048, clustering=False, projector="PCA"):
+        
 
-        """
-        Compute PCA
-        """
+
         X = self.compute_representations(MOLS, nBits=nBits)
-        reducer = umap.UMAP(random_state=42)
+        if projector == "UMAP":
+            import umap
+            reducer = umap.UMAP(random_state=42)
+        if projector == "PCA":
+            from sklearn.decomposition import PCA
+            reducer = PCA(n_components=2, random_state=42)
+
         reducer.fit(X)
         X_2d = reducer.transform(X)
 
