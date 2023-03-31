@@ -443,7 +443,7 @@ class ModificationPathIllustration(ChemGraphDrawing):
         return []
 
     def change_minor(self):
-        if self.change_function in [add_heavy_atom_chain, change_valence_add_atoms]:
+        if self.change_function == add_heavy_atom_chain:
             return [self.modification_path[1]]
         if self.change_function == remove_heavy_atom:
             return [self.neighbor_to_removed()]
@@ -454,6 +454,8 @@ class ModificationPathIllustration(ChemGraphDrawing):
         return []
 
     def change_special(self):
+        if self.change_function == change_valence_add_atoms:
+            return [self.modification_path[1]]
         if self.change_function == change_valence:
             return [self.modification_path[0]]
         if self.change_function == change_valence_remove_atoms:
