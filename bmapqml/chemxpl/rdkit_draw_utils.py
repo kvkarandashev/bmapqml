@@ -186,6 +186,13 @@ class ChemGraphDrawing:
 
         self.post_added_bonds = post_added_bonds
 
+    def highlight_atoms_bonds(self, atoms_bonds_list, highlight_color, overwrite=False):
+        for ab in atoms_bonds_list:
+            if isinstance(ab, tuple):
+                self.highlight_bonds([ab], highlight_color, overwrite=overwrite)
+            else:
+                self.highlight_atoms([ab], highlight_color, overwrite=overwrite)
+
     def highlight_atoms(self, atom_ids, highlight_color, wbonds=False, overwrite=False):
         if highlight_color is None:
             return
@@ -370,8 +377,9 @@ class ModificationPathIllustration(ChemGraphDrawing):
         cg,
         modification_path,
         change_function,
-        color_change=None,
-        color_change_neighbors=None,
+        color_change_main=None,
+        color_change_minor=None,
+        color_change_special=None,
         **other_image_params
     ):
         """
@@ -380,10 +388,12 @@ class ModificationPathIllustration(ChemGraphDrawing):
         self.base_init(chemgraph=cg, **other_image_params)
         self.modification_path = modification_path
         self.change_function = change_function
-        self.color_change = color_change
-        self.color_change_neighbors = color_change_neighbors
-        self.highlight_atoms(self.change_neighbor_atoms(), self.color_change_neighbors)
-        self.highlight_atoms(self.change_atoms(), self.color_change, wbonds=True)
+        self.color_change_main = color_change_main
+        self.color_change_minor = color_change_minor
+        self.color_change_special = color_change_special
+        self.highlight_atoms_bonds(self.change_main(), self.color_change_main)
+        self.highlight_atoms_bonds(self.change_minor(), self.color_change_minor)
+        self.highlight_atoms_bonds(self.change_special(), self.color_change_special)
         self.init_resonance_struct_adj()
         self.prepare_and_draw()
 
@@ -391,23 +401,15 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if self.chemgraph.resonance_structure_map is None:
             return
         affected_resonance_region = None
-        changed_atom = None
+        res_struct_id = None
+
         if self.change_function in bond_changes:
-            st = sorted_tuple(*self.change_atoms())
-            if st in self.chemgraph.resonance_structure_map:
-                affected_resonance_region = self.chemgraph.resonance_structure_map[st]
-                res_struct_id = self.modification_path[1][-1]
+            res_struct_id = self.modification_path[1][-1]
 
         if self.change_function in [replace_heavy_atom, change_valence]:
-            changed_atom = self.change_atoms()[0]
-
-        if self.change_function == replace_heavy_atom:
             res_struct_id = self.modification_path[1][1]
 
-        if self.change_function == change_valence:
-            res_struct_id = self.modification_path[1][1]
-
-        if changed_atom is not None:
+        for changed_atom in self.changed_atoms():
             for i, extra_valence_ids in enumerate(
                 self.chemgraph.resonance_structure_inverse_map
             ):
@@ -417,43 +419,63 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if (affected_resonance_region is not None) and (res_struct_id is not None):
             self.resonance_struct_adj = {affected_resonance_region: res_struct_id}
 
-    def change_atoms(self):
-        if self.change_function == remove_heavy_atom:
-            orig_atoms = [self.modification_path[1][0]]
+    def removed_atoms(self):
         if self.change_function == change_valence_remove_atoms:
-            orig_atoms = list(self.modification_path[2][0])
-        if self.change_function in atom_removals:
-            neigh_atom = self.chemgraph.neighbors(orig_atoms[0])[0]
-            return orig_atoms + [neigh_atom]
+            return list(self.modification_path[2][0])
+        if self.change_function == remove_heavy_atom:
+            return [self.modification_path[1][0]]
+        raise Exception
 
-        if self.change_function in atom_additions:
-            return []
+    def neighbor_to_removed(self):
+        return self.chemgraph.neighbors(self.removed_atoms()[0])[0]
 
-        if self.change_function in bond_changes:
-            return list(self.modification_path[1][:2])
+    def changed_bond(self):
+        return sorted_tuple(*self.modification_path[1][:2])
 
+    def change_main(self):
+        if self.change_function in [change_valence_remove_atoms, remove_heavy_atom]:
+            atoms = self.removed_atoms()
+            neighbor = self.neighbor_to_removed()
+            bonds = [sorted_tuple(atom, neighbor) for atom in atoms]
+            return atoms + bonds
         if self.change_function == replace_heavy_atom:
             return [self.modification_path[1][0]]
+        return []
 
-        if self.change_function == change_valence:
-            return [self.modification_path[0]]
-
-        raise Exception()
-
-    def change_neighbor_atoms(self):
-        if self.change_function in bond_changes:
-            return self.change_atoms()
-
-        if self.change_function in atom_removals:
-            return [self.change_atoms()[-1]]
-
+    def change_minor(self):
         if self.change_function in [add_heavy_atom_chain, change_valence_add_atoms]:
             return [self.modification_path[1]]
+        if self.change_function == remove_heavy_atom:
+            return [self.neighbor_to_removed()]
+        if self.change_function == change_bond_order:
+            return list(self.changed_bond())
+        if self.change_function == change_bond_order_valence:
+            return [self.modification_path[1][1]]
+        return []
 
-        if self.change_function in [change_valence, replace_heavy_atom]:
-            return []
+    def change_special(self):
+        if self.change_function == change_valence:
+            return [self.modification_path[0]]
+        if self.change_function == change_valence_remove_atoms:
+            return [self.neighbor_to_removed()]
+        if self.change_function in bond_changes:
+            output = []
+            bond = self.changed_bond()
+            if self.chemgraph.bond_order(*bond) != 0:
+                output.append(bond)
+            if self.change_function == change_bond_order_valence:
+                output.append(self.modification_path[1][0])
+            return output
+        return []
 
-        raise Exception()
+    def changed_atoms(self):
+        output = []
+        for atom_bonds in itertools.chain(
+            self.change_main(), self.change_minor(), self.change_special()
+        ):
+            if isinstance(atom_bonds, int):
+                output.append(atom_bonds)
+        return output
 
 
 def first_mod_path(tp):
