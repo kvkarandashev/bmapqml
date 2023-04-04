@@ -176,6 +176,13 @@ class ChemGraphDrawing:
         if self.highlightAtomColor is not None:
             self.highlight_atoms(self.highlightAtoms, self.highlightAtomColor)
 
+        # TODO cleaner way to do it?
+        if self.highlightAtomColors is not None:
+            self.highlight_atoms(
+                list(self.highlightAtomColors.keys()),
+                list(self.highlightAtomColors.values())[0],
+            )
+
         if self.highlightBondTupleColor:
             self.highlight_bonds(self.highlightBondTuples, self.highlightBondTupleColor)
 
@@ -199,7 +206,7 @@ class ChemGraphDrawing:
         if self.highlightAtomColors is None:
             self.highlightAtomColors = {}
         if self.highlightAtoms is None:
-            self.highlightAtoms = []
+            self.highlightAtoms = list(self.highlightAtomColors.keys())
         for ha in atom_ids:
             if (ha not in self.highlightAtomColors) or overwrite:
                 self.highlightAtomColors[ha] = highlight_color
