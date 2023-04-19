@@ -6,7 +6,7 @@ from rdkit.Chem import RemoveHs, rdAbbreviations
 from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
 from .valence_treatment import ChemGraph, sorted_tuple
-import itertools, os
+import itertools, os, subprocess
 from .modify import (
     FragmentPair,
     add_heavy_atom_chain,
@@ -41,9 +41,15 @@ LIGHTBLUE = (0.5, 0.5, 1.0)
 
 png = "PNG"
 svg = "SVG"
-drawing_formats = [png, svg]
-drawing_generator = {png: rdMolDraw2D.MolDraw2DCairo, svg: rdMolDraw2D.MolDraw2DSVG}
-drawing_file_suffix = {png: ".png", svg: ".svg"}
+pdf = "PDF"
+default_drawing_format = pdf
+drawing_formats = [png, svg, pdf]
+drawing_generator = {
+    png: rdMolDraw2D.MolDraw2DCairo,
+    svg: rdMolDraw2D.MolDraw2DSVG,
+    pdf: rdMolDraw2D.MolDraw2DSVG,
+}
+drawing_file_suffix = {png: ".png", svg: ".svg", pdf: ".pdf"}
 
 
 class ChemGraphDrawing:
@@ -74,7 +80,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
-        file_format=png,
+        file_format=default_drawing_format,
     ):
         """
         Create an RdKit illustration depicting a partially highlighted ChemGraph.
@@ -136,7 +142,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
-        file_format=png,
+        file_format=default_drawing_format,
     ):
         if chemgraph is None:
             if SMILES is not None:
@@ -149,6 +155,7 @@ class ChemGraphDrawing:
 
         self.kekulize = kekulize
         self.bw_palette = bw_palette
+        self.file_format = file_format
         self.drawing = drawing_generator[file_format](*size)
 
         do = self.drawing.drawOptions()
@@ -302,8 +309,24 @@ class ChemGraphDrawing:
 
     def save(self, filename):
         text = self.drawing.GetDrawingText()
-        with open(filename, "w") as f:
+        if self.file_format == pdf:
+            print_output = filename + drawing_file_suffix[svg]
+        else:
+            print_output = filename
+        with open(print_output, "w") as f:
             f.write(text)
+        if self.file_format == pdf:
+            subprocess.run(
+                [
+                    "inkscape",
+                    "-D",
+                    "-z",
+                    print_output,
+                    "--export-area-drawing",
+                    "-o",
+                    filename,
+                ]
+            )
 
     def connecting_bond_tuples(self, atom_ids):
         output = []
@@ -331,7 +354,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         abbrevs=None,
         abbreviate_max_coverage=1.0,
         rotate=None,
-        file_format=png,
+        file_format=default_drawing_format,
     ):
         """
         Create an RdKit illustration depicting a FragmentPair with atoms and bonds highlighted according to membership.
@@ -593,7 +616,7 @@ class BeforeAfterIllustration:
 
 def draw_chemgraph_to_file(cg, filename, **kwargs):
     """
-    Draw a chemgraph in a PNG file.
+    Draw a chemgraph in an image file.
     """
     cgd = ChemGraphDrawing(chemgraph=cg, **kwargs)
     cgd.save(filename)
@@ -601,7 +624,7 @@ def draw_chemgraph_to_file(cg, filename, **kwargs):
 
 def draw_fragment_pair_to_file(fragment_pair, filename, **kwargs):
     """
-    Draw a fragment pair in a PNG file.
+    Draw a fragment pair in an image file.
     """
     fpd = FragmentPairDrawing(fragment_pair=fragment_pair, **kwargs)
     fpd.save(filename)
@@ -636,7 +659,7 @@ def check_filename_suffix(filename_suffix, kwargs):
     file_format_key = "file_format"
     if file_format_key in kwargs:
         return drawing_file_suffix[kwargs[file_format_key]]
-    return drawing_file_suffix[png]
+    return drawing_file_suffix[default_drawing_format]
 
 
 def draw_all_possible_resonance_structures(
