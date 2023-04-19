@@ -39,6 +39,12 @@ LIGHTRED = (1.0, 0.5, 0.5)
 LIGHTGREEN = (0.5, 1.0, 0.5)
 LIGHTBLUE = (0.5, 0.5, 1.0)
 
+png = "PNG"
+svg = "SVG"
+drawing_formats = [png, svg]
+drawing_generator = {png: rdMolDraw2D.MolDraw2DCairo, svg: rdMolDraw2D.MolDraw2DSVG}
+drawing_file_suffix = {png: ".png", svg: ".svg"}
+
 
 class ChemGraphDrawing:
     def __init__(
@@ -68,6 +74,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
+        file_format=png,
     ):
         """
         Create an RdKit illustration depicting a partially highlighted ChemGraph.
@@ -98,6 +105,7 @@ class ChemGraphDrawing:
             centreMoleculesBeforeDrawing=centreMoleculesBeforeDrawing,
             padding=padding,
             post_added_bonds=post_added_bonds,
+            file_format=file_format,
         )
         self.prepare_and_draw()
 
@@ -128,6 +136,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
+        file_format=png,
     ):
         if chemgraph is None:
             if SMILES is not None:
@@ -140,7 +149,7 @@ class ChemGraphDrawing:
 
         self.kekulize = kekulize
         self.bw_palette = bw_palette
-        self.drawing = rdMolDraw2D.MolDraw2DCairo(*size)
+        self.drawing = drawing_generator[file_format](*size)
 
         do = self.drawing.drawOptions()
         if bw_palette:
@@ -292,7 +301,9 @@ class ChemGraphDrawing:
         # Chem.SanitizeMol(self.mol)
 
     def save(self, filename):
-        self.drawing.WriteDrawingText(filename)
+        text = self.drawing.GetDrawingText()
+        with open(filename, "w") as f:
+            f.write(text)
 
     def connecting_bond_tuples(self, atom_ids):
         output = []
@@ -320,6 +331,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         abbrevs=None,
         abbreviate_max_coverage=1.0,
         rotate=None,
+        file_format=png,
     ):
         """
         Create an RdKit illustration depicting a FragmentPair with atoms and bonds highlighted according to membership.
@@ -337,6 +349,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
             abbreviate_max_coverage=abbreviate_max_coverage,
             highlightAtomRadius=highlightAtomRadius,
             rotate=rotate,
+            file_format=file_format,
         )
         # For starters only highlight the bonds connecting the two fragments.
         self.highlight_fragment_colors = highlight_fragment_colors
@@ -617,25 +630,36 @@ def all_possible_resonance_struct_adj(obj):
     return output
 
 
+def check_filename_suffix(filename_suffix, kwargs):
+    if filename_suffix is not None:
+        return filename_suffix
+    file_format_key = "file_format"
+    if file_format_key in kwargs:
+        return drawing_file_suffix[kwargs[file_format_key]]
+    return drawing_file_suffix[png]
+
+
 def draw_all_possible_resonance_structures(
-    obj, filename_prefix, filename_suffix=".png", **kwargs
+    obj, filename_prefix, filename_suffix=None, **kwargs
 ):
     """
     Draw variants of an object with all possible resonance structures.
     """
+    filename_suffix_checked = check_filename_suffix(filename_suffix, kwargs)
+
     for rsa_id, resonance_struct_adj in enumerate(
         all_possible_resonance_struct_adj(obj)
     ):
         cur_drawing = ObjDrawing(
             obj, resonance_struct_adj=resonance_struct_adj, **kwargs
         )
-        cur_drawing.save(filename_prefix + str(rsa_id) + filename_suffix)
+        cur_drawing.save(filename_prefix + str(rsa_id) + filename_suffix_checked)
 
 
 def draw_all_modification_possibilities(
     cg,
     filename_prefix,
-    filename_suffix=".png",
+    filename_suffix=None,
     randomized_change_params=default_randomized_change_params,
     draw_pairs=True,
     dump_directory=None,
@@ -666,6 +690,8 @@ def draw_all_modification_possibilities(
         workdir = os.getcwd()
         os.chdir(dump_directory)
 
+    filename_suffix_checked = check_filename_suffix(filename_suffix, kwargs)
+
     for counter, full_mod_path in enumerate(
         all_mod_paths(cg, **randomized_change_params)
     ):
@@ -675,7 +701,7 @@ def draw_all_modification_possibilities(
             mpi = ModificationPathIllustration(
                 cg, full_mod_path[1:], full_mod_path[0], **kwargs
             )
-        mpi.save(filename_prefix + str(counter) + filename_suffix)
+        mpi.save(filename_prefix + str(counter) + filename_suffix_checked)
 
     if dump_directory is not None:
         os.chdir(workdir)
