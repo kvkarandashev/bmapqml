@@ -34,14 +34,14 @@ oml_compounds_2 = OML_Slater_pair_list_from_xyzs(tested_xyzs_2, **Slater_pair_kw
 
 orb_rep_params = OML_rep_params(max_angular_momentum=1, orb_atom_rho_comp=0.95)
 
-timestamp("Representation generation.")
+rep_calc = timestamp()  # "Representation generation start:")
 oml_compounds_1.generate_orb_reps(orb_rep_params, fixed_num_threads=1)
 oml_compounds_2.generate_orb_reps(orb_rep_params)
-timestamp("Finished.")
+timestamp("Representation generation duration:", rep_calc)
 
-timestamp("Standard deviation calculations.")
+sd_calc = timestamp()  # "Standard deviation calculations start:")
 av_vals, width_params = oml_ensemble_avs_stddevs(oml_compounds_1)
-timestamp("Finished.")
+timestamp("Standard deviation calculations duration:", sd_calc)
 
 logfile.write("Width params")
 logfile.write(width_params)
@@ -60,20 +60,20 @@ else:
     from bmapqml.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
 
 logfile.write("kernel_11")
-timestamp("Symmetrical kernel calculation.")
+sym_kern_calc = timestamp()  # "Symmetrical kernel calculation start:")
 kernel_wders = gauss_sep_orb_sym_kernel(
     oml_compounds_1, sigmas, with_ders=True, global_Gauss=True
 )
-timestamp("Finished.")
+timestamp("Symmetrical kernel calculation duration:", sym_kern_calc)
 # logfile.export_matrix(kernel_wders)
 logfile.randomized_export_3D_arr(kernel_wders, seed + 2)
 
 logfile.write("kernel_12")
-timestamp("Asymmetrical kernel calculation.")
+asym_kern_calc = timestamp()  # "Asymmetrical kernel calculation start:")
 kernel_wders = gauss_sep_orb_kernel(
     oml_compounds_1, oml_compounds_2, sigmas, with_ders=True, global_Gauss=True
 )
-timestamp("Finished.")
+timestamp("Asymmetrical kernel calculation duration:", asym_kern_calc)
 # logfile.export_matrix(kernel_wders)
 logfile.randomized_export_3D_arr(kernel_wders, seed + 2)
 logfile.close()

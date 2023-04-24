@@ -60,9 +60,16 @@ def dirs_xyz_list(xyz_dir):
     return output
 
 
-def timestamp(title=""):
+def timestamp(title=None, start_time=None):
     """
     Prints current time along with another string.
     title : string to be printed close to the timestamp, empty by default.
     """
-    print(title, datetime.datetime.now())
+    cur_time = datetime.datetime.now()
+    if start_time is None:
+        displayed_time = cur_time
+    else:
+        displayed_time = cur_time - start_time
+    if title is not None:
+        print(title, displayed_time)
+    return cur_time
