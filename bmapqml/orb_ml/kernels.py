@@ -168,11 +168,13 @@ class Mol_rep_numba:
         self.rhos = np.empty((num_components,), dtype=default_float)
         self.norm_data = np.empty((num_norm_comps,), dtype=default_float)
 
-    def temp_arr_orb(self, with_ders):
-        l = 1
-        if with_ders:
-            l += self.components[0].components.shape[1]
-        return np.empty((l,))
+
+@njit(fastmath=True)
+def temp_arr_orb(mol, with_ders):
+    l = 1
+    if with_ders:
+        l += mol.components[0].components.shape[1]
+    return np.empty((l,))
 
 
 # Procedure for initializing normalization data in Mol_rep_numba list.
@@ -182,12 +184,16 @@ def numba_list_init_norm(
 ):
     for i in prange(list_length):
         mol = mol_list[i]
-        temp_arr_orb = mol.temp_arr_orb(with_ders)
+        cur_temp_arr_orb = temp_arr_orb(mol, with_ders)
         for j in range(mol.num_components):
-            init_obj_norm(mol.components[j], orb_orb_dp, with_ders, temp_arr_orb)
+            init_obj_norm(mol.components[j], orb_orb_dp, with_ders, cur_temp_arr_orb)
         if global_Gauss:
             init_obj_norm(
-                mol, mol_mol_dp, with_ders, mol.temp_arr_orb(with_ders), temp_arr_orb
+                mol,
+                mol_mol_dp,
+                with_ders,
+                temp_arr_orb(mol, with_ders),
+                cur_temp_arr_orb,
             )
 
 
@@ -359,6 +365,25 @@ def numba_kernel_matrix(
                 inout_arr[i2, i1] = inout_arr[i1, i2]
 
 
+@njit(fastmath=True)
+def numba_kernel_matrix_wders_row(
+    inout_arr, mol1, mol_arr2, upper_mol2, kernel_el_func, der_resc_arr, *extra_args
+):
+    with_ders = inout_arr.shape[-1] > 1
+    cur_temp_arr_mol = temp_arr_orb(mol1, with_ders)
+    cur_temp_arr_orb = temp_arr_orb(mol1, with_ders)
+    for i2 in range(upper_mol2):
+        kernel_el_func(
+            inout_arr[i2, :],
+            mol1,
+            mol_arr2[i2],
+            *extra_args,
+            cur_temp_arr_mol,
+            cur_temp_arr_orb
+        )
+        inout_arr[i2, 1:] *= der_resc_arr
+
+
 @njit(fastmath=True, parallel=True)
 def numba_kernel_matrix_wders(
     inout_arr,
@@ -371,26 +396,21 @@ def numba_kernel_matrix_wders(
     sym_kernel,
     *extra_args
 ):
-    with_ders = inout_arr.shape[-1] > 1
-
     for i1 in prange(num_mols1):
-        temp_arr_mol = mol_arr1[0].temp_arr_orb(with_ders)
-        temp_arr_orb = mol_arr1[0].temp_arr_orb(with_ders)
-
         if sym_kernel:
             upper_mol2 = i1 + 1
         else:
             upper_mol2 = num_mols2
-        for i2 in range(upper_mol2):
-            kernel_el_func(
-                inout_arr[i1, i2],
-                mol_arr1[i1],
-                mol_arr2[i2],
-                *extra_args,
-                temp_arr_mol,
-                temp_arr_orb
-            )
-            inout_arr[i1, i2, 1:] *= der_resc_arr
+        numba_kernel_matrix_wders_row(
+            inout_arr[i1, :, :],
+            mol_arr1[i1],
+            mol_arr2,
+            upper_mol2,
+            kernel_el_func,
+            der_resc_arr,
+            *extra_args
+        )
+
     if sym_kernel:
         for i1 in prange(num_mols1):
             for i2 in range(i1 + 1):
