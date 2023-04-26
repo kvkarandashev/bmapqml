@@ -36,10 +36,10 @@ class logfile:
 
     def randomized_export_3D_arr(self, mat_wders, seed):
         random_generator = random.Random(seed)
-        format_string = "{} {} "
+        format_string = "{} {}"
         for _ in range(3):
             format_string += " " + def_float_format
-        format_string += "\n"
+        format_string += " {}\n"
         if self.not_empty:
             for id1, row in enumerate(mat_wders):
                 for id2, kern_els in enumerate(row):
@@ -49,7 +49,9 @@ class logfile:
                             id2,
                             kern_els[0],
                             kern_els[1],
-                            random_generator.sample(list(kern_els[2:]), 1)[0],
+                            *random_generator.sample(list(enumerate(kern_els))[2:], 1)[
+                                0
+                            ][::-1],
                         )
                     )
 
