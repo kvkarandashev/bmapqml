@@ -6,7 +6,7 @@ from rdkit.Chem import RemoveHs, rdAbbreviations
 from .rdkit_utils import chemgraph_to_rdkit, SMILES_to_egc, rdkit_bond_type
 from copy import deepcopy
 from .valence_treatment import ChemGraph, sorted_tuple
-import itertools, os
+import itertools, os, subprocess
 from .modify import (
     FragmentPair,
     add_heavy_atom_chain,
@@ -39,6 +39,18 @@ LIGHTRED = (1.0, 0.5, 0.5)
 LIGHTGREEN = (0.5, 1.0, 0.5)
 LIGHTBLUE = (0.5, 0.5, 1.0)
 
+png = "PNG"
+svg = "SVG"
+pdf = "PDF"
+default_drawing_format = pdf
+drawing_formats = [png, svg, pdf]
+drawing_generator = {
+    png: rdMolDraw2D.MolDraw2DCairo,
+    svg: rdMolDraw2D.MolDraw2DSVG,
+    pdf: rdMolDraw2D.MolDraw2DSVG,
+}
+drawing_file_suffix = {png: ".png", svg: ".svg", pdf: ".pdf"}
+
 
 class ChemGraphDrawing:
     def __init__(
@@ -68,6 +80,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
+        file_format=default_drawing_format,
     ):
         """
         Create an RdKit illustration depicting a partially highlighted ChemGraph.
@@ -98,6 +111,7 @@ class ChemGraphDrawing:
             centreMoleculesBeforeDrawing=centreMoleculesBeforeDrawing,
             padding=padding,
             post_added_bonds=post_added_bonds,
+            file_format=file_format,
         )
         self.prepare_and_draw()
 
@@ -128,6 +142,7 @@ class ChemGraphDrawing:
         centreMoleculesBeforeDrawing=None,
         padding=None,
         post_added_bonds=None,
+        file_format=default_drawing_format,
     ):
         if chemgraph is None:
             if SMILES is not None:
@@ -140,7 +155,8 @@ class ChemGraphDrawing:
 
         self.kekulize = kekulize
         self.bw_palette = bw_palette
-        self.drawing = rdMolDraw2D.MolDraw2DCairo(*size)
+        self.file_format = file_format
+        self.drawing = drawing_generator[file_format](*size)
 
         do = self.drawing.drawOptions()
         if bw_palette:
@@ -176,6 +192,13 @@ class ChemGraphDrawing:
         if self.highlightAtomColor is not None:
             self.highlight_atoms(self.highlightAtoms, self.highlightAtomColor)
 
+        # TODO cleaner way to do it?
+        if self.highlightAtomColors is not None:
+            self.highlight_atoms(
+                list(self.highlightAtomColors.keys()),
+                list(self.highlightAtomColors.values())[0],
+            )
+
         if self.highlightBondTupleColor:
             self.highlight_bonds(self.highlightBondTuples, self.highlightBondTupleColor)
 
@@ -186,13 +209,20 @@ class ChemGraphDrawing:
 
         self.post_added_bonds = post_added_bonds
 
+    def highlight_atoms_bonds(self, atoms_bonds_list, highlight_color, overwrite=False):
+        for ab in atoms_bonds_list:
+            if isinstance(ab, tuple):
+                self.highlight_bonds([ab], highlight_color, overwrite=overwrite)
+            else:
+                self.highlight_atoms([ab], highlight_color, overwrite=overwrite)
+
     def highlight_atoms(self, atom_ids, highlight_color, wbonds=False, overwrite=False):
         if highlight_color is None:
             return
         if self.highlightAtomColors is None:
             self.highlightAtomColors = {}
         if self.highlightAtoms is None:
-            self.highlightAtoms = []
+            self.highlightAtoms = list(self.highlightAtomColors.keys())
         for ha in atom_ids:
             if (ha not in self.highlightAtomColors) or overwrite:
                 self.highlightAtomColors[ha] = highlight_color
@@ -278,7 +308,25 @@ class ChemGraphDrawing:
         # Chem.SanitizeMol(self.mol)
 
     def save(self, filename):
-        self.drawing.WriteDrawingText(filename)
+        text = self.drawing.GetDrawingText()
+        if self.file_format == pdf:
+            print_output = filename + drawing_file_suffix[svg]
+        else:
+            print_output = filename
+        with open(print_output, "w") as f:
+            f.write(text)
+        if self.file_format == pdf:
+            subprocess.run(
+                [
+                    "inkscape",
+                    "-D",
+                    "-z",
+                    print_output,
+                    "--export-area-drawing",
+                    "-o",
+                    filename,
+                ]
+            )
 
     def connecting_bond_tuples(self, atom_ids):
         output = []
@@ -306,6 +354,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
         abbrevs=None,
         abbreviate_max_coverage=1.0,
         rotate=None,
+        file_format=default_drawing_format,
     ):
         """
         Create an RdKit illustration depicting a FragmentPair with atoms and bonds highlighted according to membership.
@@ -323,6 +372,7 @@ class FragmentPairDrawing(ChemGraphDrawing):
             abbreviate_max_coverage=abbreviate_max_coverage,
             highlightAtomRadius=highlightAtomRadius,
             rotate=rotate,
+            file_format=file_format,
         )
         # For starters only highlight the bonds connecting the two fragments.
         self.highlight_fragment_colors = highlight_fragment_colors
@@ -370,8 +420,9 @@ class ModificationPathIllustration(ChemGraphDrawing):
         cg,
         modification_path,
         change_function,
-        color_change=None,
-        color_change_neighbors=None,
+        color_change_main=None,
+        color_change_minor=None,
+        color_change_special=None,
         **other_image_params
     ):
         """
@@ -380,10 +431,12 @@ class ModificationPathIllustration(ChemGraphDrawing):
         self.base_init(chemgraph=cg, **other_image_params)
         self.modification_path = modification_path
         self.change_function = change_function
-        self.color_change = color_change
-        self.color_change_neighbors = color_change_neighbors
-        self.highlight_atoms(self.change_neighbor_atoms(), self.color_change_neighbors)
-        self.highlight_atoms(self.change_atoms(), self.color_change, wbonds=True)
+        self.color_change_main = color_change_main
+        self.color_change_minor = color_change_minor
+        self.color_change_special = color_change_special
+        self.highlight_atoms_bonds(self.change_main(), self.color_change_main)
+        self.highlight_atoms_bonds(self.change_minor(), self.color_change_minor)
+        self.highlight_atoms_bonds(self.change_special(), self.color_change_special)
         self.init_resonance_struct_adj()
         self.prepare_and_draw()
 
@@ -391,23 +444,15 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if self.chemgraph.resonance_structure_map is None:
             return
         affected_resonance_region = None
-        changed_atom = None
+        res_struct_id = None
+
         if self.change_function in bond_changes:
-            st = sorted_tuple(*self.change_atoms())
-            if st in self.chemgraph.resonance_structure_map:
-                affected_resonance_region = self.chemgraph.resonance_structure_map[st]
-                res_struct_id = self.modification_path[1][-1]
+            res_struct_id = self.modification_path[1][-1]
 
         if self.change_function in [replace_heavy_atom, change_valence]:
-            changed_atom = self.change_atoms()[0]
-
-        if self.change_function == replace_heavy_atom:
             res_struct_id = self.modification_path[1][1]
 
-        if self.change_function == change_valence:
-            res_struct_id = self.modification_path[1][1]
-
-        if changed_atom is not None:
+        for changed_atom in self.changed_atoms():
             for i, extra_valence_ids in enumerate(
                 self.chemgraph.resonance_structure_inverse_map
             ):
@@ -417,43 +462,65 @@ class ModificationPathIllustration(ChemGraphDrawing):
         if (affected_resonance_region is not None) and (res_struct_id is not None):
             self.resonance_struct_adj = {affected_resonance_region: res_struct_id}
 
-    def change_atoms(self):
-        if self.change_function == remove_heavy_atom:
-            orig_atoms = [self.modification_path[1][0]]
+    def removed_atoms(self):
         if self.change_function == change_valence_remove_atoms:
-            orig_atoms = list(self.modification_path[2][0])
-        if self.change_function in atom_removals:
-            neigh_atom = self.chemgraph.neighbors(orig_atoms[0])[0]
-            return orig_atoms + [neigh_atom]
+            return list(self.modification_path[2][0])
+        if self.change_function == remove_heavy_atom:
+            return [self.modification_path[1][0]]
+        raise Exception
 
-        if self.change_function in atom_additions:
-            return []
+    def neighbor_to_removed(self):
+        return self.chemgraph.neighbors(self.removed_atoms()[0])[0]
 
-        if self.change_function in bond_changes:
-            return list(self.modification_path[1][:2])
+    def changed_bond(self):
+        return sorted_tuple(*self.modification_path[1][:2])
 
+    def change_main(self):
+        if self.change_function in [change_valence_remove_atoms, remove_heavy_atom]:
+            atoms = self.removed_atoms()
+            neighbor = self.neighbor_to_removed()
+            bonds = [sorted_tuple(atom, neighbor) for atom in atoms]
+            return atoms + bonds
         if self.change_function == replace_heavy_atom:
             return [self.modification_path[1][0]]
+        return []
 
+    def change_minor(self):
+        if self.change_function == add_heavy_atom_chain:
+            return [self.modification_path[1]]
+        if self.change_function == remove_heavy_atom:
+            return [self.neighbor_to_removed()]
+        if self.change_function == change_bond_order:
+            return list(self.changed_bond())
+        if self.change_function == change_bond_order_valence:
+            return [self.modification_path[1][1]]
+        return []
+
+    def change_special(self):
+        if self.change_function == change_valence_add_atoms:
+            return [self.modification_path[1]]
         if self.change_function == change_valence:
             return [self.modification_path[0]]
-
-        raise Exception()
-
-    def change_neighbor_atoms(self):
+        if self.change_function == change_valence_remove_atoms:
+            return [self.neighbor_to_removed()]
         if self.change_function in bond_changes:
-            return self.change_atoms()
+            output = []
+            bond = self.changed_bond()
+            if self.chemgraph.bond_order(*bond) != 0:
+                output.append(bond)
+            if self.change_function == change_bond_order_valence:
+                output.append(self.modification_path[1][0])
+            return output
+        return []
 
-        if self.change_function in atom_removals:
-            return [self.change_atoms()[-1]]
-
-        if self.change_function in [add_heavy_atom_chain, change_valence_add_atoms]:
-            return [self.modification_path[1]]
-
-        if self.change_function in [change_valence, replace_heavy_atom]:
-            return []
-
-        raise Exception()
+    def changed_atoms(self):
+        output = []
+        for atom_bonds in itertools.chain(
+            self.change_main(), self.change_minor(), self.change_special()
+        ):
+            if isinstance(atom_bonds, int):
+                output.append(atom_bonds)
+        return output
 
 
 def first_mod_path(tp):
@@ -549,7 +616,7 @@ class BeforeAfterIllustration:
 
 def draw_chemgraph_to_file(cg, filename, **kwargs):
     """
-    Draw a chemgraph in a PNG file.
+    Draw a chemgraph in an image file.
     """
     cgd = ChemGraphDrawing(chemgraph=cg, **kwargs)
     cgd.save(filename)
@@ -557,7 +624,7 @@ def draw_chemgraph_to_file(cg, filename, **kwargs):
 
 def draw_fragment_pair_to_file(fragment_pair, filename, **kwargs):
     """
-    Draw a fragment pair in a PNG file.
+    Draw a fragment pair in an image file.
     """
     fpd = FragmentPairDrawing(fragment_pair=fragment_pair, **kwargs)
     fpd.save(filename)
@@ -586,25 +653,36 @@ def all_possible_resonance_struct_adj(obj):
     return output
 
 
+def check_filename_suffix(filename_suffix, kwargs):
+    if filename_suffix is not None:
+        return filename_suffix
+    file_format_key = "file_format"
+    if file_format_key in kwargs:
+        return drawing_file_suffix[kwargs[file_format_key]]
+    return drawing_file_suffix[default_drawing_format]
+
+
 def draw_all_possible_resonance_structures(
-    obj, filename_prefix, filename_suffix=".png", **kwargs
+    obj, filename_prefix, filename_suffix=None, **kwargs
 ):
     """
     Draw variants of an object with all possible resonance structures.
     """
+    filename_suffix_checked = check_filename_suffix(filename_suffix, kwargs)
+
     for rsa_id, resonance_struct_adj in enumerate(
         all_possible_resonance_struct_adj(obj)
     ):
         cur_drawing = ObjDrawing(
             obj, resonance_struct_adj=resonance_struct_adj, **kwargs
         )
-        cur_drawing.save(filename_prefix + str(rsa_id) + filename_suffix)
+        cur_drawing.save(filename_prefix + str(rsa_id) + filename_suffix_checked)
 
 
 def draw_all_modification_possibilities(
     cg,
     filename_prefix,
-    filename_suffix=".png",
+    filename_suffix=None,
     randomized_change_params=default_randomized_change_params,
     draw_pairs=True,
     dump_directory=None,
@@ -635,6 +713,8 @@ def draw_all_modification_possibilities(
         workdir = os.getcwd()
         os.chdir(dump_directory)
 
+    filename_suffix_checked = check_filename_suffix(filename_suffix, kwargs)
+
     for counter, full_mod_path in enumerate(
         all_mod_paths(cg, **randomized_change_params)
     ):
@@ -644,7 +724,7 @@ def draw_all_modification_possibilities(
             mpi = ModificationPathIllustration(
                 cg, full_mod_path[1:], full_mod_path[0], **kwargs
             )
-        mpi.save(filename_prefix + str(counter) + filename_suffix)
+        mpi.save(filename_prefix + str(counter) + filename_suffix_checked)
 
     if dump_directory is not None:
         os.chdir(workdir)

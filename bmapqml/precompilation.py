@@ -155,7 +155,7 @@ def module_source_dirs(module_path, module_root_dir):
     return mp_split[-1], output[::-1]
 
 
-def add_f2py_args(library_dependencies):
+def add_f2py_args(library_dependencies, always_debug=False):
     add_flags_list = [
         "-m64",
         "-march=native",
@@ -165,7 +165,9 @@ def add_f2py_args(library_dependencies):
         "-Wno-cpp",
         "-Wunused-dummy-argument",
     ]
-    if (debug_mode_envvar in os.environ) and (os.environ[debug_mode_envvar] == "1"):
+    if always_debug or (
+        (debug_mode_envvar in os.environ) and (os.environ[debug_mode_envvar] == "1")
+    ):
         # Run the code in debug mode.
         add_flags_list += ["-g", "-fcheck=all", "-Wall"]
     else:
@@ -182,64 +184,72 @@ def add_f2py_args(library_dependencies):
     return (add_flags_arg, *add_args)
 
 
+def recompile(
+    module_path,
+    extensions=["f90", "f"],
+    module_root_dir=bmapqml_root_dir(),
+    f2py_version="f2py",
+    always_debug=False,
+):
+    module_name, searched_dirs = module_source_dirs(module_path, module_root_dir)
+    library_dependencies = []
+    compiled_sources = [Source(module_name)]
+    cur_source_id = 0
+    compiled_sources[cur_source_id].find_source_in_dirs(searched_dirs, extensions)
+    while cur_source_id != len(compiled_sources):
+        cur_source = compiled_sources[cur_source_id]
+        if cur_source in compiled_sources[:cur_source_id]:
+            duplicated_source_id = compiled_sources[:cur_source_id].index(cur_source)
+            append_unrepeated(
+                compiled_sources[duplicated_source_id].source_depending,
+                cur_source.source_depending,
+            )
+            for other_source_id in range(cur_source_id):
+                if compiled_sources[other_source_id].parent_entry is not None:
+                    if (
+                        compiled_sources[other_source_id].parent_entry
+                        == cur_source.source_name
+                    ):
+                        append_unrepeated(
+                            compiled_sources[duplicated_source_id].source_depending,
+                            cur_source.source_depending,
+                        )
+            del compiled_sources[cur_source_id]
+        else:
+            cur_source.find_dependencies(searched_dirs, extensions=extensions)
+            append_unrepeated(compiled_sources, cur_source.source_dependencies)
+            append_unrepeated(library_dependencies, cur_source.library_dependencies)
+            cur_source_id += 1
+
+    compiled_sources.sort()
+    calldir = os.getcwd()
+    os.chdir(searched_dirs[0])
+    final_command = f2py_version + " -c"
+    for added_arg in add_f2py_args(library_dependencies, always_debug=always_debug):
+        final_command += " " + added_arg
+    final_command += " -m " + module_name
+    for compiled_source in compiled_sources:
+        final_command += " " + compiled_source.source_name
+    print("COMPILATION COMMAND:", final_command)
+    execute_string(final_command)
+    os.chdir(calldir)
+
+
 def precompiled(
     *module_paths,
-    extensions=["f90", "f"],
+    always_compile=False,
     parent_module_name="bmapqml",
-    module_root_dir=bmapqml_root_dir(),
+    **recompile_kwargs
 ):
     for module_path in module_paths:
-        try:
-            importlib.import_module(parent_module_name + "." + module_path)
-        except ModuleNotFoundError:
-            module_name, searched_dirs = module_source_dirs(
-                module_path, module_root_dir
-            )
-            library_dependencies = []
-            compiled_sources = [Source(module_name)]
-            cur_source_id = 0
-            compiled_sources[cur_source_id].find_source_in_dirs(
-                searched_dirs, extensions
-            )
-            while cur_source_id != len(compiled_sources):
-                cur_source = compiled_sources[cur_source_id]
-                if cur_source in compiled_sources[:cur_source_id]:
-                    duplicated_source_id = compiled_sources[:cur_source_id].index(
-                        cur_source
-                    )
-                    append_unrepeated(
-                        compiled_sources[duplicated_source_id].source_depending,
-                        cur_source.source_depending,
-                    )
-                    for other_source_id in range(cur_source_id):
-                        if compiled_sources[other_source_id].parent_entry is not None:
-                            if (
-                                compiled_sources[other_source_id].parent_entry
-                                == cur_source.source_name
-                            ):
-                                append_unrepeated(
-                                    compiled_sources[
-                                        duplicated_source_id
-                                    ].source_depending,
-                                    cur_source.source_depending,
-                                )
-                    del compiled_sources[cur_source_id]
+        if not always_compile:
+            try:
+                if parent_module_name is None:
+                    imported_module_full_path = module_path
                 else:
-                    cur_source.find_dependencies(searched_dirs, extensions=extensions)
-                    append_unrepeated(compiled_sources, cur_source.source_dependencies)
-                    append_unrepeated(
-                        library_dependencies, cur_source.library_dependencies
-                    )
-                    cur_source_id += 1
-
-            compiled_sources.sort()
-            calldir = os.getcwd()
-            os.chdir(searched_dirs[0])
-            final_command = "f2py -c"
-            for added_arg in add_f2py_args(library_dependencies):
-                final_command += " " + added_arg
-            final_command += " -m " + module_name
-            for compiled_source in compiled_sources:
-                final_command += " " + compiled_source.source_name
-            execute_string(final_command)
-            os.chdir(calldir)
+                    imported_module_full_path = parent_module_name + "." + module_path
+                importlib.import_module(imported_module_full_path)
+                continue
+            except ModuleNotFoundError:
+                pass
+        recompile(module_path, **recompile_kwargs)

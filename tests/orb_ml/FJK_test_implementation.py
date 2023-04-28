@@ -1,15 +1,46 @@
+# Compare three implementations for FJK kernels:
+# Fortran - Fortran implementation
+# numba_types - Numba implementation that heavily uses derived data types and function overloading.
+# numba - brute Numba implementation which is close to direct translation from Fortran.
+
+# Find which implementation to use.
+import random, sys
+
+
+def imported_kernels(imp_flag):
+    if imp_flag == "Fortran":
+        from bmapqml.orb_ml.fkernels import (
+            gauss_sep_orb_sym_kernel,
+            gauss_sep_orb_kernel,
+        )
+
+        return gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+    if imp_flag == "numba_types":
+        from bmapqml.orb_ml.kernels import (
+            gauss_sep_orb_sym_kernel,
+            gauss_sep_orb_kernel,
+        )
+
+        return gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+    if imp_flag == "numba":
+        from bmapqml.orb_ml.kernels_test import (
+            gauss_sep_orb_sym_kernel,
+            gauss_sep_orb_kernel,
+        )
+
+        return gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
+    raise Exception()
+
+
+implementation_flag = sys.argv[2]
+gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel = imported_kernels(implementation_flag)
+
 from bmapqml.test_utils import dirs_xyz_list, logfile, timestamp
 from bmapqml.orb_ml import OML_Slater_pair_list_from_xyzs
 from bmapqml.orb_ml.kernels import oml_ensemble_avs_stddevs
 from bmapqml.orb_ml.representations import OML_rep_params
 import numpy as np
-import random, sys
 
-# Toggle to use Fortran or Numba implementation.
-if len(sys.argv) < 3:
-    use_Fortran = True
-else:
-    use_Fortran = sys.argv[2] == "True"
 
 seed = 1
 num_test_mols_1 = 50
@@ -54,10 +85,6 @@ logfile.write(tested_xyzs_1)
 logfile.write("xyz list 2")
 logfile.write(tested_xyzs_2)
 
-if use_Fortran:
-    from bmapqml.orb_ml.fkernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
-else:
-    from bmapqml.orb_ml.kernels import gauss_sep_orb_sym_kernel, gauss_sep_orb_kernel
 
 logfile.write("kernel_11")
 sym_kern_calc = timestamp()  # "Symmetrical kernel calculation start:")
