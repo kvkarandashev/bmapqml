@@ -275,17 +275,7 @@ class Analyze:
         ymin_tick = hline/max_y - 0.05 #0 if hline is None else hline
         if coloring == "encounter":
             sc=ax1.hexbin(self.X_QUANTITY/max_x,  self.GAP/max_y, gridsize=gs, mincnt=5, cmap=cc,C=self.ENCOUNTER, linewidths=0.2)
-        if coloring == "density":
-            from matplotlib import colors
-            np.seterr(under='warn')
-            sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0.2,norm=colors.LogNorm(vmin=100, vmax=200000))
 
-            
-        
-        
-        ax1 = make_pretty(ax1)
-        ax1.xaxis.set_tick_params(labelsize=30)
-        ax1.yaxis.set_tick_params(labelsize=30)
         
         #ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
         #ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
@@ -371,6 +361,22 @@ class Analyze:
             plt.plot(
                 self.points[simplex, 0]/max_x, self.points[simplex, 1]/max_y, "o-", color="black"
             )
+
+
+        xmin, xmax = ax1.get_xlim()
+        ymin, ymax = ax1.get_ylim()
+
+        if coloring == "density":
+            from matplotlib import colors
+            np.seterr(under='warn')
+            sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0.2,extent= (xmin, xmax, ymin, ymax),norm=colors.LogNorm(vmin=100, vmax=200000))
+
+            
+        
+        
+        ax1 = make_pretty(ax1)
+        ax1.xaxis.set_tick_params(labelsize=30)
+        ax1.yaxis.set_tick_params(labelsize=30)
 
 
 
