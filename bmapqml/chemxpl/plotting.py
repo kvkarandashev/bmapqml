@@ -16,6 +16,7 @@ import random
 import joblib
 import time
 from matplotlib.ticker import FormatStrFormatter
+from matplotlib.ticker import MaxNLocator
 import pdb
 
 np.random.seed(122)
@@ -255,7 +256,7 @@ class Analyze:
         """
         Plot the pareto optimal solutions.
         """
-
+        #pdb.set_trace()
         fig, ax1 = plt.subplots(figsize=(8, 8))
 
         cc = 'gnuplot_r'
@@ -280,24 +281,55 @@ class Analyze:
             sc=ax1.hexbin(self.X_QUANTITY_traj/max_x, self.GAP_traj /max_y, gridsize=gs,bins="log", mincnt=5,linewidths=0.2,norm=colors.LogNorm(vmin=100, vmax=200000))
 
             
+        
+        
+        ax1 = make_pretty(ax1)
+        ax1.xaxis.set_tick_params(labelsize=30)
+        ax1.yaxis.set_tick_params(labelsize=30)
+        
+        #ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        #ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        #ax1.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        #ax1.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        
+
         if labels:
             if plot_quantity == "solvation_energy":
                 if dataset == "QM9":
                     #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{QM9}} \vert)$", fontsize=fs)
                     #ax1.set_xlim(-1.5,0.1)
-                    ax1.set_ylim(ymin_tick,1.05)
+                    #ax1.set_ylim(ymin_tick,1.05)
                     #ticks = np.arange(-1.5,0.5,0.2)
                     #ax1.set_xticks(xticks)
                     #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
                     #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    y_ticks = [0.2,0.4,0.6,0.8,1.0]
+                    x_ticks = [-1.0, -0.8, -0.6, -0.4, -0.2, 0.0]
+
+                    ax1.set_yticks(y_ticks)
+                    ax1.set_yticklabels([str(x) for x in y_ticks])
+                    ax1.set_xticks(x_ticks)
+                    ax1.set_xticklabels([str(x) for x in x_ticks])
+                    ax1.set_ylim(0,1.1)
+                    ax1.set_xlim(-1.1,0.1)
+
 
                 if dataset == "EGP":
                     #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{EGP}} \vert)$", fontsize=fs)
                     #ax1.set_xlim(-14,2)
-                    ax1.set_ylim(ymin_tick,1.05)
+                   # ax1.set_ylim(ymin_tick,1.05)
                     #xticks = np.arange(-12,2,2)
                     ##ax1.set_xticks(xticks)
                     #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    y_ticks = [0.2,0.4,0.6,0.8,1.0]
+                    x_ticks = [-15.0,-10.0,-5.0,0.0]
+
+                    ax1.set_yticks(y_ticks)
+                    ax1.set_yticklabels([str(x) for x in y_ticks])
+                    ax1.set_xticks(x_ticks)
+                    ax1.set_xticklabels([str(x) for x in x_ticks])
+                    ax1.set_xlim(-15.05,0.1)
+                    ax1.set_ylim(0, 1.1)
 
             if plot_quantity == "dipole":
                 if dataset == "QM9":
@@ -318,39 +350,8 @@ class Analyze:
                     #ax1.set_xticklabels([str(x) for x in xticks])
                     pass
 
-            if dataset == "QM9":
-                pass
-                #plt.ylabel(
-                #    r"$\Delta \epsilon / \mathrm{max}(  \Delta \epsilon^{\mathrm{QM9}} )$",
-                #    fontsize=fs,
-                #    rotation=0,
-                #    ha="left",
-                #    y=1.05,
-                #    labelpad=-50,
-                #    weight=500,
-                #)
-            if dataset == "EGP":
-                pass
-                #plt.ylabel(
-                #    r"$\Delta \epsilon / \mathrm{max}(  \Delta \epsilon^{\mathrm{EGP}} )$",
-                #    fontsize=fs,
-                #    rotation=0,
-                #    ha="left",
-                #    y=1.05,
-                #    labelpad=-50,
-                #    weight=500,
-                #)
-        
-        
-        
-        ax1 = make_pretty(ax1)
-        ax1.xaxis.set_tick_params(labelsize=30)
-        ax1.yaxis.set_tick_params(labelsize=30)
-        ax1.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        ax1.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        ax1.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        ax1.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
 
+        
         if labels:
             if coloring == "encounter":
                 clb = fig.colorbar(sc)
