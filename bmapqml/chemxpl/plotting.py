@@ -252,7 +252,7 @@ class Analyze:
         plt.savefig("loss.png", dpi=600)
         plt.close("all")
 
-    def plot_pareto(self,name_plot, hline=None, vline=None,dataset="QM9", coloring="encounter", plot_quantity = "solvation_energy",labels=False):
+    def plot_pareto(self,name_plot,gap_const, hline=None, vline=None,dataset="QM9", coloring="encounter", plot_quantity = "solvation_energy",labels=False):
         """
         Plot the pareto optimal solutions.
         """
@@ -282,63 +282,87 @@ class Analyze:
         #ax1.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
         #ax1.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
         
-
+        #pdb.set_trace()
         if labels:
             if plot_quantity == "solvation_energy":
                 if dataset == "QM9":
-                    #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{QM9}} \vert)$", fontsize=fs)
-                    #ax1.set_xlim(-1.5,0.1)
-                    #ax1.set_ylim(ymin_tick,1.05)
-                    #ticks = np.arange(-1.5,0.5,0.2)
-                    #ax1.set_xticks(xticks)
-                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
-                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    if gap_const == "weak":
+                        x_ticks = [-1.0, -0.8, -0.6, -0.4, -0.2, 0.0]
+                        ax1.set_xlim(-1.1,0.0)
+                        ax1.set_ylim(0,1.1)
+                    
+                    if gap_const == "strong":
+                        x_ticks =  [-1.4, -1.0, -0.6, -0.2, 0.0]
+                        #[-1.4, -1.2, -1.0, -0.8, -0.6, -0.4, -0.2, 0.0]
+                        ax1.set_xlim(-1.4,0.0)
+                        ax1.set_ylim(0.2,1.1)
+                    
+                    
                     y_ticks = [0.2,0.4,0.6,0.8,1.0]
-                    x_ticks = [-1.0, -0.8, -0.6, -0.4, -0.2, 0.0]
-
                     ax1.set_yticks(y_ticks)
                     ax1.set_yticklabels([str(x) for x in y_ticks])
                     ax1.set_xticks(x_ticks)
                     ax1.set_xticklabels([str(x) for x in x_ticks])
-                    ax1.set_ylim(0,1.1)
-                    ax1.set_xlim(-1.1,0.1)
+                    
 
 
                 if dataset == "EGP":
-                    #ax1.set_xlabel(r"$\Delta G_{\mathrm{solv.}}/ \mathrm{max}(  \vert \Delta G_{\mathrm{solv.}}^{\mathrm{EGP}} \vert)$", fontsize=fs)
-                    #ax1.set_xlim(-14,2)
-                   # ax1.set_ylim(ymin_tick,1.05)
-                    #xticks = np.arange(-12,2,2)
-                    ##ax1.set_xticks(xticks)
-                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    if gap_const == "weak":
+                        x_ticks = [-13, -10, -7, -4, -1, 0]
+                        ax1.set_xlim(-13.0,0.0)
+                        ax1.set_ylim(0, 1.1)
+                    
+                    if gap_const == "strong":
+                        x_ticks = [-4, -3, -2, -1, 0]
+                        #[-4.0, -3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0]
+                        ax1.set_xlim(-4,0.0)
+                        ax1.set_ylim(0.2, 1.1)
+
                     y_ticks = [0.2,0.4,0.6,0.8,1.0]
-                    x_ticks = [-15.0,-10.0,-5.0,0.0]
 
                     ax1.set_yticks(y_ticks)
                     ax1.set_yticklabels([str(x) for x in y_ticks])
-                    ax1.set_xticks(x_ticks)
+                    try:
+                        ax1.set_xticks(x_ticks)
+                    except:
+                        pdb.set_trace()
                     ax1.set_xticklabels([str(x) for x in x_ticks])
-                    ax1.set_xlim(-15.05,0.1)
-                    ax1.set_ylim(0, 1.1)
+                    
 
             if plot_quantity == "dipole":
                 if dataset == "QM9":
-                    #ax1.set_xlabel(r"$ D / \mathrm{max}(  D^{\mathrm{QM9}} )$", fontsize=fs)
-                    pass
-                    ax1.set_ylim(ymin_tick,1.05)
-                    #ax1.set_xlim(0.0,1.5)
-                    #xticks  = np.arange(0.0,2.0,0.5)
-                    #ax1.set_xticks(xticks)
-                    #only one number after comma
-                    #ax1.set_xticklabels([str(round(x,1)) for x in xticks])
+                    if gap_const == "weak":
+                        x_ticks = [0.0, 0.4, 0.8, 1.2]
+                        ax1.set_xlim(0.0,1.2)
+                        ax1.set_ylim(0,1.1)
+                    
+                    if gap_const == "strong":
+                        x_ticks = [0.0, 0.4, 0.8, 1.2, 1.6]
+                        ax1.set_xlim(0.0,1.4)
+                        ax1.set_ylim(0.2,1.1)
+                    
+                    
+                   
+
+                    y_ticks = [0.2,0.4,0.6,0.8,1.0]
+                    ax1.set_yticks(y_ticks)
+                    ax1.set_yticklabels([str(x) for x in y_ticks])
+                    ax1.set_xticks(x_ticks)
+                    ax1.set_xticklabels([str(x) for x in x_ticks])
+                    
+                    
+                    
+
+
                 if dataset == "EGP":
-                    #ax1.set_xlabel(r"$ D / \mathrm{max}(  D^{\mathrm{EGP}} )$", fontsize=fs)
-                    #ax1.set_xlim(0,9.0)
-                    ax1.set_ylim(ymin_tick,1.05)
-                    #xticks  = np.arange(0,10,2)
-                    #ax1.set_xticks(xticks)
-                    #ax1.set_xticklabels([str(x) for x in xticks])
-                    pass
+                    if gap_const == "weak":
+                        x_ticks = [0.0, 2.0, 4.0, 6.0, 9.0]
+                        ax1.set_xlim(0.0,9.0)
+                    
+                    if gap_const == "strong":
+                        x_ticks = [0.0, 2.0, 4.0, 6.0, 8.0]
+                        ax1.set_xlim(0.0,8.0)
+
 
 
         
