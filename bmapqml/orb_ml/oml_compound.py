@@ -29,8 +29,6 @@ from os.path import isfile
 from .representations import (
     generate_orb_rep_array,
     gen_propagator_based_coup_mats,
-    weighted_array,
-    reconstr_mats,
     gen_atom_sorted_pseudo_orbs,
     gen_odf_based_coup_mats,
     generate_atom_ao_ranges,
