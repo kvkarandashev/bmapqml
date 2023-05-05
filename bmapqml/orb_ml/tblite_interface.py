@@ -19,6 +19,7 @@ def tblite_ao_ranges_angular_momenta(tblite_calc):
         if sh_map[sh_id] != prev_atom:
             ao_ranges.append((prev_range_start, ao_id))
             prev_range_start = ao_id
+            prev_atom = sh_map[sh_id]
     ao_ranges.append((ao_id, len(ao_map)))
     return ao_ranges, angular_momenta
 
