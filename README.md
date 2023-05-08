@@ -12,3 +12,11 @@ pip-managed packages needed for the entire repository can be found in bmapqml/re
 
 Required packages not managed by pip and thus not mentioned in requirements.txt file are:
 - for chemxpl : xyz2mol, rdkit, and g2s (the latter present in the repo)
+
+# Installation.
+
+After installing the dependencies modify $PYTHONPATH to include the root directory of this repository or use setup.py.
+
+# WARNING
+
+For the current version of setup.py, Fortran parts of the code are compiled during first import of their Python interfaces, not installation.
