@@ -41,7 +41,6 @@ num_MC_steps = 10000  # 10000
 randomized_change_params = {
     "max_fragment_num": 1,
     "nhatoms_range": [1, max_nhatoms],
-    "final_nhatoms_range": [1, max_nhatoms],
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,

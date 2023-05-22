@@ -32,7 +32,6 @@ bound_enforcing_coeff = None
 randomized_change_params = {
     "max_fragment_num": 1,
     "nhatoms_range": [1, 9],
-    "final_nhatoms_range": [1, 9],
     "possible_elements": possible_elements,
     "bond_order_changes": [-1, 1],
     "forbidden_bonds": forbidden_bonds,

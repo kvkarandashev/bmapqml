@@ -22,17 +22,14 @@
 
 
 import numpy as np
-import itertools, copy
+import itertools
 from numba import (
     njit,
     prange,
     float64,
-    types,
     typed,
     typeof,
-    deferred_type,
     int64,
-    float32,
 )
 from numba.experimental import jitclass
 
