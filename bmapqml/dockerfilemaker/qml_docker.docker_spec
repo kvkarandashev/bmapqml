@@ -1,0 +1,5 @@
+# Specifies a Dockerfile for chemxpl simulations.
+FROM ubuntu:22.04
+APT gfortran libblas-dev liblapack-dev git build-essential
+PIP numpy
+PIPLAST git+https://github.com/qmlcode/qml@develop;--user;-U

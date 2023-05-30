@@ -6,4 +6,4 @@ if len(sys.argv) > 1:
 else:
     docker_name = "base_chemxpl"
 
-prepare_dockerfile(docker_name)
+prepare_dockerfile(docker_name, dockerspec_dir="../../bmapqml/dockerfilemaker")

@@ -241,9 +241,7 @@ def get_dockerfile_lines_deps(
     dockerspec_dir=available_dockers_dir(),
     conda_updated=True,
 ):
-    base_dockerfile_cmd_full_path = (
-        available_dockers_dir() + "/" + base_dockerfile_cmd_file
-    )
+    base_dockerfile_cmd_full_path = dockerspec_dir + "/" + base_dockerfile_cmd_file
     # Commands basic for leruli-compliant Docker.
     assert os.path.isfile(base_dockerfile_cmd_full_path)
     # Temporary directory where necessary files will be dumped.
