@@ -9,7 +9,11 @@ from ..utils import (
 from ...utils import read_xyz_lines
 from ...data import conversion_coefficient
 import os, sys
-from tblite.interface import Calculator
+
+try:
+    from tblite.interface import Calculator
+except:
+    print("tblite-related functions unavailable")
 
 from leruli import graph_to_geometry
 from leruli.internal import LeruliInternalError
