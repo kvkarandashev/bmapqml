@@ -127,6 +127,8 @@ while True:
         print("Failed for initial molecules:")
         print(init_egcs)
         continue
+    for i, (beta, tp) in enumerate(zip(betas, rw.cur_tps)):
+        print("#INITTP", i, beta, tp, tp.calculated_data[min_func_name])
     break
 
 if os.path.isfile(restart_file_name):
