@@ -1,4 +1,4 @@
-# molopt
+# bmapqml
 
 Collection of Quantum Machine Learning methods developed in University of Vienna during its participation in the [BIG-MAP consortium](https://www.big-map.eu). The project started off as a fork of the [QML code](https://github.com/qmlcode/qml). Most of the useful parts of the code can be found in [`mosaics`](https://github.com/chemspacelab/mosaics) and [`qml2`](https://github.com/chemspacelab/qml2) repositories.
 
